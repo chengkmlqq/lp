@@ -336,13 +336,28 @@ def _test_line_geometry_usable(base_tower: dict[str, Any], profile: dict[str, An
     - I 回上相中距（缺则 .dat 相几何错位或回退到 RELE 槽位）
 
     自动反查路径宁可退回模板模式，也不要把原本能跑的测试打挂。
+
+    ⚠️ 2026-11-07 修复：快照装配器把避雷线中距写在 ``profile`` 侧
+    （``geometry_layers_json.lightning_wire`` / ``extra_profile_json.lightning_wire``），
+    ``base_tower.circuit_geometry_json`` 只含回路相几何。此前只认 base_tower，
+    导致任何测试线路都判「几何不完整」，自动匹配路径 100% 失败。
+    这里改为两处都看，且相中距同样允许回落到 profile 的几何层。
     """
     if not base_tower or not profile:
         return False
     geometry = base_tower.get("circuit_geometry_json") or {}
     if not isinstance(geometry, dict):
         return False
-    lightning_wire = geometry.get("lightning_wire") or {}
+    layers = profile.get("geometry_layers_json")
+    layers = layers if isinstance(layers, dict) else {}
+    extra = profile.get("extra_profile_json")
+    extra = extra if isinstance(extra, dict) else {}
+
+    lightning_wire = geometry.get("lightning_wire")
+    if not isinstance(lightning_wire, dict):
+        lightning_wire = layers.get("lightning_wire")
+    if not isinstance(lightning_wire, dict):
+        lightning_wire = extra.get("lightning_wire")
     if not isinstance(lightning_wire, dict):
         return False
     if (
@@ -350,7 +365,7 @@ def _test_line_geometry_usable(base_tower: dict[str, Any], profile: dict[str, An
         or lightning_wire.get("right_mid_distance_m") is None
     ):
         return False
-    phase_spacing = (geometry.get("I") or {}).get("phase_spacing_m") or {}
+    phase_spacing = ((geometry.get("I") or layers.get("I") or {}).get("phase_spacing_m")) or {}
     if not isinstance(phase_spacing, dict) or phase_spacing.get("upper") is None:
         return False
     return True

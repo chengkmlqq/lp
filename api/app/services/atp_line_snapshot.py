@@ -320,7 +320,19 @@ def build_base_tower_from_test_line(test_line: Any) -> dict[str, Any]:
         "slope_1": getattr(test_line, "slope_1", None),
         "slope_2": getattr(test_line, "slope_2", None),
         "risk_level": None,
-        "circuit_geometry_json": build_geometry_layers(circuits),
+        # 避雷线中距/高度一并并入回路几何层（2026-11-07）：几何管线与测试前置校验
+        # 都从 circuit_geometry_json.lightning_wire 读取，此前只写在 profile 侧，
+        # 导致 base_tower 侧缺失、测试自动匹配被判「几何不完整」。
+        "circuit_geometry_json": _merge_lightning_wire(
+            build_geometry_layers(circuits),
+            {
+                "lightning_wire": {
+                    "left_mid_distance_m": getattr(test_line, "shield_wire_left_mid_m", None),
+                    "right_mid_distance_m": getattr(test_line, "shield_wire_right_mid_m", None),
+                    "height_m": getattr(test_line, "shield_wire_height_m", None),
+                }
+            },
+        ),
         "lightning_result_json": {},
         "raw_extra_json": {},
     }
