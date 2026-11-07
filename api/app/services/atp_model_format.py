@@ -44,7 +44,7 @@ FORMAT_EMBED = "embed"        # 7.2+ Enbed：几何直接内嵌进 work.atp，�
 FORMAT_PLAIN = "plain"        # 无 LCC 的纯 RLC 工程 / 手写文件
 
 FORMAT_LABELS: dict[str, str] = {
-    FORMAT_LEGACY: "老版（$INCLUDE + .lib）",
+    FORMAT_LEGACY: "旧版（$INCLUDE + .lib）",
     FORMAT_INSERT: "新版（$INSERT + .pch）",
     FORMAT_EMBED: "新版内嵌（几何烧死）",
     FORMAT_PLAIN: "无线路模型",
@@ -564,8 +564,8 @@ def inspect_package(
         if missing_dat:
             result.add(
                 "E002", "error",
-                "老版模型缺少几何源：" + ", ".join(f"{n}.dat" for n in missing_dat),
-                "老版模型每轮要从 .dat 重算几何，四个 .dat 必须齐全（long/short/dahao/xiaohao）",
+                "旧版模型缺少几何源：" + ", ".join(f"{n}.dat" for n in missing_dat),
+                "旧版模型每轮要从 .dat 重算几何，四个 .dat 必须齐全（long/short/dahao/xiaohao）",
                 entry_key,
             )
 
@@ -615,8 +615,8 @@ def inspect_package(
     if model_format == FORMAT_LEGACY and pch_members:
         result.add(
             "W010", "warning",
-            f"老版模型包内带了 {len(pch_members)} 个 .pch（中间产物）",
-            "老版链路每轮从 .dat 重算 pch，包内的 pch 不会被使用，可删除以减小包体",
+            f"旧版模型包内带了 {len(pch_members)} 个 .pch（中间产物）",
+            "旧版链路每轮从 .dat 重算 pch，包内的 pch 不会被使用，可删除以减小包体",
             entry_key,
         )
 

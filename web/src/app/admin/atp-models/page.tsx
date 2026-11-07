@@ -1602,7 +1602,7 @@ export default function AtpModelsPage() {
               <Space size={6}>
                 <span>{t("上传模型文件")}</span>
                 <Tooltip
-                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch 文件。老版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。")}
+                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch 文件。旧版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。")}
                 >
                   <QuestionCircleOutlined className="text-[var(--ant-color-text-tertiary)]" />
                 </Tooltip>

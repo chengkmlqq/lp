@@ -23,8 +23,8 @@ export type ModelFormatMeta = {
 
 const META: Record<AtpAssetModelFormat | "unknown", ModelFormatMeta> = {
   legacy: {
-    label: "老版 · $INCLUDE + .lib",
-    short: "老版",
+    label: "旧版 · $INCLUDE + .lib",
+    short: "旧版",
     color: "#1d4ed8",
     background: "#eff6ff",
     tone: "legacy",
