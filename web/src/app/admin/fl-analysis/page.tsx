@@ -26,6 +26,7 @@ import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { Card } from "@/components/ui-antd";
 import { CreateJobForm } from "@/components/fl-analysis/create-job-form";
 import { JobCardList } from "@/components/fl-analysis/job-card-list";
+import { patchFlJobProgressInListCaches } from "@/components/fl-analysis/job-progress-patch";
 import { JobDetailTabView } from "@/components/fl-analysis/job-detail-tab-view";
 import { JobTable } from "@/components/fl-analysis/job-table";
 import { MitigationModal } from "@/components/fl-analysis/mitigation-modal";
@@ -191,17 +192,53 @@ export default function AdminFlAnalysisPage() {
   // 方案B（2026-09-16）：按事件名过滤，避免列表被高频 tower_step 事件反复刷新。
   // fl_analysis.tower_step（塔内二分迭代细节，单塔 ~100+ 次/任务）只在任务并发时
   // 密集推送，列表页无需为它整表重取；仅任务状态（job.*）与塔完成（tower_done）
-  // 影响列表展示（状态/进度条/结果），才 invalidate 触发重取。
+  // 影响展示，才触发更新。
+  //
+  // 2026-11-07 精准更新：事件 payload 均带 job_id（见 fl_analysis_service._publish_change），
+  // 只刷新目标任务自身的记录，不再 invalidate 整个 /api/v1/fl-analysis 前缀
+  // （旧行为会把列表 + 所有打开的任务详情 Tab 的详情/结果全部重取）。
+  // - tower_done（每塔一次，高频）：目标任务详情+结果精准失效；列表进度字段就地
+  //   patch（result_tower_count/fractional_progress），不重取整表、不触发 loading 遮罩。
+  // - job.* 状态变化（低频）：目标任务详情+结果精准失效；列表重取以反映新增/删除/状态列。
+  // - 详情 Tab 自身仍有 10s 轮询兜底，事件丢失也能最终一致。
+  // tower_done 高频事件的列表进度就地 patch 已提取为共享工具（防雷改造页同用）
+  const patchJobProgressInListCaches = useCallback((jobId: string, payload: Record<string, unknown>) => {
+    patchFlJobProgressInListCaches(queryClient, jobId, payload);
+  }, [queryClient]);
+
   useTopicSubscription(
     "admin.fl-analysis",
     useCallback(
       (event) => {
         const name = typeof event?.name === "string" ? event.name : "";
-        if (name.startsWith("fl_analysis.job.") || name === "fl_analysis.tower_done") {
-          void invalidateFlAnalysisQueries();
+        if (!name.startsWith("fl_analysis.job.") && name !== "fl_analysis.tower_done") {
+          return;
         }
+        const payloadJobId = typeof event?.payload?.job_id === "string" ? event.payload.job_id : "";
+        const refreshTargetJob = () => {
+          if (!payloadJobId) {
+            return;
+          }
+          queryClient.invalidateQueries({ queryKey: ["/api/v1/fl-analysis/jobs/detail", payloadJobId] });
+          queryClient.invalidateQueries({ queryKey: ["/api/v1/fl-analysis/jobs/results", payloadJobId] });
+        };
+        if (name === "fl_analysis.tower_done") {
+          refreshTargetJob();
+          if (payloadJobId) {
+            patchJobProgressInListCaches(payloadJobId, event.payload ?? {});
+          }
+          return;
+        }
+        // 任务状态变化（created/queued/running/success/failed/cancelled/deleted）
+        refreshTargetJob();
+        queryClient.invalidateQueries({
+          predicate: (query) =>
+            Array.isArray(query.queryKey)
+            && typeof query.queryKey[0] === "string"
+            && (query.queryKey[0] === "/api/v1/fl-analysis/jobs" || query.queryKey[0].startsWith("/api/v1/fl-analysis/jobs?")),
+        });
       },
-      [invalidateFlAnalysisQueries],
+      [queryClient, patchJobProgressInListCaches],
     ),
   );
 

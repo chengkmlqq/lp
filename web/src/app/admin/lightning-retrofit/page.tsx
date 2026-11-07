@@ -57,6 +57,7 @@ import type {
   FlAnalysisTowerResultSummary,
 } from "@/types/auth";
 import { readApiError } from "@/lib/api";
+import { patchFlJobProgressInListCaches } from "@/components/fl-analysis/job-progress-patch";
 import { formatDateTime, formatJobStatus, riskColor, runningProgressPercent } from "@/components/fl-analysis/types";
 import { statusColor } from "@/components/fl-analysis/types";
 import { RetrofitCreateModal } from "@/components/fl-analysis/retrofit-create-modal";
@@ -233,9 +234,22 @@ export default function AdminLightningRetrofitPage() {
     });
   }, [queryClient]);
 
-  useTopicSubscription("admin.fl-analysis", useCallback(() => {
+  // 2026-11-07 精准更新（对齐防雷计算页）：本 topic 同时承载防雷计算与改造任务的事件。
+  // tower_done 每塔推送一次（单任务上百次），旧实现每次都 invalidate 全部
+  // /api/v1/fl-analysis/jobs 前缀查询（列表整表重取）；改为就地 patch 目标任务
+  // 的进度字段，不重取、不闪 loading。仅 job.* 状态变化（低频）才重取列表。
+  useTopicSubscription("admin.fl-analysis", useCallback((event) => {
+    const name = typeof event?.name === "string" ? event.name : "";
+    if (!name.startsWith("fl_analysis.job.") && name !== "fl_analysis.tower_done") {
+      return;
+    }
+    const payloadJobId = typeof event?.payload?.job_id === "string" ? event.payload.job_id : "";
+    if (name === "fl_analysis.tower_done") {
+      patchFlJobProgressInListCaches(queryClient, payloadJobId, event.payload ?? {});
+      return;
+    }
     void invalidateMeasureQueries();
-  }, [invalidateMeasureQueries]));
+  }, [queryClient, invalidateMeasureQueries]));
 
   useTopicSubscription("admin.lightning-retrofit", useCallback(() => {
     void queryClient.invalidateQueries({
@@ -713,9 +727,28 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
     void loadResults();
   }, [user, canRead, loadJob, loadResults]);
 
-  useTopicSubscription("admin.fl-analysis", useCallback(() => {
+  // 2026-11-07 精准更新：每个详情 Tab 实例都会挂一个本 topic 订阅，旧实现任何任务
+  // 的任何事件（含其他任务的 tower_done，每塔一次）都触发本 Tab 重取 results；
+  // N 个 Tab = N 次无差别请求。改为只响应目标任务自身的事件：
+  // - tower_done（每塔一次）→ 仅刷新本任务结果表（逐塔算完即入库）；
+  // - job.* 状态变化 → 刷新任务信息 + 结果表（顺带修复：旧实现 job 信息只在
+  //   mount 时加载一次，运行中详情 Tab 的状态 Tag 永久冻结在打开时快照）。
+  useTopicSubscription("admin.fl-analysis", useCallback((event) => {
+    const name = typeof event?.name === "string" ? event.name : "";
+    if (!name.startsWith("fl_analysis.job.") && name !== "fl_analysis.tower_done") {
+      return;
+    }
+    const payloadJobId = typeof event?.payload?.job_id === "string" ? event.payload.job_id : "";
+    if (payloadJobId !== jobId) {
+      return;
+    }
+    if (name === "fl_analysis.tower_done") {
+      void loadResults();
+      return;
+    }
+    void loadJob();
     void loadResults();
-  }, [loadResults]));
+  }, [jobId, loadJob, loadResults]));
 
   const handleExport = () => {
     const headers = `${t("塔号")},${t("当前风险")},${t("预期风险")},${t("预期得分")},${t("措施建议")},${t("结论")}\n`;
