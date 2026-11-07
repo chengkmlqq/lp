@@ -714,7 +714,15 @@ class _TestContext:
         from .atp_param_config import compute_params_detailed_from_runtime, mode as mapping_mode
         from .fl_analysis_external import compute_csharp_atp_params
 
-        base_tower, profile = self.effective_geometry()
+        # ⚠️ 2026-11-07 修复（110/220 老模型全量测试发现）：
+        # effective_geometry() 返回的是 (profile, base_tower)，此处曾**反着解包**，
+        # 于是参数解析器把 profile 当 base_tower、把 base_tower 当 profile：
+        # 相高/绝缘子串长查不到 → 全部走「缺 h_u/insul_m→1.」兜底，
+        # 算出的 REHC1/2/3 与 REHG 恒为 1.，接着几何阶段把 .dat 的导体高度
+        # 全改写成 1m（间距仍然正确，所以 ATP 不报错、结果看起来"成功"）。
+        # 单测/对拍复现：110 maotou raoji2 M123 的 long.dat 由 39.8/43.6/48.4
+        # 变成 1./1.。
+        profile, base_tower = self.effective_geometry()
         detailed = compute_params_detailed_from_runtime(
             base_tower=dict(base_tower),
             profile=dict(profile),
