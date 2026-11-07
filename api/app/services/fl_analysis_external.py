@@ -250,7 +250,18 @@ def execute_multi_phase_binary_search_external(
         probe_phases = str(
             search.get("flashover_phases_qualified") or search.get("flashover_phases_last") or ""
         )
-        if count > 0 and value is not None:
+        # C# mArray_ShanLuoXiang_Ready 语义：本档二分顶到搜索上限（high_ka → default_high）
+        # 且达标相数仍少于本档目标时，属于「上限未 ready」——不产出该档值，也不允许
+        # 顶格值（如 2000）经 mCount_ShanLuoXiang 旧值覆盖低档已收敛槽位
+        # （ComputeLightningProtection.cs：num7<num34 时 mCount_ShanLuoXiang 不更新，
+        # 高档顶格轮空后 mArray_Current_kV 不写 cap 值）。
+        _capped_not_ready = (
+            default_high is not None
+            and high_ka is not None
+            and high_ka >= default_high - 1e-6
+            and (qualified is None or qualified < level)
+        )
+        if count > 0 and value is not None and not _capped_not_ready:
             slot = slots[count]
             slot["value"] = value
             slot["level"] = level
@@ -270,9 +281,10 @@ def execute_multi_phase_binary_search_external(
                 "level": level,
                 "loop_low_ka": level_options["binary_search_low_ka"],
                 "count": count,
-                "slot": count if count > 0 else None,
-                "value_ka": value,
+                "slot": count if (count > 0 and not _capped_not_ready) else None,
+                "value_ka": value if not _capped_not_ready else None,
                 "next_level": (count if count > level else level) + 1,
+                **({"capped_not_ready": True} if _capped_not_ready else {}),
             }
         )
         # ③ 跳档
