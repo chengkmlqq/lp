@@ -1,6 +1,7 @@
 from collections.abc import Generator
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import JSON, create_engine, inspect, text
@@ -81,6 +82,41 @@ if not database_url.startswith("sqlite"):
         "max_overflow": 20,
         "pool_recycle": 300,
     }
+
+
+def _install_pymysql_utc_decoder() -> None:
+    """MySQL DATETIME 列无时区：读回的是 naive datetime（值为 UTC）。
+
+    全库时间一律以 models.base.utcnow()（aware UTC）写入 MySQL，PyMySQL 读回后
+    tzinfo 丢失，Pydantic 序列化输出「无时区后缀」的 ISO 字符串，浏览器 new Date()
+    会按本地时区（+8）解析 → 系统日志等页面时间显示比实际晚 8 小时（2026-11-07）。
+
+    在引擎创建前把 PyMySQL 的 DATETIME/TIMESTAMP 解码结果统一标注 UTC，
+    使所有 API 的 datetime 输出带 +00:00，前端自动正确转换本地时区。
+    项目内此前逐点 replace(tzinfo=timezone.utc) 的补丁（task_history_signals /
+    flower_monitor 等）行为不变；auth_service 唯一的 naive 比较点已同步改为 aware。
+    仅影响 pymysql 驱动；SQLite（单测）与 PostgreSQL（读回即 aware）不受影响。
+    """
+    try:
+        import pymysql
+        from pymysql.constants import FIELD_TYPE
+    except ImportError:
+        return
+
+    original_convert_datetime = pymysql.converters.convert_datetime
+
+    def convert_datetime_utc(value: object) -> "datetime":
+        parsed = original_convert_datetime(value)
+        if parsed is not None and parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    pymysql.converters.convert_datetime = convert_datetime_utc
+    pymysql.converters.decoders[FIELD_TYPE.DATETIME] = convert_datetime_utc
+    pymysql.converters.decoders[FIELD_TYPE.TIMESTAMP] = convert_datetime_utc
+
+
+_install_pymysql_utc_decoder()
 
 engine = create_engine(
     database_url,

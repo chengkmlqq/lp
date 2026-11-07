@@ -125,8 +125,10 @@ def login_user(
 
     # Check if account is locked
     now = utcnow()
-    if user.failed_login_locked_until and user.failed_login_locked_until > now.replace(tzinfo=None):
-        remaining_seconds = int((user.failed_login_locked_until - now.replace(tzinfo=None)).total_seconds())
+    # DB 读回的 DATETIME 已由 pymysql UTC decoder 标注 tzinfo（见 core/database.py），
+    # 与 aware 的 utcnow() 直接比较；旧代码 strip tzinfo 是 naive 时代的兼容写法。
+    if user.failed_login_locked_until and user.failed_login_locked_until > now:
+        remaining_seconds = int((user.failed_login_locked_until - now).total_seconds())
         write_audit_log(
             db,
             action="auth.login_failed",

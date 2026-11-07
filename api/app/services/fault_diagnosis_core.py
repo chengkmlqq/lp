@@ -23,7 +23,7 @@ import re
 import statistics
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -2054,13 +2054,18 @@ def _parse_datetime_value(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
-        return datetime.combine(value, datetime.min.time())
+        return datetime.combine(value, datetime.min.time()).replace(tzinfo=timezone.utc)
     text = str(value).strip().replace("/", "-")
     text = re.sub(r"(?<=\d):(\d{3,6})$", r".\1", text)
     try:
-        return datetime.fromisoformat(text)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
+    # 全库时间语义为 UTC（见 core/database.py 的 pymysql UTC decoder）：字符串输入
+    # 无时区时按 UTC 标注，避免与 DB 读回的 aware datetime 相减抛 TypeError。
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def validate_input_consistency(
