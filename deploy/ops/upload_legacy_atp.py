@@ -68,6 +68,13 @@ def collect():
 
 def main():
     items = collect()
+    volt_arg = None
+    if "--voltages" in sys.argv:
+        idx = sys.argv.index("--voltages")
+        if idx + 1 < len(sys.argv):
+            volt_arg = {v.strip() for v in sys.argv[idx + 1].split(",") if v.strip()}
+    if volt_arg:
+        items = [i for i in items if i["volt"] in volt_arg]
     codes = [i["code"] for i in items]
     total_files = sum(len(i["files"]) for i in items)
     total_bytes = sum(
