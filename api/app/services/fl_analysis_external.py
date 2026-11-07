@@ -204,6 +204,27 @@ def execute_multi_phase_binary_search_external(
         level_options["_run_subdir"] = f"level{level}"
         level_options["binary_search_low_ka"] = carry_low
         level_options["binary_search_high_ka"] = default_high
+        # 上限封顶跳档（对齐 C# mArray_ShanLuoXiang_Ready=false）：上一档二分在搜索上限
+        # 收敛（high_ka → default_high，如 2000 kA 仍闪络不够数）时，更高档所需的闪络
+        # 电流必然超过上限，继续搜索只会 low>=high 抛错。C# ThreadCompute5_work_atp
+        # 在此情形把高档标为未 ready 并跳过输出，此处保持同语义：记录 trace 后终止。
+        if (
+            default_high is not None
+            and carry_low is not None
+            and carry_low >= default_high
+        ):
+            level_trace.append(
+                {
+                    "level": level,
+                    "loop_low_ka": carry_low,
+                    "count": 0,
+                    "slot": None,
+                    "value_ka": None,
+                    "next_level": None,
+                    "skipped": "cap_reached",
+                }
+            )
+            break
         execution = execute_binary_search_external(
             resolved_job,
             db=db,
