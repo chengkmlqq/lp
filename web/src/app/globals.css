@@ -2722,7 +2722,7 @@ body {
   padding: 12px 14px 10px;
 }
 
-/* 电压分档色块：整张卡唯一的彩色锚点，颜色由电压等级决定（见 voltageTier） */
+/* 标题图标块：antd 原生图标 + 统一主题色浅底，不再按电压分档换色 */
 .admin-atp-models-card-tile {
   display: inline-flex;
   align-items: center;
@@ -2733,6 +2733,8 @@ body {
   margin-top: 1px;
   border-radius: 9px;
   font-size: 15px;
+  color: var(--ant-color-primary);
+  background: color-mix(in srgb, var(--ant-color-primary) 8%, var(--ant-color-bg-container));
 }
 
 .admin-atp-models-card-headline {
@@ -3201,20 +3203,27 @@ body {
 
 /* ---- 树卡片内搜索框 ---- */
 .admin-atp-models-sider-card-search {
-  padding: 12px;
-  border-bottom: 1px solid var(--ant-color-border-secondary);
+  padding: 10px 12px;
   flex-shrink: 0;
 }
 
+/* 搜索框：填充式（浅灰底、无边框），聚焦时浮出白底与主色描边 */
 .admin-atp-models-search-input {
-  border-radius: 6px;
-  height: 32px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
   transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.admin-atp-models-search-input:focus {
+.admin-atp-models-search-input:hover {
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.admin-atp-models-search-input:focus,
+.admin-atp-models-search-input:focus-within {
+  background: var(--ant-color-bg-container);
   border-color: var(--ant-color-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ant-color-primary) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ant-color-primary) 14%, transparent);
 }
 
 /* ---- 新建模型弹窗：紧凑上传区 ---- */
@@ -3242,18 +3251,21 @@ body {
   background: transparent;
 }
 
+/* 树行：32px 高、8px 圆角，靠 hover/选中底色区分，不再用树线条 */
 .admin-atp-models-sider-menu .ant-tree-treenode {
-  padding: 2px 0;
+  width: 100%;
+  padding: 3px 4px;
+  border-radius: 8px;
   transition: background 140ms cubic-bezier(0.2, 0, 0, 1);
-  border-radius: 6px;
 }
 
 .admin-atp-models-sider-menu .ant-tree-treenode:hover {
-  background: var(--ant-color-bg-text-hover);
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
 }
 
+/* 选中行：浅蓝底 + 蓝字（DataAtlas 的「全部」效果） */
 .admin-atp-models-sider-menu .ant-tree-treenode.ant-tree-treenode-selected {
-  background: color-mix(in srgb, var(--ant-color-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--ant-color-primary) 10%, transparent);
 }
 
 .admin-atp-models-sider-menu .ant-tree-node-content-wrapper {
@@ -3268,6 +3280,25 @@ body {
   color: var(--ant-color-primary);
   font-weight: 500;
   background: transparent !important;
+}
+
+/* 选中行的图标与计数同步变蓝，行内色彩统一 */
+.admin-atp-models-sider-menu .ant-tree-treenode-selected .admin-atp-models-tree-node-icon {
+  opacity: 1;
+}
+
+.admin-atp-models-sider-menu .ant-tree-treenode-selected .admin-atp-models-tree-node-count {
+  color: color-mix(in srgb, var(--ant-color-primary) 55%, var(--ant-color-text-secondary));
+}
+
+/* 展开箭头弱化成浅灰，不与标题抢视线 */
+.admin-atp-models-sider-menu .ant-tree-switcher {
+  color: var(--ant-color-text-quaternary, rgba(0, 0, 0, 0.25));
+  line-height: 26px;
+}
+
+.admin-atp-models-sider-menu .ant-tree-indent-unit {
+  width: 16px;
 }
 
 .admin-atp-models-sider-menu::-webkit-scrollbar {
@@ -3287,29 +3318,40 @@ body {
   background: var(--fquiz-scrollbar-thumb-hover);
 }
 
-/* ---- 树节点（标题 + 计数） ---- */
+/* ---- 树节点（图标 + 标题 + 计数，参考 DataAtlas 分类列表） ---- */
 .admin-atp-models-tree-node {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
 
+/* 文件夹标识：小号蓝色实心，与 DataAtlas 分类列表一致 */
+.admin-atp-models-tree-node-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--ant-color-primary);
+  opacity: 0.85;
+}
+
 .admin-atp-models-tree-node-title {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 计数：右对齐的灰色小字，不用胶囊底（避免每行都有色块） */
 .admin-atp-models-tree-node-count {
   flex-shrink: 0;
+  margin-left: auto;
   font-size: 12px;
   line-height: 18px;
-  padding: 0 6px;
-  border-radius: 9px;
-  background: var(--ant-color-fill-secondary, rgba(0, 0, 0, 0.06));
-  color: var(--ant-color-text-secondary);
+  color: var(--ant-color-text-quaternary, rgba(0, 0, 0, 0.25));
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- 分隔条 ---- */

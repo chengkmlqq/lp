@@ -3,6 +3,7 @@
 import { Button, Dropdown, Modal, Progress, Space, Tooltip } from "antd";
 import { Card } from "@/components/ui-antd";
 import {
+  ClusterOutlined,
   DeleteOutlined,
   DisconnectOutlined,
   EditOutlined,
@@ -19,7 +20,6 @@ import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 import { checkWarningCount } from "@/lib/atp-model-format";
 import { resolveFormatMeta } from "./atp-model-format-tag";
-import { AtpTowerIcon } from "./atp-tower-icon";
 
 /** 右下角最多平铺几个操作按钮，其余收进「更多」 */
 const MAX_VISIBLE_ACTIONS = 2;
@@ -75,18 +75,6 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
 }
 
 /**
- * 电压等级分档配色：一个彩色标识块，让不同电压等级的卡片在网格里能一眼分组。
- * 颜色只承载「档位」这一个意思（高压紫 / 中压蓝 / 低压青），不做纯装饰。
- */
-function voltageTier(voltage: string | null): { background: string; color: string } {
-  const value = Number(String(voltage ?? "").replace(/[^0-9.]/g, ""));
-  if (!Number.isFinite(value) || value <= 0) return { background: "#f3f4f6", color: "#6b7280" };
-  if (value >= 500) return { background: "#f5f3ff", color: "#7c3aed" };
-  if (value >= 220) return { background: "#eff6ff", color: "#1d4ed8" };
-  return { background: "#ecfdf5", color: "#0f766e" };
-}
-
-/**
  * 模型卡片（2026-11-07 版式重做）：
  *
  * 旧版卡片的问题是把所有信息都摆成同等权重——每个字段前面挂一个图标、右上角水印式
@@ -102,7 +90,7 @@ function voltageTier(voltage: string | null): { background: string; color: strin
  * - 卡片改纯白底 + 细边框，靠留白与对齐撑精致度，不靠装饰。
  *
  * 2026-11-07 二次调整（页面反馈「有点素」）：在不回到「什么都强调」的前提下补两处结构色——
- * ① 标题左侧一枚按电压等级分档的色块（高/中/低压三色，全卡唯一彩色锚点）；
+ * ① 标题左侧一枚图标块（antd 原生 ClusterOutlined，统一用主题色，不按电压分档换色）；
  * ② 属性下方一条三格数据条（测试次数 / 最近结果 / 版本），浅底小块把使用情况压成可扫读的读数，
  *    最近结果用成功绿、失败红，其余保持灰。
  */
@@ -173,7 +161,6 @@ export function AtpModelCard({
     { key: "arrester", label: t("避雷器"), value: arresterText },
   ];
 
-  const tier = voltageTier(asset.voltage_level);
   const runStatus =
     asset.last_run_status === "success"
       ? { text: t("成功"), className: "is-success" }
@@ -264,12 +251,8 @@ export function AtpModelCard({
       <div className="admin-atp-models-card-inner">
         {/* 标题区：电压分档色块（锚点）+ 模型名 + 编号，右侧只放一枚发布状态 chip */}
         <div className="admin-atp-models-card-head">
-          <span
-            className="admin-atp-models-card-tile"
-            style={{ background: tier.background, color: tier.color }}
-            aria-hidden
-          >
-            <AtpTowerIcon />
+          <span className="admin-atp-models-card-tile" aria-hidden>
+            <ClusterOutlined />
           </span>
           <div className="admin-atp-models-card-headline">
             <div className="admin-atp-models-card-name" title={asset.name || asset.code}>

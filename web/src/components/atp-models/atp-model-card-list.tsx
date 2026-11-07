@@ -17,7 +17,7 @@ interface AtpModelCardListProps {
 
 export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, publishBusy }: AtpModelCardListProps) {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {assets.map((item) => (
         <AtpModelCard
           key={item.id}

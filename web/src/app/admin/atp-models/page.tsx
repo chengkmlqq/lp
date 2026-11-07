@@ -21,15 +21,16 @@ import {
   Upload,
 } from "antd";
 import {
+  ApartmentOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
+  FolderFilled,
   InboxOutlined,
   PlusOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
-  ApartmentOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
@@ -653,6 +654,7 @@ export default function AtpModelsPage() {
     key: item.key,
     title: (
       <span className="admin-atp-models-tree-node">
+        <FolderFilled className="admin-atp-models-tree-node-icon" />
         <span className="admin-atp-models-tree-node-title">{item.label}</span>
         <span className="admin-atp-models-tree-node-count">{item.count}</span>
       </span>
@@ -1322,7 +1324,6 @@ export default function AtpModelsPage() {
                             </div>
                           ) : treeData.length > 0 ? (
                             <Tree
-                              showLine
                               blockNode
                               expandedKeys={expandedTreeKeys}
                               loadData={onLoadTreeData}
@@ -1333,6 +1334,7 @@ export default function AtpModelsPage() {
                                   isLeaf: true,
                                   title: (
                                     <span className="admin-atp-models-tree-node">
+                                      <FolderFilled className="admin-atp-models-tree-node-icon" />
                                       <span className="admin-atp-models-tree-node-title">{t("全部模型")}</span>
                                       <span className="admin-atp-models-tree-node-count">{totalQuery.data ?? 0}</span>
                                     </span>
