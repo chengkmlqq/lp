@@ -69,6 +69,13 @@ class StorageDriver(Protocol):
     def read_file(self, path: str) -> StorageReadResult:
         ...
 
+    def download_to(self, path: str, dest_path: str) -> int:
+        """把远端文件流式写到本地 dest_path，返回写入字节数。
+
+        大文件（GB 级 DEM）不要走 read_file——那会把整个文件读进内存。
+        """
+        ...
+
 
 def normalize_virtual_path(path: str | None) -> str:
     raw = (path or "/").strip()
@@ -320,6 +327,20 @@ class VfsStorageDriver:
             content=content,
             mime_type=mimetypes.guess_type(target.name)[0],
         )
+
+    def download_to(self, path: str, dest_path: str) -> int:
+        normalized = normalize_virtual_path(path)
+        target = self._resolve_target(normalized)
+        if not target.exists():
+            raise StoragePathNotFoundError(f"Path not found: {normalized}")
+        if target.is_dir():
+            raise StorageInvalidPathError(f"Path is a directory: {normalized}")
+
+        try:
+            shutil.copyfile(target, dest_path)
+            return int(target.stat().st_size)
+        except OSError as exc:
+            raise StorageDriverError(f"VFS download failed for {normalized}: {exc}") from exc
 
     def _resolve_target(self, normalized_path: str) -> Path:
         candidate = (self._root / normalized_path.lstrip("/")).resolve()
@@ -579,6 +600,42 @@ class S3StorageDriver:
             content=content,
             mime_type=content_type,
         )
+
+    def download_to(self, path: str, dest_path: str) -> int:
+        normalized = normalize_virtual_path(path)
+        key = self._key_for_path(normalized)
+        if not key:
+            raise StorageInvalidPathError("Path is a directory: /")
+
+        try:
+            response = self._client.get_object(Bucket=self._bucket, Key=key)
+        except Exception as exc:  # pragma: no cover - provider specific errors
+            if _is_s3_not_found(exc):
+                raise StoragePathNotFoundError(f"Path not found: {normalized}") from exc
+            raise StorageDriverError(f"S3 download failed: {exc}") from exc
+
+        body = response.get("Body")
+        if body is None:
+            raise StorageDriverError("S3 download failed: empty body")
+
+        written = 0
+        try:
+            with open(dest_path, "wb") as handle:
+                while True:
+                    chunk = body.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    written += len(chunk)
+        except Exception as exc:  # pragma: no cover - provider specific errors
+            raise StorageDriverError(f"S3 download failed: {exc}") from exc
+        finally:
+            try:
+                body.close()
+            except Exception:
+                pass
+
+        return written
 
     def _delete_directory(self, path: str, *, recursive: bool) -> None:
         prefix = self._key_prefix_for_dir(path)

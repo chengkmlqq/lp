@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
+import re
+import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -13,6 +17,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from ..core.config import get_settings
 from ..core.database import SessionLocal
 from ..models.base import utcnow
 from ..models.elevation import ElevationApplyJob, ElevationApplyJobTower, ElevationFileRecord
@@ -76,6 +81,8 @@ class _OpenedRasterDataset:
     rasterio: Any
     dataset: Any
     temp_path: str
+    # 缓存命中的文件不能删——只有临时下载的副本才在退出时清理
+    delete_on_exit: bool = True
 
     def __enter__(self) -> "_OpenedRasterDataset":
         return self
@@ -84,10 +91,11 @@ class _OpenedRasterDataset:
         try:
             self.dataset.close()
         finally:
-            try:
-                Path(self.temp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            if self.delete_on_exit:
+                try:
+                    Path(self.temp_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
         return False
 
 
@@ -913,20 +921,62 @@ def _open_raster_dataset(
 
     rasterio = _require_rasterio_available()
 
+    cache_path = _raster_cache_path(record)
+    if cache_path and _raster_cache_hit(cache_path, record):
+        try:
+            opened = rasterio.open(str(cache_path))
+            return _OpenedRasterDataset(
+                rasterio=rasterio,
+                dataset=opened,
+                temp_path=str(cache_path),
+                delete_on_exit=False,
+            )
+        except Exception:
+            # 缓存损坏：删掉重下，不让坏文件卡死后续所有请求
+            try:
+                cache_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
     mount = _require_mount(db, record.mount_code)
     driver = _build_driver_or_400(mount)
-    try:
-        read_result = driver.read_file(record.file_path)
-    except StoragePathNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"高程数据文件不存在: {record.file_path}") from exc
-    except StorageInvalidPathError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    _ensure_local_disk_headroom(record, cache_path.parent if cache_path else None)
 
     suffix = Path(record.file_path).suffix.lower() or ".img"
     temp_path = ""
     try:
+        if cache_path:
+            with _raster_cache_lock(str(cache_path)):
+                # 拿锁后复查：并发请求里可能已有人下完了
+                if _raster_cache_hit(cache_path, record):
+                    opened = rasterio.open(str(cache_path))
+                    return _OpenedRasterDataset(
+                        rasterio=rasterio,
+                        dataset=opened,
+                        temp_path=str(cache_path),
+                        delete_on_exit=False,
+                    )
+                partial = cache_path.with_name(cache_path.name + ".part")
+                try:
+                    _download_raster_to(driver, record.file_path, partial)
+                    os.replace(partial, cache_path)
+                    opened = rasterio.open(str(cache_path))
+                    return _OpenedRasterDataset(
+                        rasterio=rasterio,
+                        dataset=opened,
+                        temp_path=str(cache_path),
+                        delete_on_exit=False,
+                    )
+                finally:
+                    try:
+                        partial.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+        # 缓存不可用（目录创建失败等）时退回原来的临时文件方案
         with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(read_result.content)
+            tmp.write(driver.read_file(record.file_path).content)
             temp_path = tmp.name
         opened = rasterio.open(temp_path)
         return _OpenedRasterDataset(
@@ -934,16 +984,120 @@ def _open_raster_dataset(
             dataset=opened,
             temp_path=temp_path,
         )
+    except StoragePathNotFoundError as exc:
+        if temp_path:
+            _safe_unlink(temp_path)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"高程数据文件不存在: {record.file_path}") from exc
+    except StorageInvalidPathError as exc:
+        if temp_path:
+            _safe_unlink(temp_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except HTTPException:
+        if temp_path:
+            _safe_unlink(temp_path)
+        raise
     except Exception as exc:
         if temp_path:
-            try:
-                Path(temp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            _safe_unlink(temp_path)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"高程栅格文件解析失败: {record.file_path}",
         ) from exc
+
+
+def _safe_unlink(path: str | Path) -> None:
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _raster_cache_dir() -> Path | None:
+    """返回可用的栅格缓存目录；未启用或无法创建时返回 None（退回临时文件方案）。"""
+    settings = get_settings()
+    if not bool(getattr(settings, "raster_cache_enabled", True)):
+        return None
+    raw = str(getattr(settings, "raster_cache_dir", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        base = Path(raw).expanduser().resolve()
+        base.mkdir(parents=True, exist_ok=True)
+        return base
+    except OSError:
+        return None
+
+
+def _raster_cache_path(record: ElevationFileRecord) -> Path | None:
+    base = _raster_cache_dir()
+    if base is None:
+        return None
+    record_id = re.sub(r"[^0-9A-Za-z._-]", "_", str(getattr(record, "id", "") or "record"))
+    size = int(getattr(record, "file_size", 0) or 0)
+    suffix = Path(record.file_path or "").suffix.lower() or ".img"
+    # 文件大小进文件名：替换文件后 size 变了自然换 key，旧缓存不会串用
+    return base / f"{record_id}_{size}{suffix}"
+
+
+def _raster_cache_hit(cache_path: Path, record: ElevationFileRecord) -> bool:
+    try:
+        if not cache_path.is_file():
+            return False
+        expected = int(getattr(record, "file_size", 0) or 0)
+        if expected > 0 and cache_path.stat().st_size != expected:
+            return False
+        return True
+    except OSError:
+        return False
+
+
+_RASTER_CACHE_LOCKS: dict[str, threading.Lock] = {}
+_RASTER_CACHE_LOCKS_GUARD = threading.Lock()
+
+
+def _raster_cache_lock(key: str) -> threading.Lock:
+    with _RASTER_CACHE_LOCKS_GUARD:
+        lock = _RASTER_CACHE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _RASTER_CACHE_LOCKS[key] = lock
+        return lock
+
+
+def _ensure_local_disk_headroom(record: ElevationFileRecord, near: Path | None) -> None:
+    """下载 GB 级 DEM 前先看本地剩余空间，避免写满磁盘把整台机器拖死。"""
+    try:
+        needed = int(getattr(record, "file_size", 0) or 0)
+    except (TypeError, ValueError):
+        needed = 0
+    if needed <= 0:
+        return
+    margin = 256 * 1024 * 1024  # 留 256MB 余量给临时文件与日志
+    probe = near if near is not None else Path(tempfile.gettempdir())
+    try:
+        import shutil as _shutil
+
+        free = _shutil.disk_usage(str(probe)).free
+    except OSError:
+        return
+    if free < needed + margin:
+        raise HTTPException(
+            status_code=507,
+            detail=(
+                f"本地磁盘空间不足，无法打开高程文件：需要约 {needed / 1024 ** 3:.2f} GB，"
+                f"当前可用 {free / 1024 ** 3:.2f} GB。请清理缓存目录后重试。"
+            ),
+        )
+
+
+def _download_raster_to(driver: Any, virtual_path: str, dest: Path) -> None:
+    """把远端栅格流式落到本地 dest，避免 read_file 把 GB 级文件读进内存。"""
+    downloader = getattr(driver, "download_to", None)
+    if callable(downloader):
+        downloader(virtual_path, str(dest))
+        return
+    result = driver.read_file(virtual_path)
+    dest.write_bytes(result.content)
 
 
 def _append_non_wgs84_bounds_warning(*, rasterio: Any, src: Any) -> str | None:
@@ -1624,6 +1778,15 @@ def preview_backfill_coverage(
     if not lines:
         return results
 
+    # 一次性把候选线路的杆塔捞出来（原来逐线路查询是 N+1，线上 77 条线路要跑 10s+）
+    towers_by_line: dict[str, list[tuple[float | None, float | None]]] = {}
+    for line_id, lon, lat in db.execute(
+        select(LineTower.line_id, LineTower.longitude, LineTower.latitude)
+        .where(LineTower.line_id.in_([line.id for line in lines]))
+        .order_by(LineTower.line_id.asc(), LineTower.seq_no.asc(), LineTower.id.asc())
+    ).all():
+        towers_by_line.setdefault(line_id, []).append((lon, lat))
+
     with _open_raster_dataset(db, record) as opened:
         src = opened.dataset
         band_nodata = src.nodatavals[0] if src.nodatavals else None
@@ -1634,17 +1797,13 @@ def preview_backfill_coverage(
             band_nodata=band_nodata,
         )
         for line in lines:
-            towers = db.execute(
-                select(LineTower)
-                .where(LineTower.line_id == line.id)
-                .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
-            ).scalars().all()
+            towers = towers_by_line.get(line.id, [])
             matchable = 0
-            for tower in towers:
-                if tower.longitude is None or tower.latitude is None:
+            for longitude, latitude in towers:
+                if longitude is None or latitude is None:
                     continue
                 try:
-                    alt = sampler(float(tower.longitude), float(tower.latitude))
+                    alt = sampler(float(longitude), float(latitude))
                 except Exception:
                     alt = None
                 if alt is not None:

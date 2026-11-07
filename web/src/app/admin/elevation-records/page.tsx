@@ -296,7 +296,7 @@ export default function ElevationRecordsPage() {
   // 回填覆盖预检：选中高程文件+打开回填弹窗时，逐塔采样统计每条候选线路的可回填杆塔数。
   // DEM 可能在局部区域无数据（NoData），单看外包矩形/有效范围会漏判（线路能选到但回填全未命中）。
   // 这里直接对每条线路的每座塔真实采样，matchable_tower_count=0 的线路不可回填（禁用并标注）。
-  const { data: coverageData, isLoading: coverageLoading } = useQuery<BackfillCoverageResponse>({
+  const { data: coverageData, isLoading: coverageLoading, isError: coverageError } = useQuery<BackfillCoverageResponse>({
     queryKey: ["elevation-backfill-coverage", selectedRecord?.id],
     enabled: !!selectedRecord?.id && applyModalOpen,
     queryFn: async () => {
@@ -304,6 +304,18 @@ export default function ElevationRecordsPage() {
         `/api/v1/elevation/records/${selectedRecord!.id}/lines-preview`,
       );
       return readJsonResponse<BackfillCoverageResponse>(response);
+    },
+  });
+
+  // 线路清单与预检解耦：预检需要对 DEM 逐塔采样（大文件可能耗时数十秒甚至更久），
+  // 不能让它成为「能不能选线路」的前置条件——先把线路放出来，预检结果回来后再置灰。
+  const { data: linesData, isLoading: linesLoading } = useQuery<LineListResponse>({
+    queryKey: ["elevation-backfill-lines"],
+    enabled: applyModalOpen,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/lines?limit=1000");
+      return readJsonResponse<LineListResponse>(response);
     },
   });
 
@@ -315,6 +327,47 @@ export default function ElevationRecordsPage() {
     }
     return map;
   }, [coverageData]);
+
+  // 选择项：以线路清单为主，预检结果只用来加角标/置灰，缺清单时退回预检结果
+  const backfillLineOptions = useMemo(() => {
+    const toOption = (
+      id: string,
+      code: string | null,
+      name: string | null,
+      voltageKv: number | null,
+    ) => {
+      const cov = coverageMap.get(id);
+      const matchable = cov?.matchable_tower_count ?? null;
+      const total = cov?.total_tower_count ?? 0;
+      const noMatch = matchable !== null && total > 0 && matchable === 0;
+      const label = `${code ?? "-"} - ${name ?? "-"}${voltageKv ? ` (${voltageKv}kV)` : ""}`;
+      return {
+        value: id,
+        searchText: label,
+        disabled: noMatch,
+        label: (
+          <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
+            <span>{label}</span>
+            {noMatch ? (
+              <Tag color="warning" style={{ marginInlineEnd: 0 }}>{t("无可回填杆塔")}</Tag>
+            ) : matchable !== null ? (
+              <span style={{ color: "#8c8c8c", fontSize: 12, whiteSpace: "nowrap" }}>
+                {matchable}/{total} {t("座可回填")}
+              </span>
+            ) : null}
+          </Space>
+        ),
+      };
+    };
+
+    const fromLines = linesData?.items ?? [];
+    if (fromLines.length > 0) {
+      return fromLines.map((line) => toOption(line.id, line.code, line.name, line.voltage_kv));
+    }
+    return (coverageData?.items ?? []).map((cov) =>
+      toOption(cov.line_id, cov.line_code, cov.line_name, cov.voltage_kv),
+    );
+  }, [linesData, coverageData, coverageMap, t]);
 
   const records = useMemo(() => recordsData?.items ?? [], [recordsData?.items]);
 
@@ -1226,34 +1279,26 @@ export default function ElevationRecordsPage() {
           <Form.Item label={t("选择线路")} name="line_ids" rules={[{ required: true, message: t("请至少选择一条线路") }]}>
             <Select
               mode="multiple"
-              placeholder={coverageLoading ? t("正在预检线路可回填杆塔…") : t("请选择线路（无可回填杆塔的线路已置灰）")}
+              placeholder={linesLoading ? t("正在加载线路…") : t("请选择线路")}
               showSearch
-              optionFilterProp="label"
-              loading={coverageLoading}
-              disabled={coverageLoading}
+              loading={linesLoading}
               maxTagCount="responsive"
-              options={(coverageData?.items ?? []).map((cov) => {
-                const matchable = cov.matchable_tower_count ?? 0;
-                const noMatch = cov.total_tower_count > 0 && matchable === 0;
-                const label = `${cov.line_code ?? "-"} - ${cov.line_name ?? "-"}${cov.voltage_kv ? ` (${cov.voltage_kv}kV)` : ""}`;
-                return {
-                  label: (
-                    <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
-                      <span>{label}</span>
-                      {noMatch ? (
-                        <Tag color="warning" style={{ marginInlineEnd: 0 }}>{t("无可回填杆塔")}</Tag>
-                      ) : (
-                        <span style={{ color: "#8c8c8c", fontSize: 12, whiteSpace: "nowrap" }}>
-                          {matchable}/{cov.total_tower_count} {t("座可回填")}
-                        </span>
-                      )}
-                    </Space>
-                  ),
-                  value: cov.line_id,
-                  disabled: noMatch,
-                };
-              })}
+              filterOption={(input, option) =>
+                String((option as { searchText?: string } | undefined)?.searchText ?? "")
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+              options={backfillLineOptions}
             />
+            {coverageLoading ? (
+              <div style={{ color: "#8c8c8c", fontSize: 12, marginTop: 4 }}>
+                {t("正在预检各线路可回填杆塔数，预检期间仍可先选择线路…")}
+              </div>
+            ) : coverageError ? (
+              <div style={{ color: "#d4380d", fontSize: 12, marginTop: 4 }}>
+                {t("可回填预检失败，仍可选择线路，回填时会再次校验")}
+              </div>
+            ) : null}
           </Form.Item>
         </Form>
       </Modal>

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     user_password_column: Literal["password", "password_hash"] = "password_hash"
     user_status_column: Literal["status", "state"] = "status"
     file_vfs_root: str = "./data/vfs"
+    # 栅格（DEM/IMG）本地缓存目录：高程文件动辄 GB 级，预检与回填都需要反复打开，
+    # 缓存一份到本地磁盘可避免每次从对象存储全量下载（线上 1.27GB DEM 单次下载约 140s）。
+    raster_cache_dir: str = "./data/raster_cache"
+    raster_cache_enabled: bool = True
     # 文件上传大小上限（MB），供统一上传校验 validate_upload 使用（模块级可覆盖）
     upload_max_file_size_mb: int = 50
     minio_enabled: bool = True
