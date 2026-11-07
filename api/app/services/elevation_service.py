@@ -432,7 +432,15 @@ def list_job_towers(
     stmt = (
         select(ElevationApplyJobTower)
         .where(ElevationApplyJobTower.job_id == job_id)
-        .order_by(ElevationApplyJobTower.seq_no.asc().nulls_last(), ElevationApplyJobTower.tower_no.asc(), ElevationApplyJobTower.id.asc())
+        # ⚠️ 生产 DB 是 MySQL（RDS），不支持 PG 的 NULLS LAST 语法（1064 直接 500）。
+        # 用「IS NULL 作首排序键」等效实现 null 排最后，MySQL/PG 双兼容：
+        # ASC 时 IS NULL 返回 0/1，非 NULL(0) 在前、NULL(1) 在后。
+        .order_by(
+            ElevationApplyJobTower.seq_no.is_(None).asc(),
+            ElevationApplyJobTower.seq_no.asc(),
+            ElevationApplyJobTower.tower_no.asc(),
+            ElevationApplyJobTower.id.asc(),
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -463,7 +471,9 @@ def get_linked_lines_for_file_record(
         .where(ElevationApplyJob.file_record_id == record_id)
         .order_by(
             ElevationApplyJob.line_id.asc(),
-            ElevationApplyJob.finished_at.desc().nulls_last(),
+            # MySQL 不支持 NULLS LAST（见 list_job_towers 注释）：IS NULL ASC 置后空值
+            ElevationApplyJob.finished_at.is_(None).asc(),
+            ElevationApplyJob.finished_at.desc(),
             ElevationApplyJob.create_date.desc(),
         )
     ).scalars().all()
