@@ -501,6 +501,10 @@ body {
 .ant-message .ant-message-notice {
   left: auto !important;
   right: 0 !important;
+  /* v6 top placement 会给每个气泡自带 translateX(-50%)（居中坐标系）。
+     容器已右钉，若不重置气泡 transform，气泡会再左移半个自身宽度，
+     探出容器左边界被 overflow:hidden 裁掉，且不同宽度的气泡横向错位。 */
+  transform: none !important;
   max-width: 100%;
   border: 1px solid color-mix(in srgb, var(--ant-color-border-secondary) 80%, transparent);
   border-radius: 14px;
@@ -512,6 +516,15 @@ body {
   word-break: break-word;
   /* 后端 detail 可能是多行文本（如预检报告），保留换行而不是挤成一行被截断 */
   white-space: pre-wrap;
+}
+
+/* 右对齐坐标系下保留 v6 进出场动效：从上方 10px 滑入 / 滑出到上方 */
+.ant-message .ant-message-notice.ant-message-fade-appear-prepare,
+.ant-message .ant-message-notice.ant-message-fade-enter-prepare,
+.ant-message .ant-message-notice.ant-message-fade-appear-start,
+.ant-message .ant-message-notice.ant-message-fade-enter-start,
+.ant-message .ant-message-notice.ant-message-fade-leave-active {
+  transform: translateY(-10px) !important;
 }
 
 .ant-message .ant-message-notice-wrapper {

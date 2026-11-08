@@ -284,7 +284,8 @@ export function Theme({ children }: ThemeProps) {
       <ConfigProvider locale={antdLocale} theme={themeConfig}>
         <AntApp
           message={{
-            top: 24,
+            // 顶栏 48px（--app-header-h），气泡钉在其下方，避免盖住头部按钮
+            top: 56,
             duration: 3.5,
           }}
         >
