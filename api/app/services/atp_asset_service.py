@@ -83,8 +83,8 @@ ATP_ASSET_FILES_ROOT = "/atp-assets"
 # 2026-11-02 放宽（D:\ATP 全量 1101 模型实测结论）：
 #   - 老版 ATPDraw（7.2 前，work.atp 形态 `$INCLUDE ... .lib`）4944 行 $INCLUDE 全部指向
 #     4 个标准名 .lib / .pch。.lib 由 regenerate_line_models 每轮从 .dat 重算
-#     （LCC → .pch → pch_to_lib），.pch 本身是中间产物 → 老版包里的 .pch 可传可不传，
-#     传了也不会被使用（预检给 W010 提示可删）。
+#     （LCC → .pch → pch_to_lib），.pch 本身是中间产物 → 老版包里的 .pch 一律不收
+#     （入库即丢，见 upload_asset_files 的 legacy 裁剪）。
 #   - 新版 ATPDraw（7.2+，work.atp 形态 `$INSERT <name><序号>.pch`）**必须**带上全部 pch：
 #     pch 由 ATPDraw 内置 LCC 生成、LP 无法命令行复现，且节点名的唯一载体就是 pch 脚卡。
 #     全库 483 个此类模型里 204 个跑不起来的首要原因就是 pch 缺失/被覆盖（见 E010）。

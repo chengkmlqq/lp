@@ -517,7 +517,6 @@ def inspect_package(
       W001 行尾带 `$$`（LP 会规范化）
       W002 整数值无小数点（LP 会补点）
       W003 中间变量超过 List31 上限（LP 会内联）
-      W010 包内带 .pch 但形态是 legacy（多余文件，仿真不使用）
       W011 work.atp 引用的 pch 路径目录与包内不一致（LP 按文件名物化）
       W012 $PARAMETER 段有别名引用不到中间变量（原 E013；LP 渲染时按 C# 公式写值）
     """
@@ -674,15 +673,6 @@ def inspect_package(
             "W003", "warning",
             f"$PARAMETER 段有 {len(section.intermediates)} 条中间变量（引擎 List31 上限 10）",
             "LP 仿真时会把中间变量内联进别名后再写盘，不会触发 CIDEAL；无需人工处理",
-            entry_key,
-        )
-
-    # ── W010 老版模型带了 .pch ──
-    if model_format == FORMAT_LEGACY and pch_members:
-        result.add(
-            "W010", "warning",
-            f"旧版模型包内带了 {len(pch_members)} 个 .pch（中间产物）",
-            "旧版链路每轮从 .dat 重算 pch，包内的 pch 不会被使用，可删除以减小包体",
             entry_key,
         )
 
