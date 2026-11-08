@@ -186,20 +186,13 @@ export default function AdminFlAnalysisPage() {
     },
     // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
     placeholderData: (previousData) => previousData,
-    // 状态更新以 WS 主题订阅（admin.fl-analysis）为主通道：job.* 事件局部刷新、
-    // tower_done 事件就地 patch 进度（见下方 useTopicSubscription），无需定时整表重取。
-    // 仅在 WS 断连时退回 10s 轮询兜底，保证「最终一致」不会因断线而永久停摆。
-    // 2026-11-08：原来无条件 10s 轮询运行中任务，配合 isFetching 遮罩会让列表每 10s
-    // 闪一层 Spin（视觉上就是整页刷新），这里改为「WS 正常即不轮询」。
-    refetchInterval: (query) => {
-      if (wsConnected) {
-        return false;
-      }
-      const hasActiveJob = (query.state.data?.items ?? []).some(
-        (job) => job.status === "running" || job.status === "queued",
-      );
-      return hasActiveJob ? 10_000 : false;
-    },
+    // 状态更新完全由 WS 主题订阅（admin.fl-analysis）驱动：job.* 事件局部重取、
+    // tower_done 事件就地 patch 进度（见下方 useTopicSubscription），**不设任何定时轮询**。
+    // 2026-11-08：原实现无条件 10s 轮询运行中任务，配合 isFetching 遮罩会让列表每 10s
+    // 闪一层 Spin（视觉上就是整页刷新），已彻底移除；断连丢事件的补偿由下方
+    // 「重连后 invalidate 一次」兜底，不靠轮询维持一致性。
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);

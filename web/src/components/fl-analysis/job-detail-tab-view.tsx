@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Drawer, message, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
-import { useWS } from "@/components/ws-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
 import { JobDetailPanel } from "@/components/fl-analysis/job-detail-panel";
 import { ResultTable } from "@/components/fl-analysis/result-table";
@@ -52,7 +51,6 @@ export function JobDetailTabView({
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const { connected: wsConnected } = useWS();
   const [messageApi, contextHolder] = message.useMessage();
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -70,10 +68,10 @@ export function JobDetailTabView({
       }
       return (await response.json()) as FlAnalysisJobDetail;
     },
-    // 运行中的任务：状态/进度由 WS 主题推送（job.* 与 tower_done）驱动刷新，
-    // 仅在 WS 断连时用 10s 轮询兜底（2026-11-08：撤销无条件轮询，避免详情页定时闪动）
-    refetchInterval: (query) =>
-      !wsConnected && (query.state.data?.status ?? job.status) === "running" ? 10_000 : false,
+    // 运行中的任务不轮询：状态/进度由 WS 主题推送（job.* 与 tower_done）驱动，
+    // 断连丢事件的补偿由列表页「重连后 invalidate」统一处理（2026-11-08）。
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const towerResultsQuery = useQuery({
@@ -87,11 +85,10 @@ export function JobDetailTabView({
       return (await response.json()) as FlAnalysisTowerResultListResponse;
     },
     // 任务运行期间：杆塔逐根算完即入库，结果表靠 WS tower_done 事件驱动重取；
-    // 是否运行以 jobDetailQuery 的实时状态为准（而非打开 Tab 时的快照），WS 断连时
-    // 退回 10s 轮询兜底，任务结束后自动停止。不依赖当前 items.length>0：运行初期尚无
-    // 任何杆塔完成时也要能刷新，否则算完第一根塔后表格不会自动出现。
-    refetchInterval: () =>
-      !wsConnected && (jobDetailQuery.data?.status ?? job.status) === "running" ? 10_000 : false,
+    // 不轮询（原先 10s 硬轮询已移除）。不依赖当前 items.length>0：运行初期尚无
+    // 任何杆塔完成时，第一根塔完成即由事件触发重取，表格会自行出现。
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const selectedJobDetail = jobDetailQuery.data ?? null;
