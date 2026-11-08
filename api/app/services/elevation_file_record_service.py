@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -444,6 +446,89 @@ def create_file_record_from_upload(
     )
 
 
+_ZIP_EXTRACT_MAX_WORKERS = min(4, os.cpu_count() or 2)
+
+
+def _zip_reopener(source: Any) -> Callable[[], zipfile.ZipFile] | None:
+    """为并行解压构造「每线程独立 ZipFile」的工厂。
+
+    ``zipfile`` 内部共享同一个 fp 做 seek/read，非线程安全，不能多线程共用
+    一个 ZipFile。注意不能用 ``os.dup`` 复制 fd——dup 出的描述符共享同一个
+    OS 文件偏移，叠加 Python 缓冲层后并发读会互相踩出坏数据；必须按路径
+    重新 ``open`` 得到独立文件描述。两段式上传的本地临时文件流带 ``.name``
+    路径可用；multipart 的内存 spool（小包）没有可用路径，返回 None 走
+    串行——小包本来就快，不值得并行。
+    """
+    raw_name = getattr(source, "name", None)
+    if not isinstance(raw_name, (str, Path)):
+        return None
+    try:
+        if not os.path.isfile(raw_name):
+            return None
+    except OSError:
+        return None
+    zip_path = str(raw_name)
+
+    def opener() -> zipfile.ZipFile:
+        return zipfile.ZipFile(open(zip_path, "rb"))
+
+    return opener
+
+
+def _extract_zip_plan_members(
+    archive: zipfile.ZipFile,
+    source: Any,
+    plan: list[dict[str, Any]],
+    driver: Any,
+) -> dict[int, str]:
+    """执行「解压成员→写存储」，返回 ``{plan 下标: 失败原因}``。
+
+    - source 可复制 fd 且有多个成员：线程池并行，每任务独立 ZipFile；
+    - 否则退回单线程顺序解压（与旧实现一致，内存流/单成员场景足够快）。
+    ZipInfo 对象只读复用（header_offset/compress_size 等纯数据），跨实例安全。
+    """
+    opener = _zip_reopener(source)
+
+    def run_one(item: dict[str, Any], local_archive: zipfile.ZipFile | None) -> None:
+        driver.ensure_directory(item["storage_dir"])
+        stream_ctx = (
+            local_archive.open(item["member"])
+            if local_archive is not None
+            else archive.open(item["member"])
+        )
+        with stream_ctx as member_stream:
+            driver.write_stream(
+                item["storage_path"],
+                member_stream,
+                content_type=item["content_type"],
+                size=item["file_size"],
+            )
+
+    failures: dict[int, str] = {}
+
+    if opener is not None and len(plan) > 1:
+
+        def _task(item: dict[str, Any]) -> None:
+            with opener() as local_archive:
+                run_one(item, local_archive)
+
+        with ThreadPoolExecutor(max_workers=_ZIP_EXTRACT_MAX_WORKERS) as pool:
+            futures = {pool.submit(_task, item): idx for idx, item in enumerate(plan)}
+            for future, idx in futures.items():
+                try:
+                    future.result()
+                except Exception as exc:  # 与旧行为一致：单成员失败不中断整体
+                    failures[idx] = str(exc) or exc.__class__.__name__
+        return failures
+
+    for idx, item in enumerate(plan):
+        try:
+            run_one(item, None)
+        except Exception as exc:
+            failures[idx] = str(exc) or exc.__class__.__name__
+    return failures
+
+
 def _create_file_records_from_zip(
     db: Session,
     *,
@@ -464,68 +549,84 @@ def _create_file_records_from_zip(
     created_records: list[ElevationFileRecord] = []
     storage_failures: list[str] = []
 
+    # 2026-11-08 并行解压：先在主线程读中央目录完成筛选（毫秒级），再把各成员的
+    # 「解压→写存储」分给线程池并行执行——zlib 解压与本地盘写入都会释放 GIL，
+    # 数 GB 的压缩包可提速数倍。筛选与建记录仍在主线程，DB/事件语义不变。
     try:
-        with zipfile.ZipFile(source) as archive:
-            for member in archive.infolist():
-                if member.is_dir():
-                    continue
-
-                member_name = Path(member.filename).name
-                if not member_name:
-                    warnings.append(f"压缩包条目 {member.filename} 文件名无效，已跳过")
-                    continue
-
-                # 跳过 ASTER GDEM 质量图文件（_num.tif）
-                if member_name.lower().endswith("_num.tif"):
-                    warnings.append(f"压缩包条目 {member_name} 是质量图文件（_num.tif），已跳过")
-                    continue
-
-                suffix = Path(member_name).suffix.lower()
-                if suffix not in IMPORTABLE_ELEVATION_EXTENSIONS:
-                    warnings.append(f"压缩包条目 {member_name} 类型不支持，已跳过")
-                    continue
-
-                if member.file_size <= 0:
-                    warnings.append(f"压缩包条目 {member_name} 内容为空，已跳过")
-                    continue
-
-                file_format = ELEVATION_FILE_EXT_FORMAT_MAP[suffix]
-
-                record_id = uuid4().hex
-                storage_dir = f"/elevation/records/{record_id[:2]}/{record_id[2:4]}"
-                storage_path = join_virtual_path(storage_dir, member_name)
-
-                try:
-                    driver.ensure_directory(storage_dir)
-                    with archive.open(member) as member_stream:
-                        driver.write_stream(
-                            storage_path,
-                            member_stream,
-                            content_type=mimetypes.guess_type(member_name)[0],
-                            size=int(member.file_size),
-                        )
-                except Exception as exc:
-                    storage_failures.append(f"压缩包条目 {member_name} 存储失败: {exc}")
-                    continue
-
-                record = _build_file_record(
-                    record_id=record_id,
-                    filename=member_name,
-                    file_format=file_format,
-                    file_size=int(member.file_size),
-                    storage_path=storage_path,
-                    mount_code=mount_code,
-                    payload=payload,
-                    actor=actor,
-                )
-                db.add(record)
-                created_records.append(record)
-
+        archive = zipfile.ZipFile(source)
     except zipfile.BadZipFile as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"ZIP 文件损坏：{exc}"
         ) from exc
+
+    try:
+        plan: list[dict[str, Any]] = []
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+
+            member_name = Path(member.filename).name
+            if not member_name:
+                warnings.append(f"压缩包条目 {member.filename} 文件名无效，已跳过")
+                continue
+
+            # 跳过 ASTER GDEM 质量图文件（_num.tif）
+            if member_name.lower().endswith("_num.tif"):
+                warnings.append(f"压缩包条目 {member_name} 是质量图文件（_num.tif），已跳过")
+                continue
+
+            suffix = Path(member_name).suffix.lower()
+            if suffix not in IMPORTABLE_ELEVATION_EXTENSIONS:
+                warnings.append(f"压缩包条目 {member_name} 类型不支持，已跳过")
+                continue
+
+            if member.file_size <= 0:
+                warnings.append(f"压缩包条目 {member_name} 内容为空，已跳过")
+                continue
+
+            file_format = ELEVATION_FILE_EXT_FORMAT_MAP[suffix]
+
+            record_id = uuid4().hex
+            storage_dir = f"/elevation/records/{record_id[:2]}/{record_id[2:4]}"
+            storage_path = join_virtual_path(storage_dir, member_name)
+
+            plan.append(
+                {
+                    "member": member,
+                    "member_name": member_name,
+                    "file_format": file_format,
+                    "file_size": int(member.file_size),
+                    "record_id": record_id,
+                    "storage_dir": storage_dir,
+                    "storage_path": storage_path,
+                    "content_type": mimetypes.guess_type(member_name)[0],
+                }
+            )
+
+        extraction_failures = _extract_zip_plan_members(archive, source, plan, driver)
+    finally:
+        archive.close()
+
+    for idx, item in enumerate(plan):
+        if idx in extraction_failures:
+            storage_failures.append(
+                f"压缩包条目 {item['member_name']} 存储失败: {extraction_failures[idx]}"
+            )
+            continue
+
+        record = _build_file_record(
+            record_id=item["record_id"],
+            filename=item["member_name"],
+            file_format=item["file_format"],
+            file_size=item["file_size"],
+            storage_path=item["storage_path"],
+            mount_code=mount_code,
+            payload=payload,
+            actor=actor,
+        )
+        db.add(record)
+        created_records.append(record)
 
     if not created_records:
         if storage_failures:
