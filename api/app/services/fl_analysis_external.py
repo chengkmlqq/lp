@@ -2844,10 +2844,24 @@ def _materialize_asset_files(
         engine_dir = atp_root.joinpath(*rel_segments) if rel_segments else atp_root
     engine_dir.mkdir(parents=True, exist_ok=True)
 
+    # 2026-11-08：判定本次任务的几何引用形态。旧版（$INCLUDE .lib）的 .pch 是派生件，
+    # 物化进来只会变成「上一轮的旧件」，LCC 一旦失败就会被 ATP 当成新结果（旧几何）。
+    # 新版（$INSERT）模型的几何只存在于 pch 里，必须照常物化。
+    entry_is_insert = False
+    _rendered_entry = run_dir / resolved_job.entry_file
+    if _rendered_entry.is_file():
+        try:
+            entry_is_insert = "$INSERT" in _rendered_entry.read_bytes().decode("gbk", errors="replace").upper()
+        except OSError:
+            entry_is_insert = False
+
     for item in tree.files:
         rel = item.path
         rel_path = rel[len(storage_root):].lstrip("/")
         if not rel_path or "\\" in rel_path:
+            continue
+        if rel_path.lower().endswith(".pch") and not entry_is_insert:
+            logger.info("[ATP] 旧版形态跳过物化派生件 %s（由 .dat 经 LCC 重算）", rel_path)
             continue
         target = engine_dir / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)

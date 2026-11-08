@@ -405,8 +405,10 @@ def _normalize_archive_member_path(value: str) -> str | None:
 def _validate_atp_model_members(relative_paths: list[str]) -> None:
     """校验上传的 ATP 模型文件清单（zip 成员或散文件，只读不写）。
 
-    规则（2026-11-02 调整，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
+    规则（2026-11-08 收紧，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
     1. 白名单：只允许 .atp / .dat / .pch；发现其他扩展名 → 400 并列出
+       · .lib 是 LCC 派生件（由 .dat 重算），单独给提示而不是笼统报「非法文件」
+       · .acp / .lis / .pl4 / .dbg 属于 ATPDraw 工程或运行输出，一律不收
     2. 入口：必须存在 work.atp，或恰好一个 .atp
     3. 几何完整性 / 形态判定 / 参数段可解析性 → 由 atp_model_format.inspect_package
        按形态分级判定（老版要四个 .dat，新版要 pch 齐全），不在此处硬卡
@@ -416,13 +418,30 @@ def _validate_atp_model_members(relative_paths: list[str]) -> None:
     if not relative_paths:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传包内没有有效文件")
     lower_map = {path.lower(): path for path in relative_paths}
+    # .lib 单独提示：它是 dat 经 LCC 生成的派生文件，平台每轮重算，
+    # 上传上来只会变成运行目录里的「旧件」，掩盖重算失败（静默沿用旧几何）。
+    derived_lib = sorted(path for path in relative_paths if path.lower().endswith(".lib"))
+    if derived_lib:
+        shown = ", ".join(derived_lib[:8])
+        suffix = f" 等 {len(derived_lib)} 个" if len(derived_lib) > 8 else ""
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"不要上传 .lib（LCC 派生文件，平台会按 .dat 重新生成）：{shown}{suffix}。"
+                "旧版模型只需 work.atp + long/short/dahao/xiaohao.dat；"
+                "新版（$INSERT）模型另需它引用的 .pch"
+            ),
+        )
     illegal = sorted(path for path in relative_paths if not path.lower().endswith(_ALLOWED_ATP_MODEL_EXTENSIONS))
     if illegal:
         shown = ", ".join(illegal[:8])
         suffix = f" 等 {len(illegal)} 个" if len(illegal) > 8 else ""
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ATP 模型只接受 .atp / .dat / .pch 文件，发现非法文件：{shown}{suffix}",
+            detail=(
+                f"ATP 模型只接受 .atp / .dat / .pch 文件，发现非法文件：{shown}{suffix}。"
+                ".acp 是 ATPDraw 工程文件、.lis/.pl4/.dbg 是运行输出，均不参与计算，请勿上传"
+            ),
         )
     atp_files = sorted(path for path in relative_paths if path.lower().endswith(".atp"))
     if _ENTRY_ATP_FILE not in lower_map and len(atp_files) != 1:
@@ -1973,6 +1992,7 @@ def upload_asset_files(
     staged_paths: list[Path] = []
     opened_streams: list[Any] = []
     archives: list[zipfile.ZipFile] = []
+    dropped_pch: list[str] = []
     # (相对路径, reader, 字节数, content_type)；reader=("zip", ZipFile, ZipInfo) 或 ("stream", fileobj, None)
     entries: list[tuple[str, tuple[str, Any, Any], int | None, str | None]] = []
 
@@ -2061,6 +2081,21 @@ def upload_asset_files(
                 source.seek(0)
         format_report = _inspect_atp_package_or_400(checked)
 
+        # 2026-11-08：旧版（$INCLUDE .lib）形态的 .pch 是纯中间产物。若留在资产里，
+        # 每轮 _materialize_asset_files 都会把它带进运行目录 —— LCC 一旦没跑成功
+        # （KILL=84 坐标重合、缺几何跳过重算等），ATP 就直接把这份旧 pch 当本轮产物用，
+        # 结果看起来"成功"但几何是上一次的。入库即丢弃，链路固定为 dat→LCC→pch→lib，
+        # 缺件时在 LCC 阶段报错，而不是静默算出一个假数。
+        dropped_pch = []
+        if format_report.model_format == FORMAT_LEGACY:
+            kept_entries: list[tuple[str, tuple[str, Any, Any], int | None, str | None]] = []
+            for entry in entries:
+                if entry[0].lower().endswith(".pch"):
+                    dropped_pch.append(entry[0])
+                else:
+                    kept_entries.append(entry)
+            entries = kept_entries
+
         for relative_path, (kind, source, member), member_size, content_type in entries:
             target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
             parent_path = _parent_virtual_path(target_path)
@@ -2087,6 +2122,11 @@ def upload_asset_files(
 
     asset.storage_mount_code = mount.code
     asset.storage_root_path = storage_root_path
+    if dropped_pch:
+        logger.info(
+            "[ATP] 资产 %s 为旧版形态，已丢弃 %d 个 .pch（改由 .dat 经 LCC 重算）：%s",
+            asset.code, len(dropped_pch), ", ".join(dropped_pch[:8]),
+        )
     # 形态标记 + 预检报告（warning 清单）随本次上传落库
     _apply_format_report(asset, format_report)
     asset.update_user = actor_user_id

@@ -249,6 +249,37 @@ def test_upload_files_zip_missing_dat_rejected(tmp_path) -> None:
         session.close()
 
 
+def test_upload_legacy_pack_drops_pch(tmp_path) -> None:
+    """旧版形态包内带 .pch → 入库时丢弃（它只是 dat 的中间产物）。
+
+    留下的 pch 会在每轮物化时进引擎目录，LCC 一旦失败就会被 ATP 当成新结果，
+    于是"跑成功但几何是旧的"。入库即丢，链路固定为 dat→LCC→pch→lib。
+    """
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = _create_asset(session)
+        entries = dict(_legacy_entries())
+        for name in ("long", "short", "dahao", "xiaohao"):
+            entries[f"{name}.pch"] = b"punch"
+
+        updated = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=asset.id,
+            files=[_DummyUploadFile("model.zip", _build_zip(entries))],
+            actor_user_id="tester",
+        )
+        assert updated is not None
+
+        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
+        for name in ("work.atp", "long.dat", "short.dat", "dahao.dat", "xiaohao.dat"):
+            assert (asset_root / name).is_file(), name
+        assert list(asset_root.glob("*.pch")) == [], "旧版形态不应把 .pch 落到资产目录"
+    finally:
+        session.close()
+
+
 def test_upload_files_loose_valid_pack(tmp_path) -> None:
     testing_session = _build_sessionmaker()
     session: Session = testing_session()

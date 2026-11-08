@@ -358,9 +358,19 @@ def _regenerate_line_models_unlocked(
     # 相高均分缺省，把模型自带几何（三相同高/水平排列）改成三层垂直排列，
     # 塔身支路长度与绝缘子受力全变，耐雷水平失真一个量级且不报错。
     if not has_phase_geometry(profile, base_tower):
+        # 2026-11-08：旧版行为是「静默保留 ATPDraw 自带几何」——资产里带着上一轮的
+        # lib/pch，于是任务照样"成功"，但跑的几何与塔型参数无关。现在资产已不再
+        # 保存派生件，继续静默跳过只会得到「缺 lib」的二次故障，因此改为直接报错。
+        present_dat = [n for n in _DAT_NAMES if (engine_dir / f"{n}.dat").is_file()]
+        if present_dat:
+            raise RuntimeError(
+                "快照缺少相导线几何（phase_spacing_m / phase_height_m 均为空），"
+                "无法按塔改写 .dat 重算线路模型（涉及：%s）。"
+                "请在杆塔编辑里补齐相序、相间距、相高后再提交计算。"
+                % ", ".join(f"{n}.dat" for n in present_dat)
+            )
         print(
-            "[ATP] 快照缺相导线几何（phase_spacing_m/phase_height_m 均为空），"
-            "跳过 .dat 改写与 LCC 重生成，保留 ATPDraw 模型自带几何",
+            "[ATP] 无 .dat（几何内嵌模板），跳过 .dat 改写与 LCC 重生成",
             file=sys.stdout, flush=True,
         )
         return []
@@ -404,7 +414,15 @@ def _regenerate_line_models_unlocked(
         # 记录旧 .pch 时间戳：ATP 调用失败时旧文件仍在，只查 exists() 会**静默沿用旧几何**
         # （2026-09-15 实测：路径写法不对导致 LCC 从未成功，却因旧 .pch 存在而一路"成功"）。
         pch_path = engine_dir / f"{name}.pch"
-        stale_mtime = pch_path.stat().st_mtime_ns if pch_path.exists() else None
+        # 2026-11-08：先删掉上一轮残留的 pch 再跑 LCC。留着旧件时，"有没有产出"
+        # 只能靠 mtime 判断，而 cp/rsync 会刷新 mtime → LCC 实际失败也可能被当成
+        # 新结果（旧几何）。删掉之后失败必然表现为「未产出 .pch」，不可能蒙混过关。
+        if pch_path.exists():
+            try:
+                pch_path.unlink()
+            except OSError:
+                pass
+        stale_mtime = None
 
         command = build_command(input_path=Path(dat_path.name))
         # LCC 几何计算同样是长耗时引擎调用 → 带心跳，避免静默期被误判为卡死。
