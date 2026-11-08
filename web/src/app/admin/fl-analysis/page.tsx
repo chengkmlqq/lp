@@ -35,6 +35,7 @@ import { ScenarioModal } from "@/components/fl-analysis/scenario-modal";
 import { ReportModal } from "@/components/fl-analysis/report-modal";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
+import { useWS } from "@/components/ws-provider";
 import {
   CREATE_JOB_DEFAULTS,
   formatJobType,
@@ -86,6 +87,8 @@ export default function AdminFlAnalysisPage() {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  // WS 连接状态：连接正常时任务状态完全依赖主题订阅推送，不再定时轮询
+  const { connected: wsConnected } = useWS();
   const { modal: modalApi, message: messageApi } = App.useApp();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -183,10 +186,20 @@ export default function AdminFlAnalysisPage() {
     },
     // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
     placeholderData: (previousData) => previousData,
-    // 运行中的任务每 10s 自动轮询一次（进度条/完成数实时更新）；
-    // 没有 running 任务时无需轮询，靠手动查询/操作 invalidate 即可。
-    refetchInterval: (query) =>
-      (query.state.data?.items ?? []).some((job) => job.status === "running") ? 10_000 : false,
+    // 状态更新以 WS 主题订阅（admin.fl-analysis）为主通道：job.* 事件局部刷新、
+    // tower_done 事件就地 patch 进度（见下方 useTopicSubscription），无需定时整表重取。
+    // 仅在 WS 断连时退回 10s 轮询兜底，保证「最终一致」不会因断线而永久停摆。
+    // 2026-11-08：原来无条件 10s 轮询运行中任务，配合 isFetching 遮罩会让列表每 10s
+    // 闪一层 Spin（视觉上就是整页刷新），这里改为「WS 正常即不轮询」。
+    refetchInterval: (query) => {
+      if (wsConnected) {
+        return false;
+      }
+      const hasActiveJob = (query.state.data?.items ?? []).some(
+        (job) => job.status === "running" || job.status === "queued",
+      );
+      return hasActiveJob ? 10_000 : false;
+    },
   });
 
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);
@@ -278,6 +291,29 @@ export default function AdminFlAnalysisPage() {
       [queryClient, patchJobProgressInListCaches],
     ),
   );
+
+  // WS 断线重连后的补偿：断连期间推送的事件已丢失，若只靠订阅会出现「状态永久停在
+  // 处理中」的假象（这也是原先必须无脑轮询的原因）。这里只在「曾经连上过 → 断开 →
+  // 又连上」时补一次列表与已打开详情的重取，首次连接不重复请求（首载本身已在拉取）。
+  const wsEverConnectedRef = useRef(false);
+  const wsWasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (wsConnected) {
+      const isReconnect = wsEverConnectedRef.current && !wsWasConnectedRef.current;
+      wsEverConnectedRef.current = true;
+      wsWasConnectedRef.current = true;
+      if (isReconnect) {
+        void queryClient.invalidateQueries({
+          predicate: (query) =>
+            Array.isArray(query.queryKey)
+            && typeof query.queryKey[0] === "string"
+            && query.queryKey[0].startsWith("/api/v1/fl-analysis"),
+        });
+      }
+      return;
+    }
+    wsWasConnectedRef.current = false;
+  }, [queryClient, wsConnected]);
 
   const jobListError = jobsQuery.error instanceof Error ? jobsQuery.error.message : "";
   useToastFeedback({
@@ -859,7 +895,7 @@ export default function AdminFlAnalysisPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isFetching} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <ModoPagination
@@ -882,7 +918,7 @@ export default function AdminFlAnalysisPage() {
                   >
                     <JobTable
                       jobs={jobs}
-                      loading={jobsQuery.isFetching}
+                      loading={jobsQuery.isLoading}
                       total={total}
                       pagination={pagination}
                       onPaginationChange={(next) => setPagination(next)}
