@@ -240,7 +240,9 @@ export function LightningCurrentBackfillHistoryTable({
   const [tableScrollY, setTableScrollY] = useState(BACKFILL_HISTORY_MIN_SCROLL_Y);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
-  // 任务执行日志弹窗（复用通用 TaskLogViewerDrawer，SSE 实时流）
+  // 任务执行日志抽屉（复用通用 TaskLogViewerDrawer，SSE 实时流；
+  // 2026-11-08 由 modal 改为 drawer：modal 形态打开看不到内容，且全站其余
+  // 页面的日志查看器均为抽屉形态，统一）
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
   const [logTitle, setLogTitle] = useState(t("任务执行日志"));
@@ -1068,7 +1070,7 @@ export function LightningCurrentBackfillHistoryTable({
         title={logTitle}
         open={logModalOpen}
         onClose={() => setLogModalOpen(false)}
-        variant="modal"
+        variant="drawer"
       />
     </div>
   );
