@@ -353,6 +353,8 @@ export const EN_DICT: Record<string, string> = {
   "全局参数": "Global parameters",
   "全部": "All",
   "全部参数": "All parameters",
+  "全部电压等级": "All voltage levels",
+  "全部塔形": "All tower shapes",
   "全部塔型": "All tower types",
   "全部完成": "All completed",
   "全部模型": "All models",
