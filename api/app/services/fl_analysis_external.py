@@ -2701,6 +2701,24 @@ def _private_engine_dir(
     return atp_root / ".runs" / (short + _scene_short_code(resolved_job))
 
 
+def _split_atp_trailing_note(field: str) -> tuple[str, str]:
+    """拆出 ATP 卡片的行尾 `$$` 注释（ATPDraw 7.2+ 语法）。
+
+    ⚠️ 2026-11-08 修复（115/230 guxing、maotou 共 31 个资产全塔失败根因）：
+    这批模型的 `$INCLUDE` 卡**不带节点参数**，只有行尾注释：
+        `$INCLUDE, C:\\ATP60work\\batch\\110_guxing_fanji\\dahao.lib $$`
+    旧实现把整个字段当路径取 basename，得到 `dahao.lib $$`，
+    `endswith(".lib")` 判假 → 不重写 → 引擎去读 `D:\\ATP\\115\\guxing\\...`（Wine 下
+    不存在）→ ATP 读 504 卡后 rc=0 空转退出，无 work.lis/work.pl4。
+
+    返回 (字段值, 注释含前导空格)；无注释时注释为空串。
+    """
+    idx = field.find("$$")
+    if idx < 0:
+        return field.strip(), ""
+    return field[:idx].strip(), " " + field[idx:].strip()
+
+
 def _rewrite_includes(
     rendered_text: str,
     *,
@@ -2742,9 +2760,10 @@ def _rewrite_includes(
             # （204 个工程共用同 8 个文件名，最后写入者赢）→ 仿真照跑但几何是错的。
             # $INSERT 只有一个路径参数，直接按文件名重构最稳。
             head, sep, rest = line.partition(",")
-            name = rest.strip().replace("/", "\\").rsplit("\\", 1)[-1].strip()
+            value, note = _split_atp_trailing_note(rest)
+            name = value.replace("/", "\\").rsplit("\\", 1)[-1].strip()
             if sep and name.lower().endswith(".pch"):
-                out_lines.append(f"{head},{priv_win}{name}" + ending)
+                out_lines.append(f"{head},{priv_win}{name}{note}" + ending)
             else:
                 out_lines.append(line + ending)
         elif line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
@@ -2759,9 +2778,10 @@ def _rewrite_includes(
             head, sep, rest = line.partition(",")
             if sep:
                 first, sep2, tail = rest.partition(",")
-                name = first.strip().replace("/", "\\").rsplit("\\", 1)[-1].strip()
+                value, note = _split_atp_trailing_note(first)
+                name = value.replace("/", "\\").rsplit("\\", 1)[-1].strip()
                 if name.lower().endswith(".lib"):
-                    new_line = f"{head},{priv_win}{name}"
+                    new_line = f"{head},{priv_win}{name}{note}"
                     if sep2:
                         new_line += f",{tail}"
                     out_lines.append(new_line + ending)
