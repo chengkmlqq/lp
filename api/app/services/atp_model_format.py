@@ -519,8 +519,11 @@ def strip_parameter_substitution(text: str) -> tuple[str, dict[str, Any]]:
         else:
             keep.append(stripped)
 
-    kept_block = "".join(f"{line}\n" for line in keep)
-    return text[:start] + "\n" + kept_block + text[anchor_at:], {
+    # C# 是 Windows 文本模式写回，插入的 `\n` 会被翻译成文件本身的 CRLF；
+    # 这里显式用文件主行尾，保证结果与脚本输出逐字节一致（否则段首会多一个孤立 LF）。
+    newline = "\r\n" if "\r\n" in text else "\n"
+    kept_block = "".join(f"{line}{newline}" for line in keep)
+    return text[:start] + newline + kept_block + text[anchor_at:], {
         "changed": True,
         "reason": "stripped",
         "removed_dollar_lines": removed,
