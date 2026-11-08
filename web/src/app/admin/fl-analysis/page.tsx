@@ -72,6 +72,16 @@ const FL_TOWER_TYPE_OPTIONS = [
   { value: "zhiliu", label: "直流塔" },
 ];
 
+// 任务状态筛选选项：value 与 fl_analysis_job.status 一致，
+// 中文口径与卡片状态标签（job-card-list 的 statusTextMap）保持一致
+const FL_JOB_STATUS_OPTIONS = [
+  { value: "queued", label: "排队中" },
+  { value: "running", label: "处理中" },
+  { value: "success", label: "已完成" },
+  { value: "failed", label: "失败" },
+  { value: "cancelled", label: "已取消" },
+];
+
 export default function AdminFlAnalysisPage() {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -85,9 +95,10 @@ export default function AdminFlAnalysisPage() {
   const [createModalEpoch, setCreateModalEpoch] = useState(0);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
-  // 电压等级/塔形筛选：下拉选择即生效（自动回第 1 页并强制请求），与关键字（需点查询）不同
+  // 电压等级/塔形/状态筛选：下拉选择即生效（自动回第 1 页并强制请求），与关键字（需点查询）不同
   const [voltageFilter, setVoltageFilter] = useState<number | null>(null);
   const [towerTypeFilter, setTowerTypeFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
   // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
   const [searchNonce, setSearchNonce] = useState(0);
@@ -153,9 +164,12 @@ export default function AdminFlAnalysisPage() {
     if (towerTypeFilter) {
       params.set("tower_type", towerTypeFilter);
     }
+    if (statusFilter) {
+      params.set("status", statusFilter);
+    }
     const query = params.toString();
     return `/api/v1/fl-analysis/jobs${query ? `?${query}` : ""}`;
-  }, [keyword, paginationCurrent, paginationPageSize, voltageFilter, towerTypeFilter]);
+  }, [keyword, paginationCurrent, paginationPageSize, voltageFilter, towerTypeFilter, statusFilter]);
 
   const jobsQuery = useQuery({
     queryKey: [jobsListPath, searchNonce],
@@ -411,6 +425,12 @@ export default function AdminFlAnalysisPage() {
 
   const handleTowerTypeFilterChange = (value: string | null) => {
     setTowerTypeFilter(value ?? null);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setSearchNonce((n) => n + 1);
+  };
+
+  const handleStatusFilterChange = (value: string | null) => {
+    setStatusFilter(value ?? null);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setSearchNonce((n) => n + 1);
   };
@@ -792,6 +812,16 @@ export default function AdminFlAnalysisPage() {
                         options={FL_TOWER_TYPE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                         onChange={handleTowerTypeFilterChange}
                         style={{ width: 130 }}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("状态")} style={{ marginBottom: 0 }}>
+                      <Select
+                        value={statusFilter}
+                        allowClear
+                        placeholder={t("全部状态")}
+                        options={FL_JOB_STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+                        onChange={handleStatusFilterChange}
+                        style={{ width: 120 }}
                       />
                     </Form.Item>
                     <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
