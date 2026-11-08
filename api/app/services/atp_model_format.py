@@ -310,7 +310,49 @@ def _format_number(value: str) -> str:
     return text + "."
 
 
-def normalize_parameter_section(text: str) -> tuple[str, dict[str, Any]]:
+def _carry_forward_defaults(text: str, section: ParamSection) -> list[tuple[str, str, str]]:
+    """给悬空参数引用找缺省值：沿用段内上一个已解析参数的数值（文件顺序）。
+
+    依据（2026-11-08 实测，220/sihuita/fanji/M123 本机 mingw tpbig 运行）：
+    `REHE28=REHE28I` 等 4 条右值未定义，lis 中 Parameter 30~33 全部 = 49.34，
+    恰为上一个参数 `REHG______=49.34` 的值 —— tpbig 的替换器对未定义引用
+    不报错、沿用前值继续算。此函数复刻该行为。
+
+    返回 [(别名, 引用名, 沿用值)]；无前值可沿用的不入列（由调用方报错）。
+    """
+    unresolved_names = {name for name, _ in section.unresolved}
+    out: list[tuple[str, str, str]] = []
+    last_val: str | None = None
+    in_params = False
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if stripped.upper() == "$PARAMETER":
+            in_params = True
+            continue
+        if not in_params:
+            continue
+        if stripped.upper().startswith("BLANK $PARAMETER") or stripped.upper() in ("$ENDBR", "BLANK"):
+            break
+        match = _PARAM_LINE_RE.match(raw.rstrip("\r"))
+        if not match:
+            continue
+        name, value = match.group(1), match.group(2)
+        if not value:
+            continue
+        if name in unresolved_names:
+            if last_val is not None:
+                out.append((name, value, last_val))
+            continue  # 无前值 → 留在 unresolved，调用方报错
+        if _NUMERIC_RE.match(value):
+            last_val = value
+        elif value in section.intermediates and _NUMERIC_RE.match(section.intermediates[value]):
+            last_val = section.intermediates[value]
+    return out
+
+
+def normalize_parameter_section(
+    text: str, *, undefined_policy: str = "error"
+) -> tuple[str, dict[str, Any]]:
     """把 $PARAMETER 段重写成引擎可解析形态，其余段落逐字节保留。
 
     三步（顺序不可换）：
@@ -321,26 +363,50 @@ def normalize_parameter_section(text: str) -> tuple[str, dict[str, Any]]:
     为什么必须内联：引用型变量数超过 `List31=10` 会触发 CIDEAL 报错；
     实测 84 行 → 29 行后通过。
 
-    返回 (新文本, 诊断)。诊断里的 `unresolved` 非空表示模板残缺，
+    undefined_policy：
+      - "error"（默认）：`unresolved` 非空时原样返回，由调用方中止（上传质检口径）。
+      - "carry_forward"：悬空引用按 C# 侧 mingw tpbig 的缺省规则处理 —— 沿用
+        段内上一个已解析参数的数值（实测 REHE25~28 沿用 REHG=49.34）。能定值的
+        引用移入诊断 `defaulted`，其余仍留在 `unresolved`。计算链路用此口径，
+        与 C# 引擎行为对齐而不是把 C# 能算的模型拦在门外。
+
+    返回 (新文本, 诊断)。`unresolved` 非空表示模板残缺且无法缺省，
     调用方应中止而不是硬跑（否则 TACS 会报 `XXX` 找不到）。
     """
     lines = text.splitlines(keepends=True)
     section = parse_parameter_section(text)
     values = resolve_param_values(section)
 
+    defaulted: list[dict[str, str]] = []
+    if section.unresolved and undefined_policy == "carry_forward":
+        for name, ref, val in _carry_forward_defaults(text, section):
+            values[name] = val
+            defaulted.append({"name": name, "ref": ref, "value": val})
+        done_names = {item["name"] for item in defaulted}
+        section.unresolved = [
+            (n, r) for (n, r) in section.unresolved if n not in done_names
+        ]
+
     diagnostics: dict[str, Any] = {
         "intermediates": len(section.intermediates),
         "aliases": len(section.aliases),
         "resolved": len(values),
         "unresolved": [{"name": n, "ref": r} for n, r in section.unresolved],
+        "defaulted": defaulted,
         "dollar_lines": section.dollar_lines,
         "bare_int_values": section.bare_int_values,
         "rewritten": False,
     }
     if not section.intermediates:
-        # 没有中间变量 → 老式 `NAME=值` 模板，原样返回。
-        # 重写只会改变行尾/空行，对引擎无收益，反而破坏与 C# 产物的逐字节一致性。
-        return text, diagnostics
+        if defaulted:
+            # 老式模型 + 已定缺省值：必须重写内联（LP 引擎不会自己做"沿用前值"，
+            # 原样放行会在 TACS 报「变量找不到」）；无悬空引用时维持原样返回，
+            # 保持与 C# 产物的逐字节一致性。
+            pass
+        else:
+            # 没有中间变量 → 老式 `NAME=值` 模板，原样返回。
+            # 重写只会改变行尾/空行，对引擎无收益，反而破坏与 C# 产物的逐字节一致性。
+            return text, diagnostics
     if section.unresolved:
         # 残缺模板：不产出半成品（半成品会让 TACS 在更靠后的位置失败，更难定位）
         return text, diagnostics

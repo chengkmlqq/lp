@@ -1984,14 +1984,28 @@ def execute_external_waveform_tower_analysis(
     # 老版模型（无中间变量）该函数原样返回，对既有链路零影响。
     from .atp_model_format import normalize_parameter_section as _normalize_params
 
-    rendered_text, _param_diag = _normalize_params(rendered_text)
+    # 悬空引用走 C#(mingw tpbig) 同款缺省规则：沿用上一个已解析参数的数值
+    # （2026-11-08 实测：220/sihuita M123 的 REHE25~28 沿用 REHG=49.34，C# 照算不误）。
+    # 无前值可沿用的仍报错。
+    rendered_text, _param_diag = _normalize_params(
+        rendered_text, undefined_policy="carry_forward"
+    )
+    if _param_diag.get("defaulted"):
+        _d_preview = "；".join(
+            f"{item['name']} ← 缺 {item['ref']}，沿用前值 {item['value']}"
+            for item in _param_diag["defaulted"][:6]
+        )
+        logger.warning(
+            "[ATP] $PARAMETER 悬空引用按 C# 缺省规则定值（%s，共 %d 个）：%s",
+            snapshot.tower_no, len(_param_diag["defaulted"]), _d_preview,
+        )
     if _param_diag.get("unresolved"):
         _preview = "；".join(
             f"{item['name']} ← 缺 {item['ref']}" for item in _param_diag["unresolved"][:6]
         )
         raise RuntimeError(
             f"{snapshot.tower_no} work.atp 的 $PARAMETER 段有 "
-            f"{len(_param_diag['unresolved'])} 个参数引用不到定义：{_preview}"
+            f"{len(_param_diag['unresolved'])} 个参数引用不到定义且无前值可沿用：{_preview}"
         )
     if _param_diag.get("rewritten"):
         logger.info(
