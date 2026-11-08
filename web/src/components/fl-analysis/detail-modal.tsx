@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Collapse, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Collapse, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
 import { useI18n } from "@/lib/i18n";
 import { translateAnalysisText } from "@/lib/analysis-text";
 
@@ -59,6 +59,7 @@ import {
   readOptionalString,
   readPhaseResults,
   readReasonDetails,
+  readResultWarnings,
   readScanPoints,
   readSelectedCase,
   readString,
@@ -373,6 +374,7 @@ export function TowerDetailView({
 const { t, lang } = useI18n();
   const detailResultObject = readObject(detailRow.result_json);
   const reasonDetails = readReasonDetails(detailRow);
+  const resultWarnings = readResultWarnings(detailRow);
   const mitigationActions = readMitigationActions(detailRow);
   const scanPoints = readScanPoints(detailRow);
   const phaseResults = readPhaseResults(detailRow);
@@ -408,6 +410,20 @@ const { t, lang } = useI18n();
           </Button>
         ) : null}
       </Space>
+      {resultWarnings.length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t("结果可信性提示")}
+          description={
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {resultWarnings.map((item) => (
+                <li key={item}>{translateAnalysisText(item, lang)}</li>
+              ))}
+            </ul>
+          }
+        />
+      ) : null}
       <div>
       <Typography.Title level={5}>
         {t("基本信息")}

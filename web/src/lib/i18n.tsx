@@ -1904,6 +1904,7 @@ export const EN_DICT: Record<string, string> = {
   "综合判定: 高置信度，可直接采纳分析结论。": "Comprehensive assessment: high confidence; the analysis conclusion can be adopted directly.",
   "综合故障分析": "Comprehensive Fault Analysis",
   "综合结论": "Overall Conclusion",
+  "结果可信性提示": "Result Trust Notice",
   "综合置信度": "Overall Confidence",
   "绿色": "Green",
   "编码": "Code",

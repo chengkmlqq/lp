@@ -383,6 +383,15 @@ def execute_multi_phase_binary_search_external(
         # 顶层"闪络相"= 单相档闪络相（对齐 C# 导出的"单相闪络相"列）
         if dominant.get("flashover_phase"):
             merged["flashover_phase"] = dominant["flashover_phase"]
+    # 逐档二分的可信性告警汇总（某档贴搜索上限/未收敛 → 该档耐雷为边界截断值）
+    trust_warnings: list[str] = list(merged.get("result_warnings") or [])
+    for _level_exec in level_executions:
+        for _warn in (_level_exec.result_json.get("result_warnings") or []):
+            _text = str(_warn).strip()
+            if _text and _text not in trust_warnings:
+                trust_warnings.append(_text)
+    merged["result_warnings"] = trust_warnings
+    merged["result_trustworthy"] = not trust_warnings
     return ExternalTowerExecutionResult(
         result_json=merged,
         engine_command=last_execution.engine_command if last_execution is not None else "",
@@ -455,6 +464,11 @@ def execute_shielding_binary_search_external(
     except Exception:
         merged["shielding_trip_rate"] = None
     merged["shielding_binary_search"] = search
+    # 绕击二分的可信性告警（贴上下限/未收敛）透传到绕击结果，
+    # 由任务层汇总进整塔 result_warnings（页面「可信性提示」用）。
+    _search_warnings = [str(item) for item in (execution.result_json.get("result_warnings") or [])]
+    merged["result_warnings"] = _search_warnings
+    merged["result_trustworthy"] = not _search_warnings
     return ExternalTowerExecutionResult(
         result_json=merged,
         engine_command=execution.engine_command,
@@ -2422,6 +2436,13 @@ def execute_binary_search_external(
     last_probe_phases: list[str] = []
     qualified_count: int | None = None
     final_execution: ExternalTowerExecutionResult | None = None
+    # 可信性判定基准：二分只会「下压 high（达标）」或「上抬 low（未达标）」，
+    # 循环结束后仍等于初值即说明该侧边界从未被跨越 → 结果贴边、不可信。
+    # 2026-11-08 实测：ATP220-sihuita-fanji/raoji1-shuzhi-noM 两个「数值化」测试模型
+    # 的 $PARAMETER 被删且闪络通道改成 98XX0245=REOUT，全程 flashover_count=0，
+    # 二分从 1000→2000 kA 一路顶格收敛，最终输出 2000×倍率 的假耐雷水平。
+    initial_low = low
+    initial_high = high
 
     while (high - low) >= tolerance and iteration < max_iterations:
         iteration += 1
@@ -2476,6 +2497,31 @@ def execute_binary_search_external(
     # ——low 是未乘倍率的原始下界，会把结果钳回未乘倍率值、抵消 multiplier（实测 P1=269.86×0.7=188.9
     # 却被钳回 269.8）。直接 high*multiplier 即与 C# 一致。
     withstand_ka = round(high * multiplier, 4)
+    # ── 可信性判定（2026-11-08）───────────────────────────────────────────────
+    # upper_bound_hit：全程没有任何探点达到目标闪络相数 → high 从未被下压，
+    #   耐雷水平被搜索上限截断（真实值 ≥ 上限，未知），属不可信结果。
+    # lower_bound_hit：全程每个探点都达标 → low 从未上抬，耐雷水平被下界截断。
+    upper_bound_hit = iteration > 0 and qualified_count is None
+    lower_bound_hit = iteration > 0 and abs(low - initial_low) <= 1e-9
+    converged = (high - low) < tolerance
+    _stroke_label = "反击" if _is_counterstrike else "绕击"
+    result_warnings: list[str] = []
+    if upper_bound_hit:
+        result_warnings.append(
+            f"{_stroke_label}二分全程未达到 {target_flashover_phases} 相闪络"
+            f"（探点上限 {initial_high:g} kA 仍未闪络），耐雷水平贴搜索上限 "
+            f"{withstand_ka:g} kA，结果为边界截断值，不可信"
+        )
+    if lower_bound_hit:
+        result_warnings.append(
+            f"{_stroke_label}二分全程闪络（探点下限 {initial_low:g} kA 即闪络），"
+            f"耐雷水平贴搜索下限 {withstand_ka:g} kA，结果为边界截断值，不可信"
+        )
+    if not converged and not upper_bound_hit and not lower_bound_hit:
+        result_warnings.append(
+            f"{_stroke_label}二分在 {max_iterations} 次迭代内未收敛"
+            f"（剩余区间 {round(high - low, 4):g} kA），精度不足"
+        )
     binary_search_payload = {
         "low_ka": low,
         "high_ka": high,
@@ -2484,10 +2530,15 @@ def execute_binary_search_external(
         "multiplier": multiplier,
         "iteration_count": iteration,
         "search_history": search_history,
-        "converged": (high - low) < tolerance,
+        "converged": converged,
         "final_flashover_count": final_flashover_count,
         "target_flashover_phases": target_flashover_phases,
         "final_withstand_ka": withstand_ka,
+        # 边界截断诊断（见上：shuzhi-noM 数值化测试模型的假耐雷水平根因）
+        "initial_low_ka": initial_low,
+        "initial_high_ka": initial_high,
+        "upper_bound_hit": upper_bound_hit,
+        "lower_bound_hit": lower_bound_hit,
         # 闪络相名（达标档，按闭合顺序取前 target 个）——对齐 C# 单/双/三..相闪络相列
         "flashover_phases": "".join(final_phases[:target_flashover_phases]),
         # 最后一次「达标探点」的完整相序（不截断）与相数：多相算法存槽用
@@ -2501,6 +2552,9 @@ def execute_binary_search_external(
     merged["binary_search"] = binary_search_payload
     merged["counterstrike_withstand_ka"] = withstand_ka
     merged["shielding_withstand_ka"] = withstand_ka
+    # 结果可信性：供页面「可信性提示」与报告/导出使用（true 时不出告警）
+    merged["result_trustworthy"] = not result_warnings
+    merged["result_warnings"] = list(result_warnings)
     # LP-570 反跳率用 ATP 二分耐雷重算：C# 任务2/3（反击耐雷=ATP）的反跳率
     # = fjtzlDanXiang((int)ATP耐雷)，不是规程耐雷。此前 external 路径保留 baseline
     # （规程耐雷 109.45）算的 0.1428，与 C# ATP 基准 0.0906 不符。

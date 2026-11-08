@@ -53,6 +53,7 @@ from .fl_analysis_rules import (
     grade_normal_snapshot_payload,
     grade_snapshot_payload,
     grade_tongtiao_snapshot_payload,
+    refresh_atp_presentation_fields,
 )
 from .line_preparation_service import summarize_line_preparation
 from .push_service import publish_topic
@@ -755,6 +756,24 @@ def export_fl_analysis_results_to_csv(job: FlAnalysisJob, rows: list[FlAnalysisT
     return filename, output.getvalue().encode("utf-8-sig")
 
 
+def _append_result_warnings(target: dict[str, Any], warnings: Any) -> list[str]:
+    """把子场景（绕击各相）的可信性告警并入整塔结果。
+
+    去重保序；同时同步 result_trustworthy（无告警即可信）。
+    ⚠️ 不能原地 append：`_raoji_merged = dict(graded)` 是浅拷贝，list 与来源共享。
+    """
+    if not isinstance(warnings, (list, tuple)):
+        return [str(item) for item in (target.get("result_warnings") or [])]
+    bucket = [str(item) for item in (target.get("result_warnings") or []) if str(item).strip()]
+    for item in warnings:
+        text = str(item).strip()
+        if text and text not in bucket:
+            bucket.append(text)
+    target["result_warnings"] = bucket
+    target["result_trustworthy"] = not bucket
+    return bucket
+
+
 def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -> None:
             # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
             # 传入的是 snapshot.id 标量，job/run/snapshot/tower 全部用本塔 session 按 ID 反查，
@@ -1023,6 +1042,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
                             f"{['A', 'B', 'C'][_idx - 1]}相"
                         ] = _sh.result_json.get("shielding_withstand_ka")
+                        _append_result_warnings(_raoji_merged, _sh.result_json.get("result_warnings"))
                     _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
                     tower_tracker.mark_phase_done()
                     # ── 绕击跳闸率：C# EGM（rjtzl_egm*.exe）；Ic 取中间相绕击耐雷整数部分 ──
@@ -1241,6 +1261,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                     _raoji_merged[_key] = _sh.result_json[_key]
                             _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
                                 f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
+                            _append_result_warnings(_raoji_merged, _sh.result_json.get("result_warnings"))
                             if _sh.stdout_text:
                                 local_stdout.append(f"[{snapshot.tower_no}][绕击{['A', 'B', 'C'][_idx - 1]}相] {_sh.stdout_text}")
                         _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
@@ -1326,6 +1347,15 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                     graded = baseline_result
             else:
                 graded = grade_snapshot_payload(payload)
+            # ATP 二分/EGM 只覆写顶层耐雷/跳闸率，scan_points 与 summary_text 仍是
+            # 规程法 baseline 的旧值 → 页面顶部卡片与「波形扫描」「综合结论」互相打架。
+            # 落库前统一同步一次展示层（并带上二分贴边/未收敛的可信性提示）。
+            if has_external and waveform_job_type in {"normal", "tongtiao"}:
+                graded = refresh_atp_presentation_fields(
+                    graded,
+                    job_type=waveform_job_type,
+                    tower_no=snapshot.tower_no,
+                )
             # 长计算（ATP 多场景二分 + EGM，单塔可达数分钟）期间会话连接会长时间空闲，
             # 公网 RDS / 出口 NAT 可能已把这条 TCP 会话丢弃：2026-11-06 实测 115 单塔
             # 580s（EGM 阶段静默 ~85s）后，写库第一句必抛 2006 "server has gone away"，

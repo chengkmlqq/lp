@@ -345,7 +345,7 @@ def grade_normal_snapshot_payload(
     selected_case = _serialize_selected_case(selected)
     summary_text = _build_waveform_result_summary(
         tower_no=str((payload.get("base_tower_json") or {}).get("tower_no") or ""),
-        execution=execution,
+        job_type="normal",
         selected_case=selected_case,
         selected_result=selected["graded"],
         multi_phase_results=[],
@@ -375,7 +375,7 @@ def grade_tongtiao_snapshot_payload(
     workflow = _serialize_waveform_workflow(execution, scan_point_count=len(scan_cases))
     summary_text = _build_waveform_result_summary(
         tower_no=str((payload.get("base_tower_json") or {}).get("tower_no") or ""),
-        execution=execution,
+        job_type="tongtiao",
         selected_case=selected_case,
         selected_result=selected["graded"],
         multi_phase_results=selected["multi_phase_results"],
@@ -901,7 +901,7 @@ def _select_waveform_case(scan_cases: list[dict[str, Any]]) -> dict[str, Any]:
 def _build_waveform_result_summary(
     *,
     tower_no: str,
-    execution: _WaveformExecutionProfile,
+    job_type: str,
     selected_case: Mapping[str, Any],
     selected_result: Mapping[str, Any],
     multi_phase_results: list[dict[str, Any]],
@@ -911,22 +911,126 @@ def _build_waveform_result_summary(
     tail_time_us = _as_float(selected_case.get("tail_time_us"))
     risk_label = _risk_level_label(selected_result.get("risk_level"))
     parts = [
-        f"{tower_label}{'同跳' if execution.job_type == 'tongtiao' else '普通'}计算",
+        f"{tower_label}{'同跳' if job_type == 'tongtiao' else '普通'}计算",
         f"最不利点 {head_time_us or 0:.2f}/{tail_time_us or 0:.2f} μs",
         f"{risk_label}风险",
     ]
     risk_grade = _as_int(selected_result.get("risk_grade"))
     if risk_grade is not None:
         parts.append(f"规程法等级 {risk_grade}")
-    if execution.job_type == "tongtiao" and multi_phase_results:
+    if job_type == "tongtiao" and multi_phase_results:
         dominant = multi_phase_results[-1]
         parts.append(
             f"{dominant.get('label') or '多相'} {dominant.get('flashover_phase') or '-'} 跳闸率 "
-            f"{_as_float(dominant.get('trip_rate')) or 0.0:.4f}"
+            f"{_format_trip_rate(_as_float(dominant.get('trip_rate')))}"
         )
     elif _as_float(selected_result.get("counterstrike_trip_rate")) is not None:
-        parts.append(f"反击跳闸率 {_as_float(selected_result.get('counterstrike_trip_rate')) or 0.0:.4f}")
+        parts.append(f"反击跳闸率 {_format_trip_rate(_as_float(selected_result.get('counterstrike_trip_rate')))}")
     return "，".join(parts)
+
+
+def _format_trip_rate(value: float | None) -> str:
+    """跳闸率文案格式化：小于 1e-3 时保留 6 位，避免 0.000052 被四舍五入成 0.0001。"""
+    rate = value or 0.0
+    return f"{rate:.6f}" if abs(rate) < 1e-3 else f"{rate:.4f}"
+
+
+def refresh_atp_presentation_fields(
+    result: Mapping[str, Any],
+    *,
+    job_type: str,
+    tower_no: str | None = None,
+) -> dict[str, Any]:
+    """ATP 二分/EGM 覆写顶层字段后，同步刷新派生展示字段。
+
+    背景（2026-11-08）：`_merge_external_result` 是 `dict(baseline_result)` 起手，
+    再把 ATP payload 的顶层键覆盖上去。于是「反/绕击耐雷、跳闸率」是 ATP 值，
+    但 `scan_points`（规程法波形扫描点）与 `summary_text`（规程法文案）仍是
+    baseline 的旧值 —— 页面顶部卡片写 719.06 kA，下面「波形扫描」「综合结论」
+    还挂着 156.4 kA，同一行数据自相矛盾。
+
+    这里只做展示层同步（不重算物理量）：
+      1) 普通计算：把「最不利点」对应扫描点的耐雷/跳闸率/风险等级改为 ATP 顶层值，
+         并打 `value_source=atp` 标记；其余扫描点保留规程法原值（未跑 ATP）。
+      2) 用最终 risk_level/score + 实际最不利点重建 summary_text。
+      3) 结果不可信（二分贴边/未收敛）时在 summary_text 末尾追加提示，
+         保证导出 CSV/报告也能看到。
+
+    ⚠️ 交流同跳（tongtiao）顶层耐雷/反击跳闸率按 C# 口径刻意置 0，故不改扫描点，
+    只重建文案（多相档位取自 multi_phase_results）。
+    """
+    refreshed = dict(result)
+    selected_case = dict(refreshed.get("selected_case") or {})
+    head = _as_float(selected_case.get("head_time_us"))
+    tail = _as_float(selected_case.get("tail_time_us"))
+
+    if job_type == "normal":
+        raw_points = refreshed.get("scan_points")
+        points = [dict(item) for item in raw_points if isinstance(item, Mapping)] if isinstance(raw_points, list) else []
+        if points:
+            index: int | None = None
+            if head is not None and tail is not None:
+                for pos, item in enumerate(points):
+                    if _as_float(item.get("head_time_us")) == head and _as_float(item.get("tail_time_us")) == tail:
+                        index = pos
+                        break
+            if index is None:
+                # 回退：按规则法的「最不利点」选择口径取一条（风险等级 > 得分）
+                index = max(
+                    range(len(points)),
+                    key=lambda pos: (
+                        _risk_order(points[pos].get("risk_level")),
+                        int(points[pos].get("score") or 0),
+                    ),
+                )
+            # 只覆盖有值的字段：兼容未算出某项的适配器（避免把规程值刷成 None）
+            overlay = {
+                "counterstrike_withstand_ka": refreshed.get("counterstrike_withstand_ka"),
+                "counterstrike_trip_rate": refreshed.get("counterstrike_trip_rate"),
+                "shielding_withstand_ka": refreshed.get("shielding_withstand_ka"),
+                "shielding_trip_rate": refreshed.get("shielding_trip_rate"),
+                "risk_level": refreshed.get("risk_level"),
+                "score": refreshed.get("score"),
+                "flashover_phase": refreshed.get("flashover_phase"),
+                "dominant_phase_set": refreshed.get("dominant_phase_set"),
+            }
+            applied = {key: value for key, value in overlay.items() if value is not None}
+            if applied:
+                applied["value_source"] = "atp"
+                points[index].update(applied)
+            refreshed["scan_points"] = points
+
+    selected_overlay = {
+        "risk_level": refreshed.get("risk_level"),
+        "score": refreshed.get("score"),
+        "flashover_phase": refreshed.get("flashover_phase"),
+        "dominant_phase_set": refreshed.get("dominant_phase_set"),
+    }
+    selected_case.update({key: value for key, value in selected_overlay.items() if value is not None})
+    refreshed["selected_case"] = selected_case
+
+    multi_phase_results = (
+        [dict(item) for item in (refreshed.get("multi_phase_results") or []) if isinstance(item, Mapping)]
+        if job_type == "tongtiao"
+        else []
+    )
+    # 塔号：优先用入参，其次 base_tower_json，最后沿用旧文案前缀
+    base_tower = refreshed.get("base_tower_json")
+    tower_label = str(tower_no or "")
+    if not tower_label and isinstance(base_tower, Mapping):
+        tower_label = str(base_tower.get("tower_no") or "")
+    summary_text = _build_waveform_result_summary(
+        tower_no=tower_label,
+        job_type=job_type,
+        selected_case=selected_case,
+        selected_result=refreshed,
+        multi_phase_results=multi_phase_results,
+    )
+    warnings = [str(item).strip() for item in (refreshed.get("result_warnings") or []) if str(item).strip()]
+    if warnings:
+        summary_text = f"{summary_text}；【结果不可信】{warnings[0]}"
+    refreshed["summary_text"] = summary_text
+    return refreshed
 
 
 def _build_waveform_case_cause(

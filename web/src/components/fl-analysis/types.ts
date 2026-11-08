@@ -400,6 +400,14 @@ export function readScanPoints(row: FlAnalysisTowerResultSummary | null): ScanPo
   return readArray<ScanPoint>(row ? readObject(row.result_json).scan_points : null);
 }
 
+/** 结果可信性告警（如 ATP 二分贴搜索上限未闪络），空数组表示可信 */
+export function readResultWarnings(row: FlAnalysisTowerResultSummary | null): string[] {
+  const value = row ? readObject(row.result_json).result_warnings : null;
+  return readArray<unknown>(value)
+    .map((item) => (typeof item === "string" ? item : String(item ?? "")))
+    .filter((item) => item.trim().length > 0);
+}
+
 export function readPhaseResults(row: FlAnalysisTowerResultSummary | null): PhaseResult[] {
   return readArray<PhaseResult>(row ? readObject(row.result_json).phase_results : null);
 }
