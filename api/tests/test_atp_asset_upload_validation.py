@@ -467,6 +467,32 @@ def test_upload_archive_rejects_lib_pack(tmp_path) -> None:
         session.close()
 
 
+def test_upload_archive_legacy_strips_parameter_substitution(tmp_path) -> None:
+    """归档（staging + 原子替换）路径同样走导入预处理，落盘的 work.atp 不含 $$。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = _create_asset(session)
+        entries = _legacy_entries()
+        entries["work.atp"] = _LEGACY_WORK_ATP_WITH_PARAMS
+
+        atp_asset_service.upload_asset_archive(
+            session,
+            asset_id=asset.id,
+            archive_filename="model.zip",
+            archive_content=_build_zip(entries),
+            actor_user_id="tester",
+        )
+        stored = (tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE" / "work.atp").read_bytes()
+        body = stored.split(b"$PARAMETER", 1)[1]
+        assert b"U2I" not in body
+        assert b"ZRE01_=150." in body
+        assert body.count(b"$$") == 0
+    finally:
+        session.close()
+
+
 # ---------------------------------------------------------------------------
 # 入口 .atp 形态校验：$INSERT / $INCLUDE+lib / Embed（2026-11-02）
 # 判据是「几何引用形态」而非版本指纹大小写：指纹对应 6.x / 7.x 两代模板，
