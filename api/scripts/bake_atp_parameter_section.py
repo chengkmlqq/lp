@@ -1,6 +1,12 @@
-"""把老版模型的 `$PARAMETER` 段烘焙成「纯数值」形态（等价 C# `1 delete_others.py` 的最终结果）。
+"""【已作废】把老版模型的 `$PARAMETER` 段烘焙成「纯数值」形态。
 
-【背景】
+⚠️ 2026-11-08 起不要再用这个脚本：它把整段烘焙成数值，与 C# `1 delete_others.py`
+的实际产物（只删 `$$` 中间变量段、保留 `NAME=NAME_I` 别名块）不同。
+现行做法是 `atp_model_format.preprocess_legacy_entry`（导入时自动执行）
++ `scripts/apply_delete_others.py`（存量），两者共用同一实现。
+本文件仅作历史留档，产物可由 `apply_delete_others.py --restore-from <bake备份>` 回退。
+
+【原背景】
 C# 桌面版跑 ATP 前，先用 `1 delete_others.py` 删掉 `$PARAMETER` 与 `RER001=RER001I` 之间的
 变量替换段（一堆 `NAME_I =值 $$`），再由 Update_work_atp3 按特征表把真实值写进别名行
 （`RER001=RER001I` → `RER001=1716.0`）。所以 C# 交给引擎的文件里既没有 `$$`，也没有中间变量。
