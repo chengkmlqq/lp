@@ -212,32 +212,47 @@ def _resolve_import_content(
     return content, source_file_name
 
 
+# 导入请求内预校验的抽样行数：完整解析交给后台任务（失败会标记 failed 并推送
+# 事件，前端可重试），请求内只抽样校验避免大文件全量解析拖慢 API（曾出现
+# 128 万行文件在请求线程里逐行解析数十秒、期间全站接口都变慢的案例）。
+_IMPORT_SAMPLE_LINES = 5000
+
+
+def _sample_text_lines(text: str, max_lines: int = _IMPORT_SAMPLE_LINES) -> str:
+    """取文本前 max_lines 行做抽样预校验。"""
+    parts = text.split("\n", max_lines)
+    return "\n".join(parts[:max_lines])
+
+
 def _validate_amplitude_content(content: bytes, source_file_name: str) -> None:
-    """导入前格式预校验：雷电流幅值源文件应为纯数值文本（每行一个或多个数字）。
+    """导入前格式预校验（抽样前 5000 行）：雷电流幅值源文件应为纯数值文本。
 
     全坏或有效比例过低（<10%）直接 400 拒绝，避免无效文件入库后后台任务空跑。
+    完整校验由后台导入任务执行（失败 → status=failed + 事件推送，可重试）。
     幅值文件期望格式：每行 1 个电流值（如 -15.3），或「时间 电流」两列（如 0.0001 -15.3）。
     """
     text = _decode_text_bytes(content)
-    total_lines = len([ln for ln in text.splitlines() if ln.strip()])
-    if total_lines == 0:
+    if not text.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"文件「{source_file_name}」为空，无有效数据行",
         )
 
-    parsed = _parse_current_series(text)
+    sample = _sample_text_lines(text)
+    total_lines = len([ln for ln in sample.splitlines() if ln.strip()])
+
+    parsed = _parse_current_series(sample)
     valid = len(parsed.currents_ka)
     if valid == 0 or (valid / total_lines) < 0.1:
         sample_line = next(
-            (ln.strip() for ln in text.splitlines() if ln.strip()),
+            (ln.strip() for ln in sample.splitlines() if ln.strip()),
             "",
         )[:120]
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"文件「{source_file_name}」格式不符合要求："
-                f"共 {total_lines} 行数据，仅解析出 {valid} 个有效采样点"
+                f"抽样前 {total_lines} 行数据，仅解析出 {valid} 个有效采样点"
                 f"（期望每行 1 个电流值，如「-15.3」；或「时间 电流」两列，如「0.0001 -15.3」）。"
                 f"示例行：{sample_line!r}。请检查文件后重新上传。"
             ),
@@ -1751,34 +1766,37 @@ def get_distribution_linked_line_count(db: Session, distribution_id: str) -> int
 
 
 def _validate_distribution_content(content: bytes, source_file_name: str) -> None:
-    """导入前格式预校验：地闪密度源文件应为「纬度 经度 电流」空格分隔的文本。
+    """导入前格式预校验（抽样前 5000 行）：地闪密度源文件应为「纬度 经度 电流」文本。
 
     全坏或有效比例过低（<10%）直接 400 拒绝，避免无效文件入库后后台任务
     空跑（曾出现 128 万行全坏文件导入后统计阶段 0 条落雷的案例）。
+    完整解析由后台导入任务执行（失败 → status=failed + 事件推送，可重试）。
     """
     from ..services.lightning_statistics import parse_distribution_content
 
     text = _decode_text_bytes(content)
-    total_lines = len([ln for ln in text.splitlines() if ln.strip()])
-    if total_lines == 0:
+    if not text.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"文件「{source_file_name}」为空，无有效数据行",
         )
 
+    sample = _sample_text_lines(text)
+    total_lines = len([ln for ln in sample.splitlines() if ln.strip()])
+
     warnings: list[str] = []
-    strikes = parse_distribution_content(text, warnings=warnings)
+    strikes = parse_distribution_content(sample, warnings=warnings)
     valid = len(strikes)
     if valid == 0 or (valid / total_lines) < 0.1:
         sample_line = next(
-            (ln.strip() for ln in text.splitlines() if ln.strip()),
+            (ln.strip() for ln in sample.splitlines() if ln.strip()),
             "",
         )[:120]
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"文件「{source_file_name}」格式不符合要求："
-                f"共 {total_lines} 行数据，仅解析出 {valid} 条有效落雷"
+                f"抽样前 {total_lines} 行数据，仅解析出 {valid} 条有效落雷"
                 f"（期望每行格式：纬度 经度 电流，空格分隔，如「22.54 114.05 -15.3」）。"
                 f"示例行：{sample_line!r}。请检查文件后重新上传。"
             ),
