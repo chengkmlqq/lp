@@ -1460,6 +1460,13 @@ function DistributionDetailView({
   const { t } = useI18n();
   const imageQuery = useQuery({
     queryKey: ["/api/v1/lightning-currents/distributions", record.id, "image"],
+    // queryFn 返回的是 blob 对象 URL，属于组件私有临时资源：
+    // 详情页关闭时 useEffect cleanup 会 revokeObjectURL，但 React Query 缓存里
+    // 仍留着这个已失效的 URL 字符串。若沿用默认缓存策略（全局 staleTime 10s），
+    // 连续点击再次打开会直接命中缓存渲染已 revoke 的死 URL → 密度图裂图。
+    // gcTime: 0 保证卸载即清缓存，重开必定重新请求并生成新 URL。
+    gcTime: 0,
+    staleTime: 0,
     queryFn: async () => {
       const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/image`);
       if (!response.ok) {
