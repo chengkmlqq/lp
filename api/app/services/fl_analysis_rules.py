@@ -1019,13 +1019,18 @@ def refresh_atp_presentation_fields(
     tower_label = str(tower_no or "")
     if not tower_label and isinstance(base_tower, Mapping):
         tower_label = str(base_tower.get("tower_no") or "")
-    summary_text = _build_waveform_result_summary(
-        tower_no=tower_label,
-        job_type=job_type,
-        selected_case=selected_case,
-        selected_result=refreshed,
-        multi_phase_results=multi_phase_results,
-    )
+    previous_summary = str(refreshed.get("summary_text") or "").split("；【结果不可信】")[0]
+    if head is None or tail is None:
+        # 缺最不利点时窗（异常/旧数据）→ 保留原文案，避免刷成「0.00/0.00 μs」
+        summary_text = previous_summary
+    else:
+        summary_text = _build_waveform_result_summary(
+            tower_no=tower_label,
+            job_type=job_type,
+            selected_case=selected_case,
+            selected_result=refreshed,
+            multi_phase_results=multi_phase_results,
+        )
     warnings = [str(item).strip() for item in (refreshed.get("result_warnings") or []) if str(item).strip()]
     if warnings:
         summary_text = f"{summary_text}；【结果不可信】{warnings[0]}"
