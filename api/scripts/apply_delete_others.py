@@ -28,10 +28,8 @@ from __future__ import annotations
 
 import argparse
 import collections
-import io
 import json
 import os
-import re
 import sys
 import tarfile
 import time
@@ -49,16 +47,12 @@ from app.services.atp_asset_service import (
     collect_check_members_from_storage,
 )
 from app.services.atp_model_format import (
-    _format_number,
     inspect_package,
-    parse_parameter_section,
-    resolve_param_values,
+    strip_parameter_substitution,
 )
 
 BACKUP_DIR = "/app/data/backup_atp_cleanup"
-ANCHOR = "RER001=RER001I"
 MARKER = "$PARAMETER"
-PARAM_LINE_RE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*=\s*(\S*)\s*$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,47 +75,9 @@ def _decode(raw: bytes) -> tuple[str, str]:
 
 
 def delete_others(text: str) -> tuple[str, dict]:
-    """C# 逻辑 + 非 `$$` 行保护。返回 (新文本, 统计)。"""
-    pos = text.find(MARKER)
-    anchor = text.find(ANCHOR)
-    if pos < 0 or anchor < 0 or anchor < pos:
-        return text, {"skipped": "no_marker"}
-    start = pos + len(MARKER)          # C#: pos + 10
-    region = text[start:anchor]
-    if "$$" not in region:
-        return text, {"skipped": "no_dollar"}
-
-    section = parse_parameter_section(text)
-    resolved = resolve_param_values(section)
-    intermediates = section.intermediates
-
-    keep: list[str] = []
-    kept_alias: list[str] = []
-    for raw in region.splitlines():
-        stripped = raw.strip()
-        if not stripped or "$$" in stripped:
-            continue
-        match = PARAM_LINE_RE.match(stripped)
-        if not match:
-            keep.append(stripped)
-            continue
-        name, value = match.group(1), match.group(2)
-        if value in resolved:
-            keep.append(f"{name}={_format_number(resolved[value])}")
-            kept_alias.append(name)
-        elif value in intermediates:
-            keep.append(f"{name}={_format_number(intermediates[value])}")
-            kept_alias.append(name)
-        else:
-            keep.append(stripped)
-
-    kept_block = "".join(f"{line}\n" for line in keep)
-    new_text = text[:start] + "\n" + kept_block + text[anchor:]
-    return new_text, {
-        "removed_dollar_lines": sum(1 for ln in region.splitlines() if "$$" in ln),
-        "kept_lines": len(keep),
-        "kept_alias": kept_alias,
-    }
+    """删段逻辑只有一份实现（atp_model_format.strip_parameter_substitution），
+    导入流程与这个存量脚本共用，避免两处逻辑漂移。"""
+    return strip_parameter_substitution(text)
 
 
 def _load_backup(tar_path: str) -> dict[str, bytes]:
@@ -178,11 +134,11 @@ def main() -> int:
 
         text, encoding = _decode(raw)
         new_text, info = delete_others(text)
-        if info.get("skipped") == "no_marker":
+        if info.get("reason") == "no_anchor":
             counter["no_marker"] += 1
             skipped.append((asset.code, "找不到 $PARAMETER 或 RER001=RER001I"))
             continue
-        if info.get("skipped") == "no_dollar":
+        if info.get("reason") == "already_clean":
             counter["already_done"] += 1
             continue
 
@@ -197,7 +153,7 @@ def main() -> int:
         if len(plans) <= args.show:
             print(f"\n  [{index}/{len(assets)}] {asset.code} ({encoding})", flush=True)
             print(f"    删 $$ 行 {info['removed_dollar_lines']}，保留非 $$ 行 {info['kept_lines']}"
-                  f"{'（' + ','.join(info['kept_alias']) + '）' if info['kept_alias'] else ''}")
+                  f"{'（' + ','.join(info['kept_names']) + '）' if info['kept_names'] else ''}")
             head = [ln for ln in new_text.split(MARKER, 1)[1].splitlines()[:4]]
             print(f"    段首: {' | '.join(h.strip() for h in head)}")
 

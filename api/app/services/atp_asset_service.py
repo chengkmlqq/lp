@@ -55,6 +55,7 @@ from .atp_model_format import (
     PackageInspection,
     detect_model_format,
     inspect_package,
+    preprocess_legacy_entry,
 )
 from .atp_slot_scanner import DAT_GEOMETRY_NAMES, scan_model_slots
 from .storage_driver import (
@@ -543,6 +544,34 @@ def _inspect_atp_package_or_400(members: dict[str, bytes]) -> PackageInspection:
     return report
 
 
+def _preprocess_legacy_members(members: dict[str, bytes]) -> dict[str, bytes]:
+    """导入预处理：旧版形态先把 `$PARAMETER` 变量替换段删掉（就地改 members）。
+
+    等价于 C# 桌面版 `1 delete_others.py` 那一步，只是提前到入库时刻：
+    入库的 work.atp 从此就是「C# 跑之前」的形态，几千行 `$$` 中间变量不再进库。
+
+    只处理 legacy（`$INCLUDE + .lib`）形态；`$INSERT` 新模型的参数段是 7.3 原生
+    形态，不套这套锚点。返回被改写的成员 {相对路径: 新内容}，未改写返回 {}，
+    调用方据此决定写盘时用新内容还是原流。
+    """
+    entry = _find_entry_atp_content(list(members.items()))
+    if entry is None:
+        return {}
+    entry_path, raw = entry
+    new_content, info = preprocess_legacy_entry(raw)
+    if not info.get("changed"):
+        return {}
+    members[entry_path] = new_content
+    logger.info(
+        "[ATP] 导入预处理 %s：删除 $PARAMETER 变量替换段 %d 行（保留非 $$ 参数 %d 行%s）",
+        entry_path,
+        info["removed_dollar_lines"],
+        info["kept_lines"],
+        "：" + ",".join(info["kept_names"][:8]) if info["kept_names"] else "",
+    )
+    return {entry_path: new_content}
+
+
 def _apply_format_report(asset: AtpAsset, report: PackageInspection) -> None:
     """把预检结果写到资产行上（形态标记 + warning 清单）。"""
     asset.model_format = report.model_format
@@ -637,7 +666,13 @@ def _write_archive_to_storage(
     storage_root_path: str,
     archive_filename: str,
     archive_content: bytes,
+    overrides: dict[str, bytes] | None = None,
 ) -> int:
+    """把 zip 解包写进 storage_root_path。
+
+    overrides：导入预处理改写过的成员（相对路径 → 新内容）。命中时写新内容，
+    其余成员照旧走 archive 流 —— work.atp 只有几十 KB，单独替换不影响流式写入。
+    """
     filename = (archive_filename or "").strip().lower()
     if filename and not filename.endswith(".zip"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ZIP 包必须是 zip 格式")
@@ -669,6 +704,15 @@ def _write_archive_to_storage(
                 if parent_path not in ensured_directories:
                     driver.ensure_directory(parent_path)
                     ensured_directories.add(parent_path)
+                rewritten = overrides.get(relative_path) if overrides else None
+                if rewritten is not None:
+                    driver.write_file(
+                        target_path,
+                        content=rewritten,
+                        content_type=mimetypes.guess_type(relative_path)[0],
+                    )
+                    extracted_count += 1
+                    continue
                 try:
                     content = archive.read(member)
                 except Exception as exc:
@@ -709,12 +753,14 @@ def _write_archive_to_asset_storage(
     asset_storage_root: str,
     archive_filename: str,
     archive_content: bytes,
+    overrides: dict[str, bytes] | None = None,
 ) -> int:
     return _write_archive_to_storage(
         driver,
         storage_root_path=asset_storage_root,
         archive_filename=archive_filename,
         archive_content=archive_content,
+        overrides=overrides,
     )
 
 
@@ -1625,6 +1671,9 @@ def upload_asset_archive(
     # 失败时零写入（连 staging 目录都不建），避免留下半包。
     # 空结果 = zip 损坏或包内没有模型文件 → 交给下面的写盘阶段报 BadZipFile / 空包。
     members_for_check = _zip_members_for_check(archive_content)
+    # 导入预处理先做、预检后做：落库的 format_check_json 必须是「入库后」的真实形态，
+    # 否则会拿预处理前的旧结论报警（例如已经删掉的 `$$` 段还在提示里）。
+    rewritten_members = _preprocess_legacy_members(members_for_check) if members_for_check else {}
     format_report = _inspect_atp_package_or_400(members_for_check) if members_for_check else None
     root_parent = _parent_virtual_path(storage_root_path)
     root_name = PurePosixPath(storage_root_path).name or asset.id
@@ -1637,6 +1686,7 @@ def upload_asset_archive(
             asset_storage_root=staging_root_path,
             archive_filename=archive_filename,
             archive_content=archive_content,
+            overrides=rewritten_members,
         )
 
         # 2026-11-05 修复：S3 存储上 list_dir 对"不存在的目录"不报错、返回空列表，
@@ -2079,6 +2129,10 @@ def upload_asset_files(
             else:
                 checked[relative_path] = source.read()
                 source.seek(0)
+        # 导入预处理（2026-11-08）：旧版形态先把 `$PARAMETER` 变量替换段删掉，
+        # 与 C# 桌面版 `1 delete_others.py` 同一步，只是提前到入库。必须放在
+        # inspect 之前，让落库的预检结论反映「入库后」的真实形态。
+        rewritten_members = _preprocess_legacy_members(checked)
         format_report = _inspect_atp_package_or_400(checked)
 
         # 2026-11-08：旧版（$INCLUDE .lib）形态的 .pch 是纯中间产物。若留在资产里，
@@ -2100,6 +2154,11 @@ def upload_asset_files(
             target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
             parent_path = _parent_virtual_path(target_path)
             driver.ensure_directory(parent_path)
+            rewritten = rewritten_members.get(relative_path)
+            if rewritten is not None:
+                # 导入预处理改过（旧版 work.atp）：写改写后的字节，不再走原流
+                driver.write_file(target_path, content=rewritten, content_type=content_type)
+                continue
             if kind == "zip":
                 with source.open(member) as member_stream:
                     driver.write_stream(target_path, member_stream, content_type=content_type, size=member_size)

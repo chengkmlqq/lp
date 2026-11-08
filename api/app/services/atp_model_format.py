@@ -51,8 +51,8 @@ FORMAT_LABELS: dict[str, str] = {
 }
 
 # 引擎代差说明：LP 用的 tpbig/mytpbig 均为 2003-09-19 源码，不认 ATPDraw 7.2+
-# 引入的 `$$` 行尾注释语法，也不认 $PARAMETER 段里的整数写法。
-ENGINE_NOTE = "LP 引擎（tpbig/mytpbig，2003-09-19 源码）不认 ATPDraw 7.2+ 的 `$$` 注释语法"
+# 引入的 `$$` 行尾注释语法，也不认 $PARAMETER 段里的整数写法。这三类形态现在
+# 由导入预处理（strip_parameter_substitution）和运行期规范化各管一段，不再出预检提示。
 
 # ── 正则 ────────────────────────────────────────────────────────────────
 # $INSERT 卡：`$INSERT, D:\ATP\work\results\long3.pch`（逗号可有可无）
@@ -173,14 +173,19 @@ class PackageInspection:
 
 
 # ── 形态识别 ────────────────────────────────────────────────────────────
-def _decode(content: bytes) -> str:
-    """work.atp 含 GBK 中文注释，按 UTF-8 → GBK 依次尝试。"""
+def _decode_with_encoding(content: bytes) -> tuple[str, str]:
+    """解码并回传命中的编码（写回时必须用同一个，否则中文注释变问号）。"""
     for encoding in ("utf-8", "gbk"):
         try:
-            return content.decode(encoding, errors="strict")
+            return content.decode(encoding, errors="strict"), encoding
         except (UnicodeDecodeError, LookupError):
             continue
-    return content.decode("gbk", errors="replace")
+    return content.decode("gbk", errors="replace"), "gbk"
+
+
+def _decode(content: bytes) -> str:
+    """work.atp 含 GBK 中文注释，按 UTF-8 → GBK 依次尝试。"""
+    return _decode_with_encoding(content)[0]
 
 
 def insert_pch_refs(text: str) -> list[str]:
@@ -445,6 +450,104 @@ def normalize_parameter_section(
     return "".join(out), diagnostics
 
 
+# ── 旧版模型导入预处理（对齐 C# 桌面版 `1 delete_others.py`）──────────────
+# 115/230 那批 C# 迁移模型沿用桌面模板：`$PARAMETER` 下先是 53 行
+# `NAME_I =值 $$` 中间变量，再接 `NAME=NAME_I` 别名块。C# 侧每轮跑之前由
+# `1 delete_others.py` 把这一段整段删掉，随后 Update_work_atp3 把真实值写进别名行。
+# LP 侧原本只在运行期做等价动作（normalize_parameter_section），存库文件里那几千行
+# `$$` 一直留着，于是预检常年报「行尾 $$ / 整数无小数点 / 中间变量超 List31」——
+# 三条都是「平台会自己修」的噪音。现在把删段提到导入：入库的文件本身就是
+# C# 跑之前的形态，运行期照旧渲染 + 覆写，行为不变。
+PARAM_MARKER = "$PARAMETER"
+PARAM_ANCHOR = "RER001=RER001I"
+_PARAM_STRICT_LINE_RE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*=\s*(\S*)\s*$")
+
+
+def strip_parameter_substitution(text: str) -> tuple[str, dict[str, Any]]:
+    """按 C# `1 delete_others.py` 删掉 `$PARAMETER` 与 `RER001=RER001I` 之间的段。
+
+    C# 原脚本就三行：
+        pos_start = content.find("$PARAMETER") + 10
+        pos_end   = content.find("RER001=RER001I")
+        content   = content[:pos_start] + "\\n" + content[pos_end:]
+    本函数逐字照做，只多一条护栏：区间内**不带 `$$`** 的参数行不是变量替换装饰，
+    而是被卡片引用的真实参数（实测 115/maotou/raoji1 的 ZRE01_/ZRE02_/ZRE03_/VRE___，
+    段外被引用 45~144 次），硬删会让引擎报未定义变量，故保留并按原定义烘成数值。
+    纯 `$$` 行一个不留，与脚本一致。
+
+    返回 (新文本, 诊断)。`changed=False` 表示无需处理（无锚点 / 区间内已无 `$$`），
+    调用方可据此原样写盘。
+    """
+    marker_at = text.find(PARAM_MARKER)
+    anchor_at = text.find(PARAM_ANCHOR)
+    if marker_at < 0 or anchor_at < 0 or anchor_at < marker_at:
+        return text, {
+            "changed": False, "reason": "no_anchor",
+            "removed_dollar_lines": 0, "kept_lines": 0, "kept_names": [],
+        }
+    start = marker_at + len(PARAM_MARKER)
+    region = text[start:anchor_at]
+    if "$$" not in region:
+        return text, {
+            "changed": False, "reason": "already_clean",
+            "removed_dollar_lines": 0, "kept_lines": 0, "kept_names": [],
+        }
+
+    section = parse_parameter_section(text)
+    values = resolve_param_values(section)
+    intermediates = section.intermediates
+
+    keep: list[str] = []
+    kept_names: list[str] = []
+    removed = 0
+    for raw_line in region.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if "$$" in stripped:
+            removed += 1
+            continue
+        match = _PARAM_STRICT_LINE_RE.match(stripped)
+        if not match:
+            keep.append(stripped)
+            continue
+        name, value = match.group(1), match.group(2)
+        resolved = values.get(value) or intermediates.get(value)
+        if resolved is not None and _NUMERIC_RE.match(resolved):
+            keep.append(f"{name}={_format_number(resolved)}")
+            kept_names.append(name)
+        else:
+            keep.append(stripped)
+
+    kept_block = "".join(f"{line}\n" for line in keep)
+    return text[:start] + "\n" + kept_block + text[anchor_at:], {
+        "changed": True,
+        "reason": "stripped",
+        "removed_dollar_lines": removed,
+        "kept_lines": len(keep),
+        "kept_names": kept_names,
+    }
+
+
+def preprocess_legacy_entry(content: bytes) -> tuple[bytes, dict[str, Any]]:
+    """导入预处理：旧版形态（`$INCLUDE + .lib`）先把变量替换段删掉。
+
+    只对 legacy 生效。`$INSERT` 新模型的几何随 pch 走、参数段是 7.3 原生形态，
+    锚点与 C# 模板不同，套用同一套规则可能切错区间，故一律原样放行。
+
+    返回 (可直接写盘的字节, 诊断)。改写时按原编码写回，中文注释不会变问号。
+    """
+    text, encoding = _decode_with_encoding(content)
+    model_format = detect_model_format(text)
+    if model_format != FORMAT_LEGACY:
+        return content, {"changed": False, "reason": "not_legacy", "model_format": model_format}
+    new_text, info = strip_parameter_substitution(text)
+    info["model_format"] = model_format
+    if not info.get("changed"):
+        return content, info
+    return new_text.encode(encoding, "replace"), info
+
+
 # ── 行级去向追踪（2026-11-03）───────────────────────────────────────────
 # 槽位名允许数字开头（实测 11K0 / 14XXSS），但必须含字母或下划线（排除纯数字行）
 _WRITE_LINE_RE = re.compile(r"^[ \t]*([A-Za-z0-9_]+)[ \t]*=[ \t]*(\S.*)$")
@@ -514,11 +617,12 @@ def inspect_package(
       E002 legacy 形态缺标准 .dat
 
     警告级（放行，但会展示给人工）：
-      W001 行尾带 `$$`（LP 会规范化）
-      W002 整数值无小数点（LP 会补点）
-      W003 中间变量超过 List31 上限（LP 会内联）
       W011 work.atp 引用的 pch 路径目录与包内不一致（LP 按文件名物化）
       W012 $PARAMETER 段有别名引用不到中间变量（原 E013；LP 渲染时按 C# 公式写值）
+
+    参数段的「行尾 `$$` / 整数无小数点 / 中间变量超 List31」三项**不再出提示**：
+    旧版模型在导入阶段就由 preprocess_legacy_entry 删掉变量替换段（对齐 C# 的
+    `1 delete_others.py`），入库文件不可能再带这三类形态，再报只能是恒假噪音。
     """
     lower_map = _lower_index(members.keys())
     entry_key = lower_map.get(entry_name.lower())
@@ -634,7 +738,7 @@ def inspect_package(
                 entry_key,
             )
 
-    # ── W012 / W001 / W002 / W003 参数段 ──
+    # ── W012 参数段别名 ──
     # 2026-11-04：原 E013（error）降级为 W012（warning）。
     # `NAME=NAME_I` 且缺 `NAME_I=值` 不是模型残缺，而是 ATPDraw 7.x 导出的**常态**：
     # 实测 C# 生产模型库 278/278 个老版 work.atp 都是这个形态，C# 跑得通是因为
@@ -651,28 +755,6 @@ def inspect_package(
             f"$PARAMETER 段有 {len(section.unresolved)} 个参数是别名引用形态（缺中间变量定义）：{preview}",
             "这是 ATPDraw 导出 ATP 的常见形态，C# 与 LP 都在运行前用公式把真实值写进参数段，"
             "不影响计算；若某个别名既算不出值又被 TACS 引用，仿真前会报出具体参数名，无需在此人工修改",
-            entry_key,
-        )
-    if section.dollar_lines:
-        result.add(
-            "W001", "warning",
-            f"$PARAMETER 段有 {section.dollar_lines} 行带行尾 `$$`（7.2+ 新增的注释语法）",
-            f"{ENGINE_NOTE}，带 `$$` 会报 FMT 错误。LP 仿真时会自动去掉，无需人工修改",
-            entry_key,
-        )
-    if section.bare_int_values:
-        result.add(
-            "W002", "warning",
-            f"$PARAMETER 段有 {section.bare_int_values} 个整数值没写小数点",
-            "无小数点会被引擎按整数格式解析并报 `KONST = N`。LP 仿真时会自动补点，"
-            "但若其他工具也用这份模型，建议在源模板里补成 `1000.`",
-            entry_key,
-        )
-    if len(section.intermediates) > 10:
-        result.add(
-            "W003", "warning",
-            f"$PARAMETER 段有 {len(section.intermediates)} 条中间变量（引擎 List31 上限 10）",
-            "LP 仿真时会把中间变量内联进别名后再写盘，不会触发 CIDEAL；无需人工处理",
             entry_key,
         )
 
