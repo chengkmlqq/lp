@@ -104,7 +104,7 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
         target_dir.mkdir(parents=True, exist_ok=True)
 
         zip_key = f"{build_matlab_engine_release_prefix(slug, version_hash)}engine.zip"
-        log_parts.append(f"[{task_id}] Downloading engine ZIP from MinIO: {zip_key}")
+        log_parts.append(f"[{task_id}] Downloading engine ZIP from object storage: {zip_key}")
         zip_data = get_object(zip_key)
 
         backup_dir = target_dir.parent / f"{target_dir.name}_backup_{version_hash}"
@@ -241,7 +241,7 @@ def sync_matlab_engine(self, version_hash: str, actor_user_id: str) -> dict[str,
         target_dir.mkdir(parents=True, exist_ok=True)
 
         zip_key = f"{MATLAB_ENGINE_PREFIX}{version_hash}/engine.zip"
-        log_parts.append(f"[{task_id}] Downloading engine ZIP from MinIO: {zip_key}")
+        log_parts.append(f"[{task_id}] Downloading engine ZIP from object storage: {zip_key}")
         zip_data = get_object(zip_key)
 
         backup_dir = target_dir.parent / f"{target_dir.name}_backup_{version_hash}"

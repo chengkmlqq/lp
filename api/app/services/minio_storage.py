@@ -479,6 +479,51 @@ def list_objects(prefix: str) -> list[str]:
         raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
 
 
+def list_object_mtimes(prefix: str) -> list[tuple[str, datetime]]:
+    """按前缀列举对象 Key 及其最后修改时间（UTC datetime）。
+
+    任务日志按保留期清理等场景需要逐对象的 LastModified；
+    local 后端取文件 stat 的 mtime，s3 后端取 ListObjectsV2 的 LastModified。
+    """
+    if _use_local_backend():
+        try:
+            root = _local_root().resolve()
+            base = _local_object_path(prefix.rstrip("/")) if prefix.strip("/") else root
+            if not base.exists():
+                return []
+            items: list[tuple[str, datetime]] = []
+            for path in sorted(base.rglob("*")):
+                if path.is_file():
+                    key = os.path.relpath(path, root).replace(os.sep, "/")
+                    items.append(
+                        (key, datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
+                    )
+            return items
+        except MinioStorageError:
+            raise
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
+    settings = get_settings()
+    try:
+        client = _build_client()
+        paginator = client.get_paginator("list_objects_v2")
+        items: list[tuple[str, datetime]] = []
+        for page in paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix):
+            for item in page.get("Contents", []):
+                key = item.get("Key", "")
+                last_modified = item.get("LastModified")
+                if not key or last_modified is None:
+                    continue
+                if last_modified.tzinfo is None:
+                    last_modified = last_modified.replace(tzinfo=timezone.utc)
+                items.append((key, last_modified))
+        return items
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
+
+
 def get_object(key: str) -> bytes:
     """读取对象，返回字节内容。"""
     if _use_local_backend():

@@ -518,7 +518,7 @@ def render_lp_density_job(
         if not png:
             _append_log(log_parts, task_id, f"[{task_id}] matplotlib 不可用，无法渲染 LP 分区图")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "matplotlib unavailable"}
-        _append_log(log_parts, task_id, f"[{task_id}] LP 分区密度图渲染完成，开始上传 MinIO…")
+        _append_log(log_parts, task_id, f"[{task_id}] LP 分区密度图渲染完成，开始上传到对象存储…")
 
         build_key = f"lightning/dist/lp/{distribution_id}/{task_id}.png"
         minio_storage.put_object(build_key, png, content_type="image/png")
@@ -628,9 +628,9 @@ def import_lightning_amplitude_job(
         })
 
         # ---- 2. 从 MinIO 下载原始文件 ----
-        log_parts.append(f"[{task_id}] 开始从 MinIO 下载源文件（{amp.source_object_key}）")
+        log_parts.append(f"[{task_id}] 开始从对象存储读取源文件（{amp.source_object_key}）")
         content = minio_storage.get_object(amp.source_object_key)
-        log_parts.append(f"[{task_id}] MinIO 下载完成，字节数：{len(content)}")
+        log_parts.append(f"[{task_id}] 对象存储读取完成，字节数：{len(content)}")
         text = _decode_text_bytes(content)
         log_parts.append(f"[{task_id}] 文件解码完成，文本行数：{len(text.splitlines())}")
 
@@ -863,7 +863,7 @@ def prepare_line_lightning_current_job(
             region_id=region_id,
             is_synthetic=is_synthetic,
         )
-        log_parts.append(f"[{task_id}] 开始执行回填计算（查询幅值记录→MinIO下载→解析→拟合→更新杆塔）...")
+        log_parts.append(f"[{task_id}] 开始执行回填计算（查询幅值记录→对象存储读取→解析→拟合→更新杆塔）...")
         result = _execute_line_lightning_current_backfill(
             db,
             payload,

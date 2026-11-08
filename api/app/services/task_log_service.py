@@ -35,7 +35,7 @@ def get_task_state_and_log_path(task_id: str) -> tuple[str | None, str | None]:
 
 def _get_log_path(task_id: str, timestamp: datetime | None = None) -> str:
     """
-    Generate the fixed MinIO log path: logs/{task_id}.log
+    Generate the fixed log object path: logs/{task_id}.log
     (idempotent overwrite; no longer date-based to avoid midnight rollover 404s)
     """
     return f"logs/{task_id}.log"
@@ -56,83 +56,48 @@ def _get_legacy_log_path(task_id: str, timestamp: datetime | None = None) -> str
     return f"logs/{year}/{month}/{day}/{task_id}.log"
 
 
+def _ensure_storage_enabled() -> None:
+    settings = get_settings()
+    if not settings.minio_enabled:
+        raise TaskLogServiceError("Object storage is not enabled")
+
+
 def upload_task_log(task_id: str, log_content: str) -> tuple[str, datetime]:
     """
-    Upload task execution log to MinIO at the fixed path logs/{task_id}.log.
+    Upload task execution log at the fixed path logs/{task_id}.log.
+
+    2026-11-08：改经 minio_storage 双后端（local 本机磁盘 / s3 对象存储）。
+    此前本模块用裸 boto3 直连阿里云 OSS，OSS 账号被禁（UserDisable）后
+    任务日志上传/读取全部失败——这正是「任务日志打开看不到」的根因之一。
     Returns: (log_path, uploaded_at)
     """
-    settings = get_settings()
-
-    if not settings.minio_enabled:
-        raise TaskLogServiceError("MinIO storage is not enabled")
-
-    try:
-        import boto3
-        from botocore.config import Config
-        from botocore.exceptions import BotoCoreError, ClientError
-    except ImportError as exc:
-        raise TaskLogServiceError("boto3 library is required for MinIO storage") from exc
+    _ensure_storage_enabled()
 
     uploaded_at = datetime.now(timezone.utc)
     log_path = _get_log_path(task_id, uploaded_at)
 
+    from . import minio_storage
+
     try:
-        client_config = Config(
-            connect_timeout=3.0,
-            read_timeout=10.0,
-            retries={"max_attempts": 2},
-            s3={"addressing_style": "virtual"},
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
+        minio_storage.put_object(
+            log_path,
+            log_content.encode("utf-8"),
+            content_type="text/plain; charset=utf-8",
         )
-
-        session = boto3.session.Session(
-            aws_access_key_id=settings.minio_access_key,
-            aws_secret_access_key=settings.minio_secret_key,
-        )
-
-        client = session.client(
-            "s3",
-            endpoint_url=settings.minio_endpoint,
-            region_name=settings.minio_region,
-            config=client_config,
-        )
-
-        # Upload log content as text file
-        client.put_object(
-            Bucket=settings.minio_bucket,
-            Key=log_path,
-            Body=log_content.encode("utf-8"),
-            ContentType="text/plain; charset=utf-8",
-        )
-
         return log_path, uploaded_at
-
-    except (BotoCoreError, ClientError) as exc:
-        raise TaskLogServiceError(f"Failed to upload log to MinIO: {exc}") from exc
     except Exception as exc:
-        raise TaskLogServiceError(f"Unexpected error during log upload: {exc}") from exc
+        raise TaskLogServiceError(f"Failed to upload task log: {exc}") from exc
 
 
 def get_task_log(task_id: str, log_date: datetime | None = None, log_path: str | None = None) -> tuple[str, str]:
     """
-    Retrieve task execution log from MinIO.
+    Retrieve task execution log from object storage (minio_storage 双后端).
     If an explicit log_path is provided, tries that first (primary seek path written
     back to celery_task_history.log_path at task end).
     If log_date is provided, tries the legacy date-based fallback path.
     Returns: (log_content, log_path)
     """
-    settings = get_settings()
-
-    if not settings.minio_enabled:
-        raise TaskLogServiceError("MinIO storage is not enabled")
-
-    try:
-        import boto3
-        from botocore.config import Config
-        from botocore.exceptions import BotoCoreError, ClientError
-    except ImportError as exc:
-        raise TaskLogServiceError("boto3 library is required for MinIO storage") from exc
+    _ensure_storage_enabled()
 
     candidates: list[str] = []
     if log_path:
@@ -143,59 +108,28 @@ def get_task_log(task_id: str, log_date: datetime | None = None, log_path: str |
     candidates.append(_get_log_path(task_id, log_date))
     candidates.append(_get_legacy_log_path(task_id, log_date))
 
-    try:
-        client_config = Config(
-            connect_timeout=3.0,
-            read_timeout=10.0,
-            retries={"max_attempts": 2},
-            s3={"addressing_style": "virtual"},
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-        )
+    from . import minio_storage
 
-        session = boto3.session.Session(
-            aws_access_key_id=settings.minio_access_key,
-            aws_secret_access_key=settings.minio_secret_key,
-        )
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            content = minio_storage.get_object(candidate)
+            return content.decode("utf-8"), candidate
+        except minio_storage.MinioObjectNotFoundError as exc:
+            last_error = exc
+            continue
+        except UnicodeDecodeError as exc:
+            raise TaskLogServiceError(f"Failed to read log content: {exc}") from exc
+        except Exception as exc:
+            raise TaskLogServiceError(f"Failed to retrieve task log: {exc}") from exc
 
-        client = session.client(
-            "s3",
-            endpoint_url=settings.minio_endpoint,
-            region_name=settings.minio_region,
-            config=client_config,
-        )
-
-        last_error: Exception | None = None
-        for candidate in candidates:
-            try:
-                response = client.get_object(
-                    Bucket=settings.minio_bucket,
-                    Key=candidate,
-                )
-                body = response.get("Body")
-                if body is None:
-                    raise TaskLogServiceError("Log file body is empty")
-                log_content = body.read().decode("utf-8")
-                return log_content, candidate
-            except ClientError as exc:
-                error_code = exc.response.get("Error", {}).get("Code", "")
-                if error_code in {"404", "NoSuchKey", "NotFound"}:
-                    last_error = exc
-                    continue
-                raise TaskLogServiceError(f"Failed to retrieve log from MinIO: {exc}") from exc
-
-        raise TaskLogNotFoundError(
-            f"Log not found for task {task_id} at any of {candidates}"
-        ) from last_error
-
-    except (BotoCoreError, UnicodeDecodeError) as exc:
-        raise TaskLogServiceError(f"Failed to read log content: {exc}") from exc
-    except Exception as exc:
-        raise TaskLogServiceError(f"Unexpected error during log retrieval: {exc}") from exc
+    raise TaskLogNotFoundError(
+        f"Log not found for task {task_id} at any of {candidates}"
+    ) from last_error
 
 
 def get_task_log_by_path(task_id: str, log_path_value: str) -> tuple[str, str]:
-    """Retrieve a task log from MinIO by an explicit path (no fallback inference)."""
+    """Retrieve a task log by an explicit path (no fallback inference)."""
     return get_task_log(task_id, log_path=log_path_value)
 
 
@@ -288,60 +222,18 @@ def list_task_logs(task_id: str) -> list[str]:
     List all available logs for a task across all dates.
     Returns: list of log paths
     """
-    settings = get_settings()
+    _ensure_storage_enabled()
 
-    if not settings.minio_enabled:
-        raise TaskLogServiceError("MinIO storage is not enabled")
-
-    try:
-        import boto3
-        from botocore.config import Config
-        from botocore.exceptions import BotoCoreError, ClientError
-    except ImportError as exc:
-        raise TaskLogServiceError("boto3 library is required for MinIO storage") from exc
+    from . import minio_storage
 
     try:
-        client_config = Config(
-            connect_timeout=3.0,
-            read_timeout=10.0,
-            retries={"max_attempts": 2},
-            s3={"addressing_style": "virtual"},
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-        )
-
-        session = boto3.session.Session(
-            aws_access_key_id=settings.minio_access_key,
-            aws_secret_access_key=settings.minio_secret_key,
-        )
-
-        client = session.client(
-            "s3",
-            endpoint_url=settings.minio_endpoint,
-            region_name=settings.minio_region,
-            config=client_config,
-        )
-
-        # Search for all logs matching the task_id pattern
-        prefix = "logs/"
-        suffix = f"/{task_id}.log"
-
-        log_paths: list[str] = []
-        paginator = client.get_paginator("list_objects_v2")
-        pages = paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix)
-
-        for page in pages:
-            for item in page.get("Contents", []):
-                key = item.get("Key", "")
-                if key.endswith(suffix):
-                    log_paths.append(key)
-
-        return sorted(log_paths, reverse=True)  # Most recent first
-
-    except (BotoCoreError, ClientError) as exc:
-        raise TaskLogServiceError(f"Failed to list logs from MinIO: {exc}") from exc
+        keys = minio_storage.list_objects("logs/")
     except Exception as exc:
-        raise TaskLogServiceError(f"Unexpected error during log listing: {exc}") from exc
+        raise TaskLogServiceError(f"Failed to list task logs: {exc}") from exc
+
+    suffix = f"/{task_id}.log"
+    log_paths = [key for key in keys if key.endswith(suffix)]
+    return sorted(log_paths, reverse=True)  # Most recent first
 
 
 def cleanup_expired_task_logs(
@@ -352,77 +244,36 @@ def cleanup_expired_task_logs(
 ) -> int:
     """删除超过保留期的 ``logs/`` 前缀任务日志对象，返回被删对象数量。
 
-    - 分页遍历 ``logs/`` 前缀，按对象 ``LastModified`` 与 ``retain_days`` 判断是否超期
+    - 遍历 ``logs/`` 前缀，按对象 ``LastModified`` 与 ``retain_days`` 判断是否超期
     - ``dry_run=True`` 时仅统计不删除（用于生产先观察对象数量级）
     - ``now`` 仅用于测试注入时间点，默认取当前 UTC
     """
-    settings = get_settings()
-
-    if not settings.minio_enabled:
-        raise TaskLogServiceError("MinIO storage is not enabled")
+    _ensure_storage_enabled()
 
     if retain_days <= 0:
         return 0  # 0=永久保留，不清理
 
-    try:
-        import boto3
-        from botocore.config import Config
-        from botocore.exceptions import BotoCoreError, ClientError
-    except ImportError as exc:
-        raise TaskLogServiceError("boto3 library is required for MinIO storage") from exc
-
     if now is None:
         now = datetime.now(timezone.utc)
 
+    from . import minio_storage
+
     try:
-        client_config = Config(
-            connect_timeout=3.0,
-            read_timeout=10.0,
-            retries={"max_attempts": 2},
-            s3={"addressing_style": "virtual"},
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-        )
-
-        session = boto3.session.Session(
-            aws_access_key_id=settings.minio_access_key,
-            aws_secret_access_key=settings.minio_secret_key,
-        )
-
-        client = session.client(
-            "s3",
-            endpoint_url=settings.minio_endpoint,
-            region_name=settings.minio_region,
-            config=client_config,
-        )
-
-        cutoff = now - timedelta(days=retain_days)
-
-        prefix = "logs/"
-        deleted_count = 0
-
-        paginator = client.get_paginator("list_objects_v2")
-        pages = paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix)
-
-        for page in pages:
-            for item in page.get("Contents", []):
-                key = item.get("Key", "")
-                if not key:
-                    continue
-                last_modified = item.get("LastModified")
-                if last_modified is None:
-                    # 无时间戳时保守处理：跳过，避免误删
-                    continue
-                if last_modified >= cutoff:
-                    # 未过期，保留
-                    continue
-                if not dry_run:
-                    client.delete_object(Bucket=settings.minio_bucket, Key=key)
-                deleted_count += 1
-
-        return deleted_count
-
-    except (BotoCoreError, ClientError) as exc:
-        raise TaskLogServiceError(f"Failed to cleanup task logs from MinIO: {exc}") from exc
+        items = minio_storage.list_object_mtimes("logs/")
     except Exception as exc:
-        raise TaskLogServiceError(f"Unexpected error during task log cleanup: {exc}") from exc
+        raise TaskLogServiceError(f"Failed to list task logs for cleanup: {exc}") from exc
+
+    cutoff = now - timedelta(days=retain_days)
+    deleted_count = 0
+    for key, last_modified in items:
+        if last_modified >= cutoff:
+            # 未过期，保留
+            continue
+        if not dry_run:
+            try:
+                minio_storage.delete_object(key)
+            except Exception as exc:  # noqa: BLE001 —— 单个删除失败不阻断整体清理
+                continue
+        deleted_count += 1
+
+    return deleted_count

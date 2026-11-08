@@ -3,8 +3,6 @@ Basic unit tests for task log service.
 """
 from __future__ import annotations
 
-import sys
-
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -59,7 +57,7 @@ def test_upload_task_log_minio_disabled(mock_get_settings):
     with pytest.raises(TaskLogServiceError) as exc_info:
         upload_task_log("task-123", "log content")
 
-    assert "MinIO storage is not enabled" in str(exc_info.value)
+    assert "Object storage is not enabled" in str(exc_info.value)
 
 
 @patch("app.services.task_log_service.get_settings")
@@ -72,39 +70,23 @@ def test_get_task_log_minio_disabled(mock_get_settings):
     with pytest.raises(TaskLogServiceError) as exc_info:
         get_task_log("task-123")
 
-    assert "MinIO storage is not enabled" in str(exc_info.value)
+    assert "Object storage is not enabled" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
 # cleanup_expired_task_logs（LP-283：任务日志保留期清理）
-# boto3 在函数内惰性 import，因此通过 patch sys.modules 注入假 boto3
+# 2026-11-08 起实现走 minio_storage 双后端（local/s3），测试直接 patch 抽象层
 # ---------------------------------------------------------------------------
 def _make_settings():
     settings = MagicMock()
     settings.minio_enabled = True
-    settings.minio_access_key = "ak"
-    settings.minio_secret_key = "sk"
-    settings.minio_endpoint = "http://minio:9000"
-    settings.minio_region = "us-east-1"
-    settings.minio_bucket = "fquiz-files"
     return settings
 
 
-def _fake_paginator(pages):
-    paginator = MagicMock()
-    paginator.paginate.return_value = pages
-    return paginator
-
-
-def _patch_boto3():
-    fake_boto3 = MagicMock()
-    p = patch.dict(sys.modules, {"boto3": fake_boto3})
-    p.start()
-    return fake_boto3
-
-
 @patch("app.services.task_log_service.get_settings")
-def test_cleanup_expired_deletes_only_expired(mock_get_settings):
+@patch("app.services.minio_storage.delete_object")
+@patch("app.services.minio_storage.list_object_mtimes")
+def test_cleanup_expired_deletes_only_expired(mock_list, mock_delete, mock_get_settings):
     """Only objects older than retain_days are deleted; fresh objects are kept."""
     mock_get_settings.return_value = _make_settings()
 
@@ -114,102 +96,73 @@ def test_cleanup_expired_deletes_only_expired(mock_get_settings):
     last_modified_old = now - timedelta(days=40)
     last_modified_fresh = now - timedelta(days=5)
 
-    fake_boto3 = _patch_boto3()
-    client = MagicMock()
-    pages = [
-        {
-            "Contents": [
-                {"Key": old_key, "LastModified": last_modified_old},
-                {"Key": fresh_key, "LastModified": last_modified_fresh},
-            ]
-        }
+    mock_list.return_value = [
+        (old_key, last_modified_old),
+        (fresh_key, last_modified_fresh),
     ]
-    client.get_paginator.return_value = _fake_paginator(pages)
-    fake_boto3.session.Session.return_value.client.return_value = client
 
-    try:
-        deleted = cleanup_expired_task_logs(retain_days=30, now=now)
-    finally:
-        patch.stopall()
+    deleted = cleanup_expired_task_logs(retain_days=30, now=now)
 
     assert deleted == 1
-    client.delete_object.assert_called_once_with(Bucket="fquiz-files", Key=old_key)
-
-    called_keys = [call.kwargs["Key"] for call in client.delete_object.call_args_list]
-    assert called_keys == [old_key]
-    assert fresh_key not in called_keys
+    mock_delete.assert_called_once_with(old_key)
 
 
 @patch("app.services.task_log_service.get_settings")
-def test_cleanup_paginates_multiple_pages(mock_get_settings):
-    """分页遍历：多页对象都应被评估，最后一页超期对象同样被删。"""
+@patch("app.services.minio_storage.delete_object")
+@patch("app.services.minio_storage.list_object_mtimes")
+def test_cleanup_paginates_multiple_pages(mock_list, mock_delete, mock_get_settings):
+    """多页/多对象：全部对象都应被评估，超期对象同样被删。"""
     mock_get_settings.return_value = _make_settings()
 
     now = datetime(2026, 8, 9, 12, 0, 0, tzinfo=timezone.utc)
     old_1 = now - timedelta(days=100)
     old_2 = now - timedelta(days=60)
 
-    fake_boto3 = _patch_boto3()
-    client = MagicMock()
-    pages = [
-        {"Contents": [{"Key": "logs/a.log", "LastModified": old_1}]},
-        {"Contents": [{"Key": "logs/b.log", "LastModified": old_2}]},
+    mock_list.return_value = [
+        ("logs/a.log", old_1),
+        ("logs/b.log", old_2),
     ]
-    client.get_paginator.return_value = _fake_paginator(pages)
-    fake_boto3.session.Session.return_value.client.return_value = client
 
-    try:
-        deleted = cleanup_expired_task_logs(retain_days=30, now=now)
-    finally:
-        patch.stopall()
+    deleted = cleanup_expired_task_logs(retain_days=30, now=now)
 
     assert deleted == 2
-    # 分页必须只扫 logs/ 前缀
-    assert client.get_paginator.return_value.paginate.call_args.kwargs["Prefix"] == "logs/"
-    assert client.delete_object.call_count == 2
+    # 必须只扫 logs/ 前缀
+    assert mock_list.call_args.args[0] == "logs/"
+    assert mock_delete.call_count == 2
 
 
 @patch("app.services.task_log_service.get_settings")
 def test_cleanup_respects_retain_days_zero(mock_get_settings):
-    """retain_days=0 表示永久保留，直接返回 0，不触碰 MinIO。"""
+    """retain_days=0 表示永久保留，直接返回 0，不触碰对象存储。"""
     mock_get_settings.return_value = _make_settings()
 
-    fake_boto3 = _patch_boto3()
-    try:
+    with patch("app.services.minio_storage.list_object_mtimes") as mock_list:
         deleted = cleanup_expired_task_logs(retain_days=0)
-    finally:
-        patch.stopall()
 
     assert deleted == 0
-    fake_boto3.session.Session.assert_not_called()
+    mock_list.assert_not_called()
 
 
 @patch("app.services.task_log_service.get_settings")
-def test_cleanup_dry_run_does_not_delete(mock_get_settings):
+@patch("app.services.minio_storage.delete_object")
+@patch("app.services.minio_storage.list_object_mtimes")
+def test_cleanup_dry_run_does_not_delete(mock_list, mock_delete, mock_get_settings):
     """dry_run=True 时仅统计，不调用 delete_object。"""
     mock_get_settings.return_value = _make_settings()
 
     now = datetime(2026, 8, 9, 12, 0, 0, tzinfo=timezone.utc)
     old = now - timedelta(days=100)
-    fake_boto3 = _patch_boto3()
-    client = MagicMock()
-    client.get_paginator.return_value = _fake_paginator(
-        [{"Contents": [{"Key": "logs/a.log", "LastModified": old}]}]
-    )
-    fake_boto3.session.Session.return_value.client.return_value = client
+    mock_list.return_value = [("logs/a.log", old)]
 
-    try:
-        deleted = cleanup_expired_task_logs(retain_days=30, now=now, dry_run=True)
-    finally:
-        patch.stopall()
+    deleted = cleanup_expired_task_logs(retain_days=30, now=now, dry_run=True)
 
     assert deleted == 1
-    client.delete_object.assert_not_called()
+    mock_delete.assert_not_called()
 
 
 @patch("app.services.task_log_service.get_settings")
 def test_cleanup_minio_disabled(mock_get_settings):
-    """MinIO 未启用时抛 TaskLogServiceError。"""
+    """对象存储未启用时抛 TaskLogServiceError。"""
     settings = _make_settings()
     settings.minio_enabled = False
     mock_get_settings.return_value = settings
@@ -217,4 +170,4 @@ def test_cleanup_minio_disabled(mock_get_settings):
     with pytest.raises(TaskLogServiceError) as exc_info:
         cleanup_expired_task_logs(retain_days=30)
 
-    assert "MinIO storage is not enabled" in str(exc_info.value)
+    assert "Object storage is not enabled" in str(exc_info.value)
