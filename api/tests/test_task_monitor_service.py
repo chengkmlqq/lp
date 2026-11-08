@@ -366,7 +366,7 @@ class TestServerSidePagination:
                         return_value=(set(), {}),
                     ):
                         _build_overview(offset=20, limit=10, keyword="import")
-        mock_load.assert_called_once_with(offset=20, limit=10, keyword="import")
+        mock_load.assert_called_once_with(offset=20, limit=10, keyword="import", states=[])
 
     def test_keyword_filtered_total(self):
         """With a keyword, total is the filtered count returned by the counter."""
@@ -387,7 +387,7 @@ class TestServerSidePagination:
                         return_value=(set(), {}),
                     ):
                         result = _build_overview(keyword="import")
-        mock_count.assert_called_once_with(keyword="import")
+        mock_count.assert_called_once_with(keyword="import", states=[])
         assert result.total == 3
 
     def test_blank_keyword_normalized_to_none(self):
@@ -409,8 +409,56 @@ class TestServerSidePagination:
                         return_value=(set(), {}),
                     ):
                         _build_overview(keyword="   ")
-        mock_load.assert_called_once_with(offset=0, limit=10, keyword=None)
-        mock_count.assert_called_once_with(keyword=None)
+        mock_load.assert_called_once_with(offset=0, limit=10, keyword=None, states=[])
+        mock_count.assert_called_once_with(keyword=None, states=[])
+
+    def test_state_filter_forwarded_to_db_loaders(self):
+        """state="SUCCESS,FAILURE"（含未知值）规范化后转发给各 DB loader。"""
+        with patch(
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=[],
+        ) as mock_load:
+            with patch(
+                "app.services.task_monitor_service._count_db_task_history",
+                return_value=0,
+            ) as mock_count:
+                with patch(
+                    "app.services.task_monitor_service._load_state_bucket_items",
+                    return_value=[],
+                ) as mock_buckets:
+                    with patch(
+                        "app.services.task_monitor_service._load_queue_runtime_stats",
+                        return_value=(set(), {}),
+                    ) as mock_queue:
+                        _build_overview(state="success, FAILURE, bogus")
+        expected = ["SUCCESS", "FAILURE"]
+        mock_load.assert_called_once_with(offset=0, limit=10, keyword=None, states=expected)
+        mock_count.assert_called_once_with(keyword=None, states=expected)
+        mock_buckets.assert_called_once_with(keyword=None, states=expected)
+        mock_queue.assert_called_once_with(keyword=None, states=expected)
+
+    def test_state_filter_ignores_unknown_keys(self):
+        """全部为未知状态时不追加过滤条件（等价于不过滤）。"""
+        assert task_monitor_service._normalize_states("bogus,,x") == []
+        assert task_monitor_service._normalize_states(None) == []
+        with patch(
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=[],
+        ) as mock_load:
+            with patch(
+                "app.services.task_monitor_service._count_db_task_history",
+                return_value=0,
+            ):
+                with patch(
+                    "app.services.task_monitor_service._load_state_bucket_items",
+                    return_value=[],
+                ):
+                    with patch(
+                        "app.services.task_monitor_service._load_queue_runtime_stats",
+                        return_value=(set(), {}),
+                    ):
+                        _build_overview(state="bogus")
+        mock_load.assert_called_once_with(offset=0, limit=10, keyword=None, states=[])
 
     def test_keyword_condition_none_when_blank(self):
         assert task_monitor_service._keyword_condition(None) is None

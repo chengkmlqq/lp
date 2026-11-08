@@ -14,6 +14,7 @@ import {
   Input,
   Modal,
   Row,
+  Select,
   Space,
   Spin,
   Table,
@@ -48,6 +49,18 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 const TASK_MONITOR_TABLE_MIN_SCROLL_Y = 180;
 const TASK_MONITOR_TABLE_FALLBACK_RESERVE = 220;
+
+/** 状态过滤选项（与后端 STATE_LABELS 合法状态集一致，后端忽略未知值） */
+const TASK_STATE_FILTER_OPTIONS = [
+  "PENDING",
+  "RECEIVED",
+  "STARTED",
+  "SCHEDULED",
+  "RETRY",
+  "SUCCESS",
+  "FAILURE",
+  "REVOKED",
+] as const;
 
 /** Response type from /api/v1/admin/task-monitor/overview */
 type OverviewStateBucketItem = {
@@ -156,6 +169,8 @@ export default function AdminTaskMonitorPage() {
 
   const [pendingKeyword, setPendingKeyword] = useState("");
   const [taskKeyword, setTaskKeyword] = useState("");
+  const [pendingState, setPendingState] = useState<string | undefined>(undefined);
+  const [taskState, setTaskState] = useState<string | undefined>(undefined);
   const [searchVersion, setSearchVersion] = useState(0);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(TASK_MONITOR_TABLE_MIN_SCROLL_Y);
@@ -182,7 +197,7 @@ export default function AdminTaskMonitorPage() {
   }, []);
 
   const overviewQuery = useQuery({
-    queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword, searchVersion],
+    queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword, taskState, searchVersion],
     enabled: Boolean(user) && canRead,
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -191,6 +206,9 @@ export default function AdminTaskMonitorPage() {
       });
       if (taskKeyword.trim()) {
         params.set("keyword", taskKeyword.trim());
+      }
+      if (taskState) {
+        params.set("state", taskState);
       }
       const response = await fetchWithAuth(`/api/v1/admin/task-monitor/overview?${params.toString()}`);
       if (!response.ok) {
@@ -366,8 +384,19 @@ export default function AdminTaskMonitorPage() {
   const handleSearch = useCallback(() => {
     setSearchVersion((prev) => prev + 1);
     setTaskKeyword(pendingKeyword);
+    setTaskState(pendingState);
     resetTaskListPagination();
-  }, [pendingKeyword, resetTaskListPagination]);
+  }, [pendingKeyword, pendingState, resetTaskListPagination]);
+
+  // 状态过滤即时生效：Select 变更（含清除）即应用并重置分页
+  const handleStateChange = useCallback(
+    (value: string | undefined) => {
+      setPendingState(value);
+      setTaskState(value);
+      resetTaskListPagination();
+    },
+    [resetTaskListPagination],
+  );
 
   const overviewErrorMessage =
     overviewQuery.error instanceof Error
@@ -668,6 +697,20 @@ export default function AdminTaskMonitorPage() {
                 />
               </Form.Item>
 
+              <Form.Item label={t("状态")} style={{ marginBottom: 0 }}>
+                <Select
+                  allowClear
+                  style={{ minWidth: 132 }}
+                  placeholder={t("全部状态")}
+                  value={taskState}
+                  onChange={handleStateChange}
+                  options={TASK_STATE_FILTER_OPTIONS.map((state) => ({
+                    value: state,
+                    label: getTaskStateDisplay(state, t).label,
+                  }))}
+                />
+              </Form.Item>
+
               <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                 <Button
                   htmlType="button"
@@ -693,6 +736,20 @@ export default function AdminTaskMonitorPage() {
                     setPendingKeyword(event.target.value);
                   }}
                   onPressEnter={handleSearch}
+                />
+              </Form.Item>
+
+              <Form.Item label={t("状态")} style={{ marginBottom: 0 }}>
+                <Select
+                  allowClear
+                  style={{ minWidth: 132 }}
+                  placeholder={t("全部状态")}
+                  value={taskState}
+                  onChange={handleStateChange}
+                  options={TASK_STATE_FILTER_OPTIONS.map((state) => ({
+                    value: state,
+                    label: getTaskStateDisplay(state, t).label,
+                  }))}
                 />
               </Form.Item>
 

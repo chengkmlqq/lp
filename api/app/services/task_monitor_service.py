@@ -50,6 +50,28 @@ TASK_NAME_LABELS = {
 logger = logging.getLogger(__name__)
 
 
+def _normalize_states(states: str | None) -> list[str]:
+    """Parse a comma-separated state filter into a list of valid state keys.
+
+    Unknown keys are ignored; returns [] when nothing valid remains.
+    """
+    if not states:
+        return []
+    valid = set(STATE_LABELS.keys())
+    picked = []
+    for raw in states.split(","):
+        key = raw.strip().upper()
+        if key and key in valid and key not in picked:
+            picked.append(key)
+    return picked
+
+
+def _state_condition(states: list[str]):
+    if not states:
+        return None
+    return TaskHistory.state.in_(states)
+
+
 def _keyword_condition(keyword: str | None):
     """Build a SQLAlchemy filter condition for keyword search.
 
@@ -119,6 +141,7 @@ def _load_db_task_history(
     offset: int,
     limit: int,
     keyword: str | None = None,
+    states: list[str] | None = None,
 ) -> list[TaskMonitorTaskItem]:
     """Load a page of task records from PostgreSQL. Returns empty list on DB errors."""
     try:
@@ -128,6 +151,9 @@ def _load_db_task_history(
             cond = _keyword_condition(keyword)
             if cond is not None:
                 query = query.filter(cond)
+            state_cond = _state_condition(states or [])
+            if state_cond is not None:
+                query = query.filter(state_cond)
             records = (
                 query.order_by(desc(TaskHistory.create_date), TaskHistory.task_id)
                 .offset(offset)
@@ -142,8 +168,8 @@ def _load_db_task_history(
         return []
 
 
-def _count_db_task_history(keyword: str | None = None) -> int:
-    """Count task history records (optionally filtered by keyword). Returns 0 on DB errors."""
+def _count_db_task_history(keyword: str | None = None, states: list[str] | None = None) -> int:
+    """Count task history records (optionally filtered by keyword/states). Returns 0 on DB errors."""
     try:
         db = SessionLocal()
         try:
@@ -151,6 +177,9 @@ def _count_db_task_history(keyword: str | None = None) -> int:
             cond = _keyword_condition(keyword)
             if cond is not None:
                 stmt = stmt.where(cond)
+            state_cond = _state_condition(states or [])
+            if state_cond is not None:
+                stmt = stmt.where(state_cond)
             return int(db.scalar(stmt) or 0)
         finally:
             db.close()
@@ -159,7 +188,7 @@ def _count_db_task_history(keyword: str | None = None) -> int:
         return 0
 
 
-def _load_state_bucket_items(keyword: str | None = None) -> list[TaskMonitorBucketItem]:
+def _load_state_bucket_items(keyword: str | None = None, states: list[str] | None = None) -> list[TaskMonitorBucketItem]:
     """Aggregate state buckets over the full filtered task set via SQL GROUP BY."""
     try:
         db = SessionLocal()
@@ -168,6 +197,9 @@ def _load_state_bucket_items(keyword: str | None = None) -> list[TaskMonitorBuck
             cond = _keyword_condition(keyword)
             if cond is not None:
                 query = query.filter(cond)
+            state_cond = _state_condition(states or [])
+            if state_cond is not None:
+                query = query.filter(state_cond)
             rows = query.group_by(TaskHistory.state).all()
             counts = {state: count for state, count in rows}
             return [
@@ -181,7 +213,10 @@ def _load_state_bucket_items(keyword: str | None = None) -> list[TaskMonitorBuck
         return []
 
 
-def _load_queue_runtime_stats(keyword: str | None = None) -> tuple[set[str], dict[str, int]]:
+def _load_queue_runtime_stats(
+    keyword: str | None = None,
+    states: list[str] | None = None,
+) -> tuple[set[str], dict[str, int]]:
     """Aggregate queue runtime stats over the full filtered task set.
 
     Returns (queue_names, active_counts) where active_counts[queue] is the
@@ -198,6 +233,9 @@ def _load_queue_runtime_stats(keyword: str | None = None) -> tuple[set[str], dic
             cond = _keyword_condition(keyword)
             if cond is not None:
                 query = query.filter(cond)
+            state_cond = _state_condition(states or [])
+            if state_cond is not None:
+                query = query.filter(state_cond)
             rows = query.group_by(TaskHistory.queue_name, TaskHistory.state).all()
             queue_names: set[str] = set()
             active_counts: dict[str, int] = {}
@@ -269,20 +307,22 @@ def build_task_monitor_overview(
     offset: int,
     limit: int,
     keyword: str | None = None,
+    state: str | None = None,
 ) -> TaskMonitorOverviewResponse:
     """Build the task monitor overview purely from the task history database.
 
     Server-side pagination: the task list is a stable-sorted page (create_date
-    desc, task_id) fetched with offset/limit; keyword filtering happens in SQL.
-    total is the filtered count. Aggregates (state buckets, queue stats) are
-    computed over the full filtered set, independent of the page slice.
+    desc, task_id) fetched with offset/limit; keyword/state filtering happens
+    in SQL. total is the filtered count. Aggregates (state buckets, queue
+    stats) are computed over the full filtered set, independent of the page.
     """
     keyword = (keyword or "").strip() or None
+    picked_states = _normalize_states(state)
 
-    db_tasks = _load_db_task_history(offset=offset, limit=limit, keyword=keyword)
-    total = _count_db_task_history(keyword=keyword)
+    db_tasks = _load_db_task_history(offset=offset, limit=limit, keyword=keyword, states=picked_states)
+    total = _count_db_task_history(keyword=keyword, states=picked_states)
 
-    queue_names, queue_active_counts = _load_queue_runtime_stats(keyword=keyword)
+    queue_names, queue_active_counts = _load_queue_runtime_stats(keyword=keyword, states=picked_states)
     pending_counts = _safe_queue_pending_counts(queue_names)
 
     queues = sorted(
@@ -309,7 +349,7 @@ def build_task_monitor_overview(
         workers_online=0,
         worker_concurrency_total=0,
         queue_pending_total=sum(item.pending_count for item in queues),
-        task_state_buckets=_load_state_bucket_items(keyword=keyword),
+        task_state_buckets=_load_state_bucket_items(keyword=keyword, states=picked_states),
         workers=[],
         queues=queues,
         tasks=db_tasks,

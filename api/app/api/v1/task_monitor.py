@@ -16,6 +16,7 @@ def get_task_monitor_overview(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     keyword: str | None = Query(default=None, max_length=200),
+    state: str | None = Query(default=None, max_length=200),
     _: CurrentUser = Depends(
         require_any_permission(
             "celery.read",
@@ -27,6 +28,7 @@ def get_task_monitor_overview(
         offset=offset,
         limit=limit,
         keyword=keyword,
+        state=state,
     )
 
 
