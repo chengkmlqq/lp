@@ -1497,6 +1497,15 @@ def execute_job(job_id: str) -> None:
         if not job:
             return
 
+        # ⚠️ 已取消任务不再执行（2026-11-08）：cancel_job 对 queued 任务是
+        # celery revoke(terminate=False)，而 revoke 标记只存在于 worker 内存
+        # （未配 worker_state_db），worker 一旦重启就丢失 —— 队列里残留的消息
+        # 会被重新取出并把 cancelled 翻回 running。这里以 DB 状态为准做终态拦截，
+        # 让「取消」在重启/重投场景下也成立。
+        if job.status == "cancelled":
+            logger.info("[fl-analysis] 任务 %s 已取消，跳过队列中的残留消息", job.id)
+            return
+
         # ⚠️ 幂等防重（2026-09-18 修复）：execute_job 可能被 Redis visibility_timeout
         # 超时重投重复触发（同 task 双执行）。若 job 已有未结束的 active run（running/queued），
         # 说明已有 worker 正在执行本任务，直接返回忽略重投，避免结果表翻倍。
