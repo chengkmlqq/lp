@@ -514,11 +514,10 @@ def inspect_package(
       E002 legacy 形态缺标准 .dat
 
     警告级（放行，但会展示给人工）：
-      W001 行尾带 `$$`（LP 会规范化）
-      W002 整数值无小数点（LP 会补点）
-      W003 中间变量超过 List31 上限（LP 会内联）
-      W011 work.atp 引用的 pch 路径目录与包内不一致（LP 按文件名物化）
-      W012 $PARAMETER 段有别名引用不到中间变量（原 E013；LP 渲染时按 C# 公式写值）
+      W011 work.atp 引用的 pch 路径目录与包内不一致（LP 按文件名物化，但要确认 pch 属于本工程）
+
+    说明：参数段里"平台会自己修"的四类（`$$` 行尾注释、整数无小数点、中间变量超限、
+    别名缺中间变量定义）不再上报，见下方 2026-11-08 注释。
     """
     lower_map = _lower_index(members.keys())
     entry_key = lower_map.get(entry_name.lower())
@@ -634,47 +633,15 @@ def inspect_package(
                 entry_key,
             )
 
-    # ── W012 / W001 / W002 / W003 参数段 ──
-    # 2026-11-04：原 E013（error）降级为 W012（warning）。
-    # `NAME=NAME_I` 且缺 `NAME_I=值` 不是模型残缺，而是 ATPDraw 7.x 导出的**常态**：
-    # 实测 C# 生产模型库 278/278 个老版 work.atp 都是这个形态，C# 跑得通是因为
-    # 它按特征表/公式把真实值直接覆写进 work.atp，从不解析 $PARAMETER 定义。
-    # LP 侧同样如此——检测到等号别名形态就走 render_csharp_equality_template，
-    # 按 C# 公式（RER001/RELENS/RELE01~12/REHG/REHC…）整行改写成带小数点的数值，
-    # 别名在引擎读到之前就已消失。故预检这一项不能作为拒收依据；
-    # 真正的兜底在运行前：atp_asset_test_service.stage_materialize 会在
-    # 渲染 + 槽位覆盖 + 规范化之后复查 unresolved，仍有残留才拦截并报具体参数名。
-    if section.unresolved:
-        preview = "；".join(f"{n} ← 缺 {r}" for n, r in section.unresolved[:6])
-        result.add(
-            "W012", "warning",
-            f"$PARAMETER 段有 {len(section.unresolved)} 个参数是别名引用形态（缺中间变量定义）：{preview}",
-            "这是 ATPDraw 导出 ATP 的常见形态，C# 与 LP 都在运行前用公式把真实值写进参数段，"
-            "不影响计算；若某个别名既算不出值又被 TACS 引用，仿真前会报出具体参数名，无需在此人工修改",
-            entry_key,
-        )
-    if section.dollar_lines:
-        result.add(
-            "W001", "warning",
-            f"$PARAMETER 段有 {section.dollar_lines} 行带行尾 `$$`（7.2+ 新增的注释语法）",
-            f"{ENGINE_NOTE}，带 `$$` 会报 FMT 错误。LP 仿真时会自动去掉，无需人工修改",
-            entry_key,
-        )
-    if section.bare_int_values:
-        result.add(
-            "W002", "warning",
-            f"$PARAMETER 段有 {section.bare_int_values} 个整数值没写小数点",
-            "无小数点会被引擎按整数格式解析并报 `KONST = N`。LP 仿真时会自动补点，"
-            "但若其他工具也用这份模型，建议在源模板里补成 `1000.`",
-            entry_key,
-        )
-    if len(section.intermediates) > 10:
-        result.add(
-            "W003", "warning",
-            f"$PARAMETER 段有 {len(section.intermediates)} 条中间变量（引擎 List31 上限 10）",
-            "LP 仿真时会把中间变量内联进别名后再写盘，不会触发 CIDEAL；无需人工处理",
-            entry_key,
-        )
+    # ── W001 / W002 / W003 参数段 ──
+    # 2026-11-08：参数段的 W001/W002/W003/W012 全部不再提示。
+    #   W012 `NAME=NAME_I` 且缺 `NAME_I=值` 的别名形态 —— ATPDraw 7.x 导出常态
+    #        （C# 生产库 278/278 个老版 work.atp 都这样）；LP 检测到等号别名就走
+    #        render_csharp_equality_template 按 C# 公式整行改写成数值，引擎读到之前别名已消失
+    #   W001 行尾 `$$` / W002 整数无小数点 / W003 中间变量超 List31 —— LP 写盘前统一规范化
+    # 这四条都属于"平台自己会修、人不用动手"，展示出来只会淹没真正需要处理的问题；
+    # 兜底都还在运行前：stage_materialize 渲染 + 槽位覆盖 + 规范化后复查 unresolved，
+    # 仍有残留才拦截并报出具体参数名。原始统计仍留在 stats 里（param_* 字段）供排查。
 
     return result
 
