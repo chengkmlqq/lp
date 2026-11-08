@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import math
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -603,21 +604,18 @@ def retry_lightning_amplitude(
 
 
 def delete_lightning_amplitude(db: Session, amplitude_id: str) -> dict[str, bool]:
-    """删除雷电流幅值记录，并同步删除 MinIO 上的源文件。"""
+    """删除雷电流幅值记录；关联的源文件对象在后台线程清理，接口立即返回。"""
     amp = get_lightning_amplitude_by_id(db, amplitude_id)
     if not amp:
         return {"success": False}
-    from ..services import minio_storage
-    if amp.source_object_key:
-        try:
-            minio_storage.delete_object(amp.source_object_key)
-        except Exception:
-            pass
+    object_keys = [amp.source_object_key]
+    file_name = amp.source_file_name
     db.delete(amp)
     db.commit()
+    _purge_objects_in_background(object_keys)
     _publish_lightning_change(
         "lightning.deleted",
-        {"event_id": amp.id, "message": f"删除雷电流幅值记录：{amp.source_file_name}"},
+        {"event_id": amp.id, "message": f"删除雷电流幅值记录：{file_name}"},
         topic=LIGHTNING_AMPLITUDE_TOPIC,
         requires_refetch=["/api/v1/lightning-currents/amplitudes"],
     )
@@ -2247,23 +2245,45 @@ def retry_lightning_distribution(
     )
 
 
-def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str, bool]:
-    """删除地闪分布记录，并同步删除 MinIO 上的原始文件与密度图对象。"""
-    dist = get_lightning_distribution_by_id(db, distribution_id)
-    if not dist:
-        return {"success": False}
-    from ..services import minio_storage
-    for key in (dist.source_object_key, dist.image_object_key, dist.thumbnail_key, dist.lp_image_object_key, dist.circle_image_object_key):
-        if key:
+def _purge_objects_in_background(object_keys: list[str | None]) -> None:
+    """后台清理 OSS/MinIO 对象（best effort，失败静默）。
+
+    对象删除是跨公网的同步请求（且历史上 DeleteObject 曾被 OSS UserDisable 拒绝，
+    单次失败耗时可达秒级）；若在删除接口里串行执行会让 API 卡顿数秒。
+    这里放到后台线程执行，API 立即返回。
+    """
+    keys = [key for key in object_keys if key]
+
+    def _run() -> None:
+        from ..services import minio_storage
+        for key in keys:
             try:
                 minio_storage.delete_object(key)
             except Exception:
                 pass
+
+    threading.Thread(target=_run, name="lightning-object-cleanup", daemon=True).start()
+
+
+def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str, bool]:
+    """删除地闪分布记录；关联的对象文件在后台线程清理，接口立即返回。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        return {"success": False}
+    object_keys = [
+        dist.source_object_key,
+        dist.image_object_key,
+        dist.thumbnail_key,
+        dist.lp_image_object_key,
+        dist.circle_image_object_key,
+    ]
+    file_name = dist.source_file_name
     db.delete(dist)
     db.commit()
+    _purge_objects_in_background(object_keys)
     _publish_lightning_change(
         "lightning.deleted",
-        {"event_id": distribution_id, "message": f"删除地闪分布记录：{dist.source_file_name}"},
+        {"event_id": distribution_id, "message": f"删除地闪分布记录：{file_name}"},
         topic=LIGHTNING_DISTRIBUTION_TOPIC,
         requires_refetch=["/api/v1/lightning-currents/distributions"],
     )

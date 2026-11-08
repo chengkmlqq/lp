@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -48,11 +49,32 @@ class MinioObjectNotFoundError(MinioStorageError):
     pass
 
 
+# boto3 client 线程安全，可全局复用。此前每次调用都重建客户端（含 TLS 握手），
+# 一次删除最多 5 个对象串行 5 次握手，跨公网访问 OSS 时延迟成倍放大。
+_client_cache: dict[tuple[str, str, str, str, str], Any] = {}
+_client_cache_lock = threading.Lock()
+
+
 def _build_client() -> Any:
-    """构造一个指向 MinIO 的 boto3 S3 客户端（与 task_log_service 同套路）。"""
+    """构造一个指向 MinIO 的 boto3 S3 客户端（与 task_log_service 同套路）。
+
+    同一配置（endpoint/凭据/region/bucket）下复用已建客户端，避免重复握手。
+    """
     settings = get_settings()
     if not settings.minio_enabled:
         raise MinioStorageError("MinIO storage is not enabled")
+
+    cache_key = (
+        settings.minio_endpoint,
+        settings.minio_access_key,
+        settings.minio_secret_key,
+        settings.minio_region,
+        settings.minio_bucket,
+    )
+    with _client_cache_lock:
+        cached = _client_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
     try:
         import boto3
@@ -75,12 +97,15 @@ def _build_client() -> Any:
         aws_access_key_id=settings.minio_access_key,
         aws_secret_access_key=settings.minio_secret_key,
     )
-    return session.client(
+    client = session.client(
         "s3",
         endpoint_url=settings.minio_endpoint,
         region_name=settings.minio_region,
         config=client_config,
     )
+    with _client_cache_lock:
+        _client_cache[cache_key] = client
+    return client
 
 
 def put_object(key: str, data: bytes, content_type: str | None = None) -> str:
