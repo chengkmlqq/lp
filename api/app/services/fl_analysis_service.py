@@ -220,6 +220,7 @@ def serialize_job(
         "line_id": item.line_id,
         "line_code": line.code if line else None,
         "line_name": line.name if line else None,
+        "voltage_kv": line.voltage_kv if line else None,
         "job_name": item.job_name,
         "job_type": item.job_type,
         "source_kind": item.source_kind,
@@ -311,6 +312,8 @@ def list_jobs(
     job_types: list[str] | None = None,
     owner_id: str | None = None,
     keyword: str | None = None,
+    voltage_kv: float | None = None,
+    tower_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> FlAnalysisJobListResponse:
@@ -336,6 +339,13 @@ def list_jobs(
         total_stmt = total_stmt.where(FlAnalysisJob.job_type.in_(normalized_types))
 
     normalized = (keyword or "").strip()
+    # 2026-11-08：列表页电压等级/塔形过滤（防雷计算页筛选栏）。
+    # 电压等级 → 关联线路 voltage_kv；塔形 → 任务快照里含该塔形即命中
+    # （一条线路可能混多塔形，任务粒度按"包含"语义过滤）。
+    needs_line_join = bool(normalized) or voltage_kv is not None
+    if needs_line_join:
+        stmt = stmt.join(Line, FlAnalysisJob.line_id == Line.id)
+        total_stmt = total_stmt.join(Line, FlAnalysisJob.line_id == Line.id)
     if normalized:
         like = f"%{normalized}%"
         predicate = or_(
@@ -343,10 +353,20 @@ def list_jobs(
             Line.code.ilike(like),
             Line.name.ilike(like),
         )
-        stmt = stmt.join(Line, FlAnalysisJob.line_id == Line.id)
-        total_stmt = total_stmt.join(Line, FlAnalysisJob.line_id == Line.id)
         stmt = stmt.where(predicate)
         total_stmt = total_stmt.where(predicate)
+    if voltage_kv is not None:
+        stmt = stmt.where(Line.voltage_kv == voltage_kv)
+        total_stmt = total_stmt.where(Line.voltage_kv == voltage_kv)
+    normalized_tower_type = (tower_type or "").strip()
+    if normalized_tower_type:
+        tower_type_predicate = FlAnalysisJob.id.in_(
+            select(FlAnalysisTowerSnapshot.job_id).where(
+                FlAnalysisTowerSnapshot.tower_type == normalized_tower_type
+            )
+        )
+        stmt = stmt.where(tower_type_predicate)
+        total_stmt = total_stmt.where(tower_type_predicate)
 
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(

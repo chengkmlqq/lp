@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
   Segmented,
+  Select,
   Space,
   Typography,
 } from "antd";
@@ -58,6 +59,19 @@ const FL_ANALYSIS_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const FL_ANALYSIS_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const FL_ANALYSIS_TABLE_BOTTOM_GAP = 8;
 
+// 塔形筛选选项：code 与杆塔快照 tower_type / ATP 模型编码一致，
+// 中文口径与任务详情面板（job-detail-panel 的 ATP_TOWER_TEXT）保持一致
+const FL_TOWER_TYPE_OPTIONS = [
+  { value: "guxing", label: "鼓型" },
+  { value: "maotou", label: "猫头型" },
+  { value: "ganzi", label: "干字型" },
+  { value: "jiubei", label: "酒杯型" },
+  { value: "menxing", label: "门型" },
+  { value: "shangzi", label: "上字型" },
+  { value: "sihuita", label: "四回塔" },
+  { value: "zhiliu", label: "直流塔" },
+];
+
 export default function AdminFlAnalysisPage() {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -71,6 +85,9 @@ export default function AdminFlAnalysisPage() {
   const [createModalEpoch, setCreateModalEpoch] = useState(0);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
+  // 电压等级/塔形筛选：下拉选择即生效（自动回第 1 页并强制请求），与关键字（需点查询）不同
+  const [voltageFilter, setVoltageFilter] = useState<number | null>(null);
+  const [towerTypeFilter, setTowerTypeFilter] = useState<string | null>(null);
   // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
   // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
   const [searchNonce, setSearchNonce] = useState(0);
@@ -130,9 +147,15 @@ export default function AdminFlAnalysisPage() {
     if (keyword.trim()) {
       params.set("keyword", keyword.trim());
     }
+    if (voltageFilter != null) {
+      params.set("voltage_kv", String(voltageFilter));
+    }
+    if (towerTypeFilter) {
+      params.set("tower_type", towerTypeFilter);
+    }
     const query = params.toString();
     return `/api/v1/fl-analysis/jobs${query ? `?${query}` : ""}`;
-  }, [keyword, paginationCurrent, paginationPageSize]);
+  }, [keyword, paginationCurrent, paginationPageSize, voltageFilter, towerTypeFilter]);
 
   const jobsQuery = useQuery({
     queryKey: [jobsListPath, searchNonce],
@@ -377,6 +400,31 @@ export default function AdminFlAnalysisPage() {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setSearchNonce((n) => n + 1);
   };
+
+  // 下拉筛选（电压等级/塔形）变化：立即生效——回第 1 页 + 强制请求。
+  // 与关键字不同（需点「查询」提交），下拉选择语义明确，即时反馈体验更好。
+  const handleVoltageFilterChange = (value: number | null) => {
+    setVoltageFilter(value ?? null);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setSearchNonce((n) => n + 1);
+  };
+
+  const handleTowerTypeFilterChange = (value: string | null) => {
+    setTowerTypeFilter(value ?? null);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setSearchNonce((n) => n + 1);
+  };
+
+  // 电压等级选项：从线路列表推导（去重升序），任务只可能属于这些线路
+  const voltageOptions = useMemo(() => {
+    const levels = new Set<number>();
+    for (const item of linesQuery.data?.items ?? []) {
+      if (item.voltage_kv != null) {
+        levels.add(item.voltage_kv);
+      }
+    }
+    return [...levels].sort((a, b) => a - b).map((v) => ({ value: v, label: `${v} kV` }));
+  }, [linesQuery.data?.items]);
 
   const createJobMutation = useMutation({
     mutationFn: async (values: CreateJobFormValues) => createAndStartJob(buildCreateJobPayload(values)),
@@ -726,6 +774,26 @@ export default function AdminFlAnalysisPage() {
               <div className="modo-page-card admin-fl-analysis-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
+                    <Form.Item label={t("电压等级")} style={{ marginBottom: 0 }}>
+                      <Select
+                        value={voltageFilter}
+                        allowClear
+                        placeholder={t("全部电压")}
+                        options={voltageOptions}
+                        onChange={handleVoltageFilterChange}
+                        style={{ width: 120 }}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("塔形")} style={{ marginBottom: 0 }}>
+                      <Select
+                        value={towerTypeFilter}
+                        allowClear
+                        placeholder={t("全部塔形")}
+                        options={FL_TOWER_TYPE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+                        onChange={handleTowerTypeFilterChange}
+                        style={{ width: 130 }}
+                      />
+                    </Form.Item>
                     <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={keywordInput}

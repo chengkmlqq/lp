@@ -894,6 +894,7 @@ export type FlAnalysisJobSummary = {
   line_id: string;
   line_code: string | null;
   line_name: string | null;
+  voltage_kv: number | null;
   job_name: string | null;
   job_type: string;
   source_kind: string;

@@ -84,6 +84,8 @@ class FlAnalysisJobSummary(BaseModel):
     create_user: str | None = None
     update_date: datetime
     update_user: str | None = None
+    # 2026-11-08：列表页按电压等级过滤/展示（来自关联线路）
+    voltage_kv: float | None = None
 
 
 class FlAnalysisJobDetail(FlAnalysisJobSummary):

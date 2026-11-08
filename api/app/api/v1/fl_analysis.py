@@ -87,6 +87,9 @@ def get_fl_analysis_jobs(
     # 2026-09-30：多值过滤（逗号分隔），防雷改造页传 mitigation,scenario,report
     job_types: str | None = Query(default=None, alias="job_types"),
     keyword: str | None = Query(default=None, max_length=200),
+    # 2026-11-08：列表页筛选栏——按电压等级/塔形过滤
+    voltage_kv: float | None = Query(default=None),
+    tower_type: str | None = Query(default=None, max_length=50),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
@@ -95,7 +98,11 @@ def get_fl_analysis_jobs(
     type_list = [item.strip() for item in (job_types or "").split(",") if item.strip()]
     # 2026-09-30：用户级隔离——admin 全量，普通用户只看自己提交的任务
     owner_id = _fl_job_visible_owner(current_user)
-    return list_jobs(db, line_id=line_id, status_filter=status_filter, job_types=type_list or None, owner_id=owner_id, keyword=keyword, limit=limit, offset=offset)
+    return list_jobs(
+        db, line_id=line_id, status_filter=status_filter, job_types=type_list or None,
+        owner_id=owner_id, keyword=keyword, voltage_kv=voltage_kv, tower_type=tower_type,
+        limit=limit, offset=offset,
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=FlAnalysisJobDetail)
