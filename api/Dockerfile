@@ -18,6 +18,9 @@ RUN chmod +x /docker-entrypoint.sh
 COPY static/wine /app/static/wine
 
 COPY app ./app
+# 运维脚本（如 prune_atp_derived_files.py：清理资产里的 .lib/.pch 派生件）。
+# 容器内执行：docker exec -w /app -e PYTHONPATH=/app <ctr> python /app/scripts/<script>.py
+COPY scripts ./scripts
 # 录波 PDF 提取器（extract_fault_report.py）及其依赖清单：镜像内需与 app 同级存在，
 # 否则 /extract-wave 与判别任务会报「录波 PDF 提取器不存在」。
 COPY 录波 ./录波
