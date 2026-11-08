@@ -11,10 +11,11 @@
   说明 dat 是唯一信息源，lib/pch 纯派生，删掉不会丢信息。
 
 保留规则（按 work.atp 形态判定）：
-  legacy（$INCLUDE *.lib）: work.atp + long/short/dahao/xiaohao.dat (+ work.acp)
-  insert（$INSERT *.pch）  : work.atp + 被引用的 pch + 4 个标准 dat (+ work.acp)
+  legacy（$INCLUDE *.lib）: work.atp + long/short/dahao/xiaohao.dat
+  insert（$INSERT *.pch）  : work.atp + 被引用的 pch + 4 个标准 dat
   embed/mixed              : work.atp + 4 个标准 dat + 现有 pch（保守，不动 pch）
-  work.acp 是 ATPDraw 工程源文件，不参与计算，默认保留（PURGE_ACP=1 可一起删）。
+  work.acp 是 ATPDraw 工程源文件，不参与计算；导入校验已不再接收 .acp，
+  存量也一并清掉（KEEP_ACP=1 可保留，用于仍要拿回 ATPDraw 编辑的场合）。
 
 用法（容器内执行）：
   docker exec -w /app -e PYTHONPATH=/app lp-wine-worker \
@@ -39,7 +40,7 @@ ROOT = Path(os.environ.get("ATP_ASSET_ROOT", "/app/data/vfs/atp-assets"))
 BACKUP_ROOT = Path(os.environ.get("ATP_BACKUP_ROOT", "/app/data/backup_atp_cleanup"))
 APPLY = "--apply" in sys.argv
 SKIP = {x for x in os.environ.get("SKIP_KV", "").split(",") if x}
-PURGE_ACP = os.environ.get("PURGE_ACP", "") == "1"
+PURGE_ACP = os.environ.get("KEEP_ACP", "") != "1"
 
 INS_RE = re.compile(r"^\s*\$INSERT\s*,?\s*(.+)$", re.I | re.M)
 INC_RE = re.compile(r"^\s*\$INCLUDE\s*,?\s*(.+)$", re.I | re.M)
