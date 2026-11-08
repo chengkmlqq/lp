@@ -24,6 +24,7 @@ import {
   ApartmentOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   FolderFilled,
   InboxOutlined,
@@ -49,7 +50,7 @@ import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
+import { ApiError, downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/lib/api";
 import type { AtpAssetListResponse, AtpAssetSummary, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
@@ -802,6 +803,24 @@ export default function AtpModelsPage() {
 
   const activeFilter = useMemo(() => parseAtpTreeKey(selectedTreeKey), [selectedTreeKey]);
 
+  // 按当前过滤条件（电压等级/塔形）打包下载已启用模型（zip + manifest 清单）
+  const [exportLoading, setExportLoading] = useState(false);
+  const handleExportModels = useCallback(async () => {
+    setExportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (activeFilter?.voltage_level) params.set("voltage_level", activeFilter.voltage_level);
+      if (activeFilter?.tower_type) params.set("tower_type", activeFilter.tower_type);
+      const qs = params.toString();
+      await downloadFileWithAuth(`/api/v1/atp/assets/export${qs ? `?${qs}` : ""}`, "atp-models.zip");
+      setSuccess(t("模型包下载已开始"));
+    } catch (err) {
+      setError(new ApiError(err instanceof Error ? err.message : t("打包下载失败")));
+    } finally {
+      setExportLoading(false);
+    }
+  }, [activeFilter, t]);
+
   // 表格数据源：服务端分页 + 服务端过滤（keyword → keyword 参数；树选择 → 4 个维度参数）。
   // 不再全量拉资产到浏览器：分页 / 搜索 / 维度过滤任一变化 → queryKey 变化自动重新请求当前页。
   const assetsQuery = useQuery({
@@ -1428,6 +1447,24 @@ export default function AtpModelsPage() {
                           >
                             {t("查询")}
                           </Button>
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
+                          <Tooltip
+                            title={
+                              activeFilter?.voltage_level
+                                ? t("按当前过滤条件打包下载已启用模型")
+                                : t("打包下载全部已启用模型")
+                            }
+                          >
+                            <Button
+                              htmlType="button"
+                              icon={<DownloadOutlined />}
+                              onClick={handleExportModels}
+                              loading={exportLoading}
+                            >
+                              {t("打包下载")}
+                            </Button>
+                          </Tooltip>
                         </Form.Item>
                       </Form>
                       <div className="flex items-center">

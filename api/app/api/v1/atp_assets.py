@@ -258,6 +258,28 @@ def get_atp_asset_overview_tree_endpoint(
     return get_asset_overview_tree(db)
 
 
+@router.get("/assets/export")
+def export_atp_assets_endpoint(
+    voltage_level: str | None = Query(default=None, description="按电压等级过滤（如 110）；不传 = 全部启用模型"),
+    tower_type: str | None = Query(default=None, description="按塔形过滤，可选"),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+):
+    """按电压等级/塔形打包下载已启用模型（zip：每模型一个目录 + manifest.json）。"""
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    from ...services.atp_asset_service import export_assets_zip
+
+    data, filename = export_assets_zip(db, voltage_level=voltage_level, tower_type=tower_type)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/assets/{asset_id}", response_model=AtpAssetDetail)
 def get_atp_asset_detail(
     asset_id: str,

@@ -1930,6 +1930,129 @@ def list_asset_files(db: Session, *, asset_id: str) -> AtpAssetFileListResponse:
     )
 
 
+def export_assets_zip(
+    db: Session,
+    *,
+    voltage_level: str | None = None,
+    tower_type: str | None = None,
+) -> tuple[bytes, str]:
+    """按维度过滤批量导出 ATP 模型：每个模型一个目录 + manifest.json 清单，打 zip。
+
+    - 仅导出 status=enabled 的模型（草稿/停用不下包）。
+    - zip 内目录名 ``{code}_{version}``，防同 code 多版本覆盖。
+    - manifest.json 记录每个模型的元数据与文件数，便于离线核对；存储缺失的模型
+      记入 ``missing``，不中断整体导出。
+    - 模型文件合计体量小（单个模型几十 KB 量级），整包内存打包可接受；加 512MB
+      兜底上限防异常巨型数据把容器打爆。
+    - 返回 ``(zip 字节, 文件名)``。
+    """
+    stmt = select(AtpAsset).where(AtpAsset.status == "enabled").order_by(
+        AtpAsset.voltage_level.asc(), AtpAsset.code.asc(), AtpAsset.version.asc()
+    )
+    normalized_voltage = (voltage_level or "").strip()
+    normalized_tower = (tower_type or "").strip()
+    if normalized_voltage:
+        stmt = stmt.where(AtpAsset.voltage_level == normalized_voltage)
+    if normalized_tower:
+        stmt = stmt.where(AtpAsset.tower_type == normalized_tower)
+    assets = db.execute(stmt).scalars().all()
+    if not assets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="没有符合筛选条件的已启用模型，无法打包下载",
+        )
+
+    # 同 storage_root_path 的多版本资产按挂载去重（同一目录只打包一次，避免重复内容）
+    seen_roots: dict[tuple[str, str], list[AtpAsset]] = {}
+    for asset in assets:
+        mount_code, root_path = _resolve_asset_file_location(db, asset)
+        seen_roots.setdefault((mount_code, root_path), []).append(asset)
+
+    buf = io.BytesIO()
+    manifest_entries: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+    total_bytes = 0
+    EXPORT_MAX_BYTES = 512 * 1024 * 1024
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        for (mount_code, root_path), group in seen_roots.items():
+            try:
+                mount = _resolve_mount(db, mount_code)
+                driver = _build_driver_or_400(mount)
+                tree = _walk_storage_tree(driver, root_path)
+            except HTTPException as exc:
+                for asset in group:
+                    missing.append({"code": asset.code, "version": asset.version, "reason": str(exc.detail)})
+                continue
+            except StorageDriverError as exc:
+                for asset in group:
+                    missing.append({"code": group[0].code, "version": group[0].version, "reason": str(exc)})
+                continue
+
+            primary = group[0]
+            dir_name = f"{primary.code}_{primary.version}"
+            file_count = 0
+            for item in tree.files:
+                relative = _relative_from_root(root_path, item.path)
+                try:
+                    content = driver.read_file(item.path).content
+                except (StoragePathNotFoundError, StorageDriverError) as exc:
+                    missing.append({"code": primary.code, "version": primary.version, "reason": f"{relative}: {exc}"})
+                    continue
+                total_bytes += len(content)
+                if total_bytes > EXPORT_MAX_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="导出数据量超过 512MB 上限，请缩小筛选范围（按电压等级/塔形）后重试",
+                    )
+                archive.writestr(f"{dir_name}/{relative}", content)
+                file_count += 1
+
+            for asset in group:
+                manifest_entries.append(
+                    {
+                        "code": asset.code,
+                        "name": asset.name,
+                        "version": asset.version,
+                        "voltage_level": asset.voltage_level,
+                        "tower_type": asset.tower_type,
+                        "scene_type": asset.scene_type,
+                        "arrester_config": asset.arrester_config,
+                        "shield_wire": asset.shield_wire,
+                        "model_format": asset.model_format,
+                        "storage_dir": dir_name,
+                        # 多版本资产共用同一存储目录（同 code 同 root_path）时标记 shared，
+                        # 文件内容在 storage_dir 下只有一份
+                        "shared": len(group) > 1,
+                        "file_count": file_count,
+                        "is_active": asset.is_active,
+                        "is_published": asset.is_published,
+                    }
+                )
+
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "schema": "lp.atp.asset-export/1",
+                    "exported_at": utcnow().isoformat(),
+                    "filters": {"voltage_level": normalized_voltage or None, "tower_type": normalized_tower or None},
+                    "total_assets": len(assets),
+                    "exported_dirs": len(seen_roots),
+                    "assets": manifest_entries,
+                    "missing": missing,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+
+    stamp = utcnow().strftime("%Y%m%d")
+    scope = normalized_voltage or "all"
+    filename = f"atp-models-vl{scope}-{stamp}.zip"
+    return buf.getvalue(), filename
+
+
 def read_asset_file_content(
     db: Session,
     *,
