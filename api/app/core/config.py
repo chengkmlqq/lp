@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 import re
 from typing import Literal
 from urllib.parse import quote_plus
@@ -38,6 +39,14 @@ class Settings(BaseSettings):
     # （PutObject/DeleteObject 全被拒），导致所有 upload-temp 上传必然失败；
     # 落本地盘还能让 GB 级 DEM 边收边写，不占内存。
     upload_temp_dir: str = ""
+    # 业务对象存储（minio_storage 模块）后端选择：
+    # - "local"（默认）：本机磁盘目录，根目录由 object_storage_root 决定。
+    #   2026-11-08：OSS 账号 line-protection 除 GET 外全被 UserDisable 拒
+    #   （Put/Delete/List/分片均不可用），业务对象存储整体切到数据盘本地目录。
+    # - "s3"：S3 兼容对象存储（如阿里云 OSS），走 MINIO_* 配置；保留作为回滚开关。
+    object_storage_backend: Literal["local", "s3"] = "local"
+    # 本地对象存储根目录。留空则用 <file_vfs_root 同级>/objects。
+    object_storage_root: str = ""
     minio_enabled: bool = True
     minio_endpoint: str = "http://minio:9000"
     minio_access_key: str = "minioadmin"
@@ -227,6 +236,14 @@ class Settings(BaseSettings):
     @property
     def resolved_celery_result_backend(self) -> str:
         return (self.celery_result_backend or "redis://redis:6379/1").strip()
+
+    @property
+    def resolved_object_storage_root(self) -> str:
+        """本地对象存储根目录：显式配置优先，否则落在 file_vfs_root 同级 objects 目录。"""
+        root = (self.object_storage_root or "").strip()
+        if root:
+            return root
+        return str(Path(self.file_vfs_root).expanduser().resolve().parent / "objects")
 
     @property
     def resolved_flower_api_base_url(self) -> str:

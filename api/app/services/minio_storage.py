@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -48,6 +50,155 @@ class MinioStorageError(RuntimeError):
 class MinioObjectNotFoundError(MinioStorageError):
     pass
 
+
+# ---------------------------------------------------------------------------
+# 后端选择：local（本机磁盘，默认） / s3（S3 兼容对象存储）
+#
+# 2026-11-08：OSS 账号 line-protection 除 GET 外全被 UserDisable 拒（Put/Delete/
+# List/分片均不可用），且跨公网单次请求 1.5s+，业务对象存储整体切到数据盘本地
+# 目录（settings.object_storage_root，默认 <file_vfs_root 同级>/objects）。
+# "s3" 分支完整保留原 boto3 实现，作为回滚开关（OBJECT_STORAGE_BACKEND=s3）。
+# ---------------------------------------------------------------------------
+
+
+def _use_local_backend() -> bool:
+    return (getattr(get_settings(), "object_storage_backend", "local") or "local") != "s3"
+
+
+def _local_root() -> Path:
+    return Path(get_settings().resolved_object_storage_root)
+
+
+def _local_object_path(key: str) -> Path:
+    """把对象 Key 映射到本地文件路径，拒绝目录穿越。"""
+    root = _local_root().resolve()
+    candidate = (root / key).resolve()
+    if candidate != root and root not in candidate.parents:
+        raise MinioStorageError(f"Illegal object key: {key}")
+    return candidate
+
+
+def _local_exists(key: str) -> Path:
+    path = _local_object_path(key)
+    if not path.is_file():
+        raise MinioObjectNotFoundError(f"Object not found: {key}")
+    return path
+
+
+def _local_put_bytes(key: str, data: bytes) -> None:
+    path = _local_object_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".part")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def _local_put_fileobj(key: str, stream: Any, size: int | None) -> int:
+    path = _local_object_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".part")
+    written = 0
+    try:
+        with tmp.open("wb") as out:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+                written += len(chunk)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    return written
+
+
+def _local_copy(src_key: str, dst_key: str, *, source_bucket: str | None = None) -> None:
+    if source_bucket not in (None, get_settings().minio_bucket):
+        raise MinioStorageError("local 后端不支持跨存储桶拷贝")
+    src = _local_exists(src_key)
+    dst = _local_object_path(dst_key)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(dst.name + ".part")
+    shutil.copyfile(src, tmp)
+    os.replace(tmp, dst)
+
+
+def _local_list(prefix: str) -> list[str]:
+    root = _local_root().resolve()
+    base = _local_object_path(prefix.rstrip("/") if prefix else ".") if prefix.strip("/") else root
+    if not base.exists():
+        return []
+    keys: list[str] = []
+    if base.is_file():
+        keys.append(os.path.relpath(base, root).replace(os.sep, "/"))
+        return keys
+    for path in sorted(base.rglob("*")):
+        if path.is_file():
+            keys.append(os.path.relpath(path, root).replace(os.sep, "/"))
+    return keys
+
+
+def _local_delete(key: str) -> None:
+    path = _local_object_path(key)
+    if path.is_file():
+        path.unlink()
+
+
+def _local_delete_prefix(prefix: str) -> int:
+    if not _local_root().exists():
+        return 0
+    base = _local_object_path(prefix.rstrip("/")) if prefix.strip("/") else _local_root()
+    if not base.exists():
+        return 0
+    deleted = 0
+    if base.is_file():
+        base.unlink()
+        return 1
+    for path in sorted(base.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+            deleted += 1
+        elif path.is_dir():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+    return deleted
+
+
+def _local_cleanup_expired_temp(
+    ttl_hours: float,
+    *,
+    now: datetime,
+    dry_run: bool = False,
+) -> int:
+    root = _local_root()
+    base = root / TEMP_PREFIX.rstrip("/")
+    if not base.exists() or ttl_hours <= 0:
+        return 0
+    cutoff_epoch = now.timestamp() - ttl_hours * 3600
+    deleted = 0
+    for path in sorted(base.rglob("*"), reverse=True):
+        if path.is_file():
+            if path.stat().st_mtime < cutoff_epoch:
+                if not dry_run:
+                    path.unlink()
+                deleted += 1
+        elif path.is_dir():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+    return deleted
+
+
+# ---------------------------------------------------------------------------
+# S3 后端（原实现，object_storage_backend="s3" 时使用）
+# ---------------------------------------------------------------------------
 
 # boto3 client 线程安全，可全局复用。此前每次调用都重建客户端（含 TLS 握手），
 # 一次删除最多 5 个对象串行 5 次握手，跨公网访问 OSS 时延迟成倍放大。
@@ -109,7 +260,10 @@ def _build_client() -> Any:
 
 
 def put_object(key: str, data: bytes, content_type: str | None = None) -> str:
-    """上传对象到 MinIO，返回对象 Key。"""
+    """上传对象到对象存储，返回对象 Key。"""
+    if _use_local_backend():
+        _local_put_bytes(key, data)
+        return key
     try:
         client = _build_client()
         client.put_object(
@@ -125,9 +279,6 @@ def put_object(key: str, data: bytes, content_type: str | None = None) -> str:
         raise MinioStorageError(f"Failed to upload object {key}: {exc}") from exc
 
 
-# 单次 PUT 的流式上限：OSS 单对象 PUT 最大 5GB，够 GB 级 DEM 用。
-# 注意：该账号的 CreateMultipartUpload 被拒（UserDisable），所以不能依赖分片上传，
-# 统一走带 ContentLength 的单次 PUT——botocore 会边读边发，不会把内容整份读进内存。
 SINGLE_PUT_MAX_BYTES = 5 * 1024 * 1024 * 1024
 
 
@@ -137,8 +288,13 @@ def normalize_endpoint(endpoint: str | None) -> str:
 
 
 def storage_identity() -> tuple[str, str]:
-    """临时对象所在的 (endpoint, bucket)，用于判断能否服务端拷贝。"""
+    """对象存储的 (endpoint, bucket) 标识，用于判断能否跨存储服务端拷贝。
+
+    local 后端返回 ("local", "")，与任何 S3 挂载恒不相等，安全降级为应用层拷贝。
+    """
     settings = get_settings()
+    if _use_local_backend():
+        return "local", ""
     return normalize_endpoint(settings.minio_endpoint), settings.minio_bucket
 
 
@@ -168,7 +324,7 @@ def upload_stream(
     content_type: str | None = None,
     size: int | None = None,
 ) -> int:
-    """把可读流写入对象存储，返回写入字节数。
+    """把可读流写入 S3 兼容对象存储，返回写入字节数。
 
     使用带 ``ContentLength`` 的单次 PUT：botocore 边读边发，内存占用与文件大小无关；
     分片上传（CreateMultipartUpload）在该 OSS 账号上被禁用，故不采用。
@@ -196,7 +352,9 @@ def put_fileobj(
     content_type: str | None = None,
     size: int | None = None,
 ) -> int:
-    """把文件流上传到 MinIO/OSS，返回字节数（不把整份内容读进内存）。"""
+    """把文件流上传到对象存储，返回字节数（不把整份内容读进内存）。"""
+    if _use_local_backend():
+        return _local_put_fileobj(key, stream, size)
     try:
         client = _build_client()
         return upload_stream(
@@ -219,7 +377,14 @@ def _is_not_found_error(exc: Exception) -> bool:
 
 
 def head_object_size(key: str) -> int:
-    """读取对象大小（只发 HEAD 请求），对象不存在抛 ``MinioObjectNotFoundError``。"""
+    """读取对象大小，对象不存在抛 ``MinioObjectNotFoundError``。"""
+    if _use_local_backend():
+        try:
+            return _local_exists(key).stat().st_size
+        except MinioObjectNotFoundError:
+            raise
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to head object {key}: {exc}") from exc
     try:
         client = _build_client()
         response = client.head_object(Bucket=get_settings().minio_bucket, Key=key)
@@ -237,6 +402,15 @@ def open_object_stream(key: str) -> tuple[Any, int]:
 
     大文件（GB 级 DEM）必须用本函数，不要用 ``get_object`` 全量读入内存。
     """
+    if _use_local_backend():
+        try:
+            path = _local_exists(key)
+            body = path.open("rb")
+            return body, path.stat().st_size
+        except MinioObjectNotFoundError:
+            raise
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to open object {key}: {exc}") from exc
     try:
         client = _build_client()
         response = client.get_object(Bucket=get_settings().minio_bucket, Key=key)
@@ -254,7 +428,15 @@ def open_object_stream(key: str) -> tuple[Any, int]:
 
 
 def copy_object(src_key: str, dst_key: str, *, source_bucket: str | None = None) -> None:
-    """服务端拷贝对象（数据不经应用进程），用于临时区转正式区。"""
+    """拷贝对象（local 后端为同盘文件复制），用于临时区转正式区。"""
+    if _use_local_backend():
+        try:
+            _local_copy(src_key, dst_key, source_bucket=source_bucket)
+        except MinioStorageError:
+            raise
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to copy object {src_key} -> {dst_key}: {exc}") from exc
+        return
     try:
         client = _build_client()
         bucket = get_settings().minio_bucket
@@ -270,12 +452,16 @@ def copy_object(src_key: str, dst_key: str, *, source_bucket: str | None = None)
         raise MinioStorageError(f"Failed to copy object {src_key} -> {dst_key}: {exc}") from exc
 
 
-
 def list_objects(prefix: str) -> list[str]:
-    """按前缀分页列举 MinIO 对象 Key，返回所有匹配对象 Key 列表（无分页上限）。
+    """按前缀列举对象 Key，返回所有匹配对象 Key 列表（无分页上限）。
 
     用于导出场景按 ``Output/matlab/<run_id>/`` 前缀兜底拉取全部引擎产物。
     """
+    if _use_local_backend():
+        try:
+            return _local_list(prefix)
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
     settings = get_settings()
     try:
         client = _build_client()
@@ -294,7 +480,14 @@ def list_objects(prefix: str) -> list[str]:
 
 
 def get_object(key: str) -> bytes:
-    """从 MinIO 下载对象，返回字节内容。"""
+    """读取对象，返回字节内容。"""
+    if _use_local_backend():
+        try:
+            return _local_exists(key).read_bytes()
+        except MinioObjectNotFoundError:
+            raise
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to retrieve object {key}: {exc}") from exc
     settings = get_settings()
     try:
         client = _build_client()
@@ -313,7 +506,9 @@ def get_object(key: str) -> bytes:
 
 
 def presigned_url(key: str, expires: int = 3600) -> str:
-    """生成带有效期的预签名 URL，供前端直接读图。"""
+    """生成带有效期的预签名 URL（仅 s3 后端支持）。"""
+    if _use_local_backend():
+        raise MinioStorageError("local 对象存储不支持预签名 URL，请通过应用接口读取对象")
     settings = get_settings()
     try:
         client = _build_client()
@@ -329,7 +524,13 @@ def presigned_url(key: str, expires: int = 3600) -> str:
 
 
 def delete_object(key: str) -> None:
-    """删除 MinIO 上的对象（不存在时不报错）。"""
+    """删除对象（不存在时不报错）。"""
+    if _use_local_backend():
+        try:
+            _local_delete(key)
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to delete object {key}: {exc}") from exc
+        return
     settings = get_settings()
     try:
         client = _build_client()
@@ -341,7 +542,12 @@ def delete_object(key: str) -> None:
 
 
 def delete_prefix(prefix: str) -> int:
-    """删除 MinIO 上指定前缀下的所有对象，返回删除数量。"""
+    """删除指定前缀下的所有对象，返回删除数量。"""
+    if _use_local_backend():
+        try:
+            return _local_delete_prefix(prefix)
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to delete objects under {prefix}: {exc}") from exc
     settings = get_settings()
     try:
         client = _build_client()
@@ -362,6 +568,18 @@ def delete_prefix(prefix: str) -> int:
 
 def download_object_to_file(key: str, target: Path) -> Path:
     """下载对象到本地文件，创建父目录并返回目标路径。"""
+    if _use_local_backend():
+        try:
+            src = _local_exists(key)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_name(target.name + ".part")
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, target)
+            return target
+        except MinioObjectNotFoundError:
+            raise
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to download object {key}: {exc}") from exc
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(get_object(key))
     return target
@@ -439,7 +657,7 @@ def cleanup_expired_temp_files(
 ) -> int:
     """删除超过 TTL 的 lightning/tmp/ 前缀临时对象，返回被删对象数量。
 
-    - 分页遍历 ``lightning/tmp/`` 前缀，按对象 ``LastModified`` 与 ``ttl_hours`` 判断是否超期
+    - local 后端按文件 mtime 判断超期；s3 后端按对象 ``LastModified``
     - ``dry_run=True`` 时仅统计不删除
     - ``now`` 仅用于测试注入时间点，默认取当前 UTC
     """
@@ -453,6 +671,12 @@ def cleanup_expired_temp_files(
 
     if now is None:
         now = datetime.now(timezone.utc)
+
+    if _use_local_backend():
+        try:
+            return _local_cleanup_expired_temp(ttl_hours, now=now, dry_run=dry_run)
+        except Exception as exc:
+            raise MinioStorageError(f"Failed to clean up temp files: {exc}") from exc
 
     cutoff = now - timedelta(hours=ttl_hours)
 
