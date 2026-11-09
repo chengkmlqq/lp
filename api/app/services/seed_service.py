@@ -377,7 +377,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "code": "admin.atp_models",
         "name": "ATP模型管理",
         "path": "/admin/atp-models",
-        "icon": "ToolOutlined",
+        "icon": "ClusterOutlined",
         "parent_code": None,
         "type": "menu",
         "sort_order": 54,
@@ -689,12 +689,12 @@ DEFAULT_MENUS: list[dict[str, object]] = [
     {"code": "admin.dimensions:btn.read", "name": "查看维度", "path": None, "icon": None, "parent_code": "admin.dimensions", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "dimension.read"},
     {"code": "admin.dimensions:btn.manage", "name": "管理维度", "path": None, "icon": None, "parent_code": "admin.dimensions", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "dimension.manage"},
     # 防雷改造（2026-09-27：并入种子，带图标；目录含主页路由 /admin/lightning-retrofit）
-    # 2026-11-09：图标改为 FireOutlined，与雷电幅值统计的 Zap(ThunderboltOutlined) 区分
+    # 2026-11-09：图标改为 ToolOutlined（改造施工），与雷电幅值统计的 Zap(ThunderboltOutlined) 区分
     {
         "code": "admin.lightning_retrofit",
         "name": "防雷改造",
         "path": "/admin/lightning-retrofit",
-        "icon": "FireOutlined",
+        "icon": "ToolOutlined",
         "parent_code": None,
         "type": "directory",
         "sort_order": 51,
