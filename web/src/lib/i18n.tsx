@@ -2373,6 +2373,7 @@ export const EN_DICT: Record<string, string> = {
   "防雷分析计算": "Lightning protection analysis calculation",
   "防雷参数": "Lightning protection parameters",
   "防雷报告.doc": "Lightning Protection Report.doc",
+  "防雷改造": "Lightning Retrofit",
   "防雷改造任务": "Lightning protection retrofit task",
   "防雷改造详情 - {job.job_name || job.line_name || job.line_code || job.id}": "Lightning protection retrofit details - {job.job_name || job.line_name || job.line_code || job.id}",
   "防雷计算": "Lightning protection calculation",

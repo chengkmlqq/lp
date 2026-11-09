@@ -359,7 +359,7 @@ export default function AdminLightningRetrofitPage() {
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <>{t("防雷改造任务")}</>,
+              label: <>{t("防雷改造")}</>,
               closable: false,
               children: renderJobsPane(),
             },
