@@ -154,8 +154,11 @@ function renderTaskStateTag(state: string, t: (s: string) => string) {
   const isRunning = ["STARTED", "RUNNING"].includes(state?.toUpperCase());
   return (
     <Tag color={display.color} className={isRunning ? "admin-task-tag-running" : undefined}>
-      {isRunning && <Spin size="small" style={{ marginRight: 4 }} />}
-      {display.label}
+      {/* Spin 在 antd 中渲染为块级 div，必须用 inline-flex 容器包住，否则状态文字会被挤到下一行 */}
+      <span className="admin-task-state-tag-inner">
+        {isRunning ? <Spin size="small" /> : null}
+        <span>{display.label}</span>
+      </span>
     </Tag>
   );
 }

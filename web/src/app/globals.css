@@ -2077,6 +2077,21 @@ body {
   animation: admin-task-tag-pulse 2s ease-in-out infinite;
 }
 
+/* 任务状态标签：图标（Spin 为块级 div）+ 文字强制同排，避免换行 */
+.admin-task-state-tag-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.admin-task-state-tag-inner .ant-spin {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .admin-task-tag-running {
     animation: none;
