@@ -1765,7 +1765,7 @@ function BackfillRecordsView({
                 {t("查询")}
               </Button>
               {canManage && (
-                <Button htmlType="button" onClick={() => setBackfillModalOpen(true)}>
+                <Button htmlType="button" icon={<SendOutlined />} onClick={() => setBackfillModalOpen(true)}>
                   {t("回填")}
                 </Button>
               )}
