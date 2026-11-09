@@ -1351,15 +1351,43 @@ def init_db() -> None:
 
 
 def _auto_seed_baseline() -> None:
-    """启动时自动播种基线数据（维度枚举 + 参数分类）。幂等、守卫异常，不阻断服务启动。"""
+    """启动时自动播种基线数据（维度枚举 + 参数分类）。幂等、守卫异常，不阻断服务启动。
+
+    多 uvicorn worker 并发启动时各自跑 lifespan，会同时读到"缺失"而各插一条
+    （2026-11-09 线上 voltage_level 115/230 双写重复的根因）。用 MySQL advisory
+    lock 抢进程级互斥：抢到的 worker 执行播种，其余直接跳过（幂等，缺失由下次
+    启动或 seed-defaults 端点兜底）。
+    """
     from ..services.dimension_seed import seed_dimensions  # noqa: PLC0415
     from ..services.param_category_seed import seed_param_categories  # noqa: PLC0415
 
     try:
         with SessionLocal() as db:
-            seed_dimensions(db, force=False, operator="system")
-            seed_param_categories(db, force=False, operator="system")
-            db.commit()
+            lock_acquired: bool | None = None
+            try:
+                from sqlalchemy import text
+
+                lock_acquired = db.execute(
+                    text("SELECT GET_LOCK('lp:seed_baseline', 0)")
+                ).scalar()
+            except Exception:
+                # PG/SQLite 无 GET_LOCK：无锁直跑（幂等种子本身可容忍）
+                lock_acquired = None
+            if lock_acquired is False:
+                logger.info("seed baseline lock busy, another worker is seeding; skip")
+                return
+            try:
+                seed_dimensions(db, force=False, operator="system")
+                seed_param_categories(db, force=False, operator="system")
+                db.commit()
+            finally:
+                if lock_acquired:
+                    try:
+                        from sqlalchemy import text
+
+                        db.execute(text("SELECT RELEASE_LOCK('lp:seed_baseline')"))
+                    except Exception:
+                        pass
     except Exception:  # noqa: BLE001
         # 表缺失/DB 未就绪等场景：不阻断启动，由 seed-defaults 端点或下次启动补
         logger.exception("auto seed baseline failed, will retry on next startup")
