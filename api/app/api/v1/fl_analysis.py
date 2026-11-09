@@ -35,9 +35,15 @@ from ...services.tower_topology import TowerGeometryValidationError
 
 router = APIRouter(prefix="/fl-analysis", tags=["fl-analysis"], dependencies=[Depends(require_enabled_menu_route)])
 
+# 2026-11-09：防雷计算页用户级数据隔离临时关闭，列表/详情/结果/下载等对所有持权限用户开放。
+# 需要恢复隔离时把该开关改回 True 即可，原始逻辑完整保留在下方两个函数内。
+FL_JOB_USER_ISOLATION_ENABLED = False
+
 
 def _fl_job_visible_owner(current_user: CurrentUser) -> str | None:
     """用户级数据隔离：admin 返回 None(全量可见)；普通用户返回自己 user.id(只可见自己提交的任务)。"""
+    if not FL_JOB_USER_ISOLATION_ENABLED:
+        return None
     if "admin" in current_user.role_codes:
         return None
     return current_user.user.id
@@ -45,6 +51,8 @@ def _fl_job_visible_owner(current_user: CurrentUser) -> str | None:
 
 def _assert_fl_job_visible(item: FlAnalysisJob, current_user: CurrentUser) -> None:
     """任务归属校验：admin 或任务创建人可看；其余 404(不泄露存在性)。"""
+    if not FL_JOB_USER_ISOLATION_ENABLED:
+        return
     if "admin" in current_user.role_codes:
         return
     if item.create_user and item.create_user == current_user.user.id:
@@ -96,7 +104,7 @@ def get_fl_analysis_jobs(
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobListResponse:
     type_list = [item.strip() for item in (job_types or "").split(",") if item.strip()]
-    # 2026-09-30：用户级隔离——admin 全量，普通用户只看自己提交的任务
+    # 2026-11-09：隔离开关已关闭，owner_id 恒为 None（列表全量可见）
     owner_id = _fl_job_visible_owner(current_user)
     return list_jobs(
         db, line_id=line_id, status_filter=status_filter, job_types=type_list or None,
