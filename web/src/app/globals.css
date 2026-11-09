@@ -6186,7 +6186,10 @@ body {
   padding: 0;
 }
 
-/* 筛选条内的 inline Form 撑满宽度并允许换行 */
+/* 筛选条内的 inline Form 撑满宽度并允许换行。
+   注意：全局 .admin-filter-bar .ant-form 是 nowrap + overflow:hidden，
+   空间不足时会把排在末尾的控件（如 ATP 模型管理页的「打包下载」）整块裁掉；
+   这里显式放开换行与溢出，宽屏下不换行、布局不变，窄屏下换行保证按钮可见。 */
 .admin-documents-page-body .admin-filter-bar > .ant-form,
 .admin-menus-page-body .admin-filter-bar > .ant-form,
 .admin-system-params-page-body .admin-filter-bar > .ant-form,
@@ -6194,6 +6197,8 @@ body {
 .admin-atp-models-page-body .admin-filter-bar > .ant-form {
   flex: 1 1 auto;
   min-width: 0;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 /* 左树搜索区：与右侧筛选条同高、垂直居中 */
