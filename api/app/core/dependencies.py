@@ -149,32 +149,29 @@ def get_current_user(
     )
 
 
+# ── 2026-11-09 权限策略调整 ─────────────────────────────────────────────
+# 接口层不再做权限码/菜单路由校验，仅要求登录（+ 用户启用）。
+# 访问控制统一收敛到「菜单可见性」：role_menus → 前端侧边栏按角色渲染。
+# require_permission / require_any_permission / require_enabled_menu_route
+# 保留原签名以兼容约 30 个路由文件的既有 import，内部全部退化为登录校验。
+# 下方 MENU_ROUTE_PREFIXES / _menu_paths_for_api_path / _menu_paths_allow_access
+# 为旧菜单路由守卫的实现，暂保留用于回滚，运行期不再调用。
+
+
 def require_permission(permission_code: str):
+    """仅要求登录（原：按权限码 403）。参数保留以兼容既有路由签名。"""
+
     def dependency(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if "admin" in current_user.role_codes:
-            return current_user
-        if permission_code not in current_user.permission_codes:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing permission: {permission_code}",
-            )
         return current_user
 
     return dependency
 
 
 def require_any_permission(*permission_codes: str) -> Callable[[CurrentUser], CurrentUser]:
-    required = tuple(dict.fromkeys(permission_codes))
+    """仅要求登录（原：任一权限码 403）。参数保留以兼容既有路由签名。"""
 
     def dependency(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if "admin" in current_user.role_codes:
-            return current_user
-        if any(code in current_user.permission_codes for code in required):
-            return current_user
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Missing any permission: {', '.join(required)}",
-        )
+        return current_user
 
     return dependency
 
@@ -184,10 +181,5 @@ def require_enabled_menu_route(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    menu_paths = _menu_paths_for_api_path(request.url.path)
-    if menu_paths and not _menu_paths_allow_access(db, menu_paths):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Menu is disabled",
-        )
+    """仅要求登录（原：按菜单全局 enabled+visible 403）。"""
     return current_user
