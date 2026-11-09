@@ -33,6 +33,23 @@ const LANG_STORAGE_KEY = "lp.lang";
 
 /** 中文原文 → 英文。英文环境查不到时回落中文原文。 */
 export const EN_DICT: Record<string, string> = {
+  // 测试集·防雷计算用例表单（Tabs 分页 + 两套表单字段）
+  "杆塔参数": "Tower parameters",
+  "计算参数": "Calculation parameters",
+  "计算方式": "Calculation type",
+  "计算方式 / 杆塔样例": "Type / tower sample",
+  "仿真参数（可选覆盖）": "Simulation parameters (optional overrides)",
+  "自动": "Auto",
+  "塔模型编码，用于带出几何/绝缘默认值": "Tower model code, used to load default geometry/insulation values",
+  "用例自带杆塔参数与计算参数，无需再准备测试线路和测试塔；保存后系统按表单快照托管一基计算塔。":
+    "The case carries its own tower and calculation parameters; no test line or test tower is needed. On save the system manages one compute tower from the form snapshot.",
+  "留空时按「模型」编码从塔模型库带出默认值；模型不存在或字段缺失时用系统默认。":
+    "Leave blank to load defaults from the tower model library by model code; system defaults apply when the model or field is missing.",
+  "同跳计算的耐雷水平固定为 ATP、反击跳闸率=规程、绕击跳闸率=EGM，无需选择计算方法。":
+    "For simultaneous-trip calculations, withstand level uses ATP, back-flashover trip rate uses the guideline method and shielding-failure trip rate uses EGM; no method selection is needed.",
+  "删除用例": "Delete case",
+  "删除后不可恢复，确认删除？": "This cannot be undone. Delete?",
+  "通过 / 失败 / 待人工": "Pass / Fail / Manual",
   "${tower.elevationPrepared ? \"已回填\" : \"未回填\"}": "${tower.elevationPrepared ? \\\"Filled\\\" : \\\"Not filled\\\"}",
   "(空脚本)": "(Empty script)",
   // ATP 模型测试结论三档（2026-11-07）：通过/未通过 已有词条，此处只补新增文案

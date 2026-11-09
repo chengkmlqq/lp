@@ -4,7 +4,9 @@
  * 防雷测试集详情抽屉：用例管理 + 批量执行 + 执行历史。
  *
  * 表单按集合类别切换：
- * - fl_calc  计算方式（普通/同跳）+ 单塔样例（线路 → 杆塔）+ 计算参数 + 评估指标；
+ * - fl_calc  Tabs 分页：基本信息 / 杆塔参数（照搬「编辑杆塔」表单）/ 计算参数
+ *            （照搬「防雷计算 → 新建任务」表单）/ 评估标准。用例自包含，
+ *            不再选择测试线路与测试塔，后端按快照托管一基计算塔；
  * - retrofit 改造口径（建线/非建线）+ 前置防雷计算任务 + 目标塔 + 参考评估方案。
  * 发起执行：勾选用例（默认全选启用用例）→ POST /fl-test-sets/{id}/runs。
  */
@@ -45,21 +47,8 @@ import type {
   FlTestSetSummary,
 } from "@/types/fl-test-set";
 import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
-import { FlTestRunStatusTag, FlTestVerdictTag } from "@/components/fl-test-sets/fl-test-set-tab";
+import { FlTestRunStatusTag } from "@/components/fl-test-sets/fl-test-set-tab";
 import { FlTestRunDrawer } from "@/components/fl-test-sets/fl-test-run-drawer";
-
-interface LineOption {
-  id: string;
-  code: string;
-  name: string;
-  voltage_kv: number | null;
-  tower_count: number;
-}
-
-interface TowerOption {
-  id: string;
-  tower_no: string;
-}
 
 interface JobOption {
   id: string;
@@ -67,6 +56,96 @@ interface JobOption {
   job_type: string;
   status: string;
   line_name?: string | null;
+}
+
+/** 「编辑杆塔」表单字段（线路管理 → 线路详情 → 编辑杆塔），原样照搬。 */
+const TOWER_FORM_FIELDS = [
+  "tower_no", "tower_type", "tower_model", "risk_level", "longitude", "latitude", "altitude_m",
+  "ground_resistance_ohm", "lightning_density", "span_small_m", "span_large_m", "slope_1", "slope_2",
+] as const;
+
+/** 仿真必需、但编辑杆塔表单没有的字段：留空时由塔模型默认值 / 系统兜底补齐。 */
+const SIM_OVERRIDE_FIELDS = [
+  "voltage_kv", "insulator_length_m", "shield_wire_height_m", "call_height_m",
+  "lightning_wire_left_mid_distance_m", "lightning_wire_right_mid_distance_m",
+  "protection_angle_left_deg", "protection_angle_right_deg",
+  "height_upper_m", "height_middle_m", "height_lower_m",
+  "spacing_upper_m", "spacing_middle_m", "spacing_lower_m",
+  "current_a", "current_b", "arrester_a", "arrester_b", "arrester_c",
+] as const;
+
+/** 「防雷计算 → 新建任务」表单的计算方法 + 高级参数字段，原样照搬。 */
+const EXEC_OPTION_FIELDS = [
+  "fanji_naleishuiping_method", "raoji_naleishuiping_method",
+  "fanji_tzl_method", "raoji_tzl_method",
+  "current_waveform", "flashover_method", "altitude_correction", "induced_voltage_formula",
+  "head_time_min_us", "head_time_max_us", "head_time_step_us",
+  "tail_time_min_us", "tail_time_max_us", "tail_time_step_us",
+  "binary_search",
+] as const;
+
+/** 与 fl-analysis/types.ts 的 CREATE_JOB_DEFAULTS 对齐。 */
+const EXEC_DEFAULTS: Record<string, unknown> = {
+  fanji_naleishuiping_method: "atp",
+  raoji_naleishuiping_method: "atp",
+  fanji_tzl_method: "guicheng",
+  raoji_tzl_method: "egm",
+  current_waveform: "heidler",
+  flashover_method: "intersection",
+  altitude_correction: "none",
+  induced_voltage_formula: "formula1",
+  head_time_min_us: 2.6,
+  head_time_max_us: 2.6,
+  head_time_step_us: 0.1,
+  tail_time_min_us: 50,
+  tail_time_max_us: 50,
+  tail_time_step_us: 1,
+  binary_search: true,
+};
+
+const TOWER_FORM_DEFAULTS: Record<string, unknown> = {
+  tower_no: "1",
+  tower_type: "",
+  tower_model: "",
+};
+
+/** 「仿真参数（可选覆盖）」区：留空按塔模型编码带默认值。 */
+const SIM_NUMBER_LABELS: Array<[string, string]> = [
+  ["voltage_kv", "电压等级"],
+  ["insulator_length_m", "绝缘子串长度(mm)"],
+  ["shield_wire_height_m", "避雷线高度(m)"],
+  ["call_height_m", "杆塔呼高(m)"],
+  ["lightning_wire_left_mid_distance_m", "左避雷线中距(m)"],
+  ["lightning_wire_right_mid_distance_m", "右避雷线中距(m)"],
+  ["protection_angle_left_deg", "左保护角(°)"],
+  ["protection_angle_right_deg", "右保护角(°)"],
+  ["height_upper_m", "上相高度(m)"],
+  ["height_middle_m", "中相高度(m)"],
+  ["height_lower_m", "下相高度(m)"],
+  ["spacing_upper_m", "上相中距(m)"],
+  ["spacing_middle_m", "中相中距(m)"],
+  ["spacing_lower_m", "下相中距(m)"],
+  ["current_a", "雷电流幅值 a"],
+  ["current_b", "雷电流幅值 b"],
+];
+
+/** 与「编辑杆塔」表单一致的数字输入；留空表示交给塔模型 / 系统默认。 */
+function TowerNumberField({ name, label }: { name: string; label: string }) {
+  const { t } = useI18n();
+  return (
+    <Form.Item name={name} label={t(label)}>
+      <InputNumber style={{ width: "100%" }} placeholder={t("自动")} />
+    </Form.Item>
+  );
+}
+
+function pickFilled(values: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of fields) {
+    const value = values[key];
+    if (value !== undefined && value !== null && value !== "") result[key] = value;
+  }
+  return result;
 }
 
 const METRIC_PRESET_115: FlTestMetric[] = [
@@ -198,16 +277,20 @@ export function FlTestSetDetailDrawer({
             ),
           }
         : {
-            title: t("计算方式 / 单塔样例"),
-            render: (_: unknown, row) => (
-              <Space size={6} wrap>
-                {row.calc_kind === "tongtiao" ? <Tag color="purple">{t("同跳计算")}</Tag> : <Tag color="blue">{t("普通计算")}</Tag>}
-                <Typography.Text type="secondary">
-                  {row.line_code || row.line_name || "-"}
-                  {row.tower_no ? ` · ${row.tower_no}` : ""}
-                </Typography.Text>
-              </Space>
-            ),
+            title: t("计算方式 / 杆塔样例"),
+            render: (_: unknown, row) => {
+              const tower = (row.params_json?.tower ?? {}) as Record<string, unknown>;
+              const label = tower.tower_no || row.tower_no || tower.tower_type || row.line_code || row.line_name || "-";
+              return (
+                <Space size={6} wrap>
+                  {row.calc_kind === "tongtiao" ? <Tag color="purple">{t("同跳计算")}</Tag> : <Tag color="blue">{t("普通计算")}</Tag>}
+                  <Typography.Text type="secondary">
+                    {String(label)}
+                    {tower.tower_model ? ` · ${String(tower.tower_model)}` : ""}
+                  </Typography.Text>
+                </Space>
+              );
+            },
           },
       {
         title: t("评估标准"),
@@ -463,69 +546,50 @@ function FlTestCaseModal({
   const { modal: modalApi } = App.useApp();
   const [form] = Form.useForm();
   const [formKey, setFormKey] = useState("");
-  const [lineId, setLineId] = useState<string | undefined>(undefined);
   const [sourceJobId, setSourceJobId] = useState<string | undefined>(undefined);
   const [metrics, setMetrics] = useState<FlTestMetric[]>([]);
   const [planMeasures, setPlanMeasures] = useState<string[]>([]);
   const [planAvoids, setPlanAvoids] = useState<string[]>([]);
 
   const category = testSet?.category ?? "fl_calc";
+  const isTongtiao = (Form.useWatch("calc_kind", form) ?? "normal") === "tongtiao";
 
   useEffect(() => {
     if (!open) return;
     setFormKey(editingCase?.id ?? "new");
-    setLineId(editingCase?.line_id ?? undefined);
     setSourceJobId(editingCase?.source_job_id ?? undefined);
     const expected = editingCase?.expected_json ?? {};
     setMetrics(Array.isArray(expected.metrics) ? expected.metrics : []);
     const plan = (expected.plan ?? {}) as Record<string, unknown>;
     setPlanMeasures(Array.isArray(plan.expected_measures) ? (plan.expected_measures as string[]) : []);
     setPlanAvoids(Array.isArray(plan.unexpected_measures) ? (plan.unexpected_measures as string[]) : []);
-    form.setFieldsValue({
+
+    const params = (editingCase?.params_json ?? {}) as Record<string, unknown>;
+    const tower = (params.tower ?? {}) as Record<string, unknown>;
+    const exec = (params.execution_options_json ?? {}) as Record<string, unknown>;
+    const initial: Record<string, unknown> = {
       name: editingCase?.name ?? "",
       description: editingCase?.description ?? "",
       enabled: editingCase?.enabled ?? true,
       calc_kind: editingCase?.calc_kind ?? "normal",
-      line_id: editingCase?.line_id ?? undefined,
-      tower_id: editingCase?.tower_id ?? undefined,
       mode: editingCase?.mode ?? "jianxian",
       source_job_id: editingCase?.source_job_id ?? undefined,
       selected_tower_ids: editingCase?.selected_tower_ids ?? [],
       expected_terminal: (plan.expected_terminal as string) ?? undefined,
-      external_adapter: ((editingCase?.params_json as Record<string, unknown>)?.external_adapter as string) ?? "wine",
-      current_waveform:
-        (((editingCase?.params_json as Record<string, unknown>)?.execution_options_json as Record<string, unknown>)?.current_waveform as string) ?? "heidler",
-      flashover_method:
-        (((editingCase?.params_json as Record<string, unknown>)?.execution_options_json as Record<string, unknown>)?.flashover_method as string) ?? "intersection",
-      altitude_correction:
-        (((editingCase?.params_json as Record<string, unknown>)?.execution_options_json as Record<string, unknown>)?.altitude_correction as string) ?? "none",
-      induced_voltage_formula:
-        (((editingCase?.params_json as Record<string, unknown>)?.execution_options_json as Record<string, unknown>)?.induced_voltage_formula as string) ?? "formula1",
-      binary_search:
-        (((editingCase?.params_json as Record<string, unknown>)?.execution_options_json as Record<string, unknown>)?.binary_search as boolean) ?? true,
-    });
+      external_adapter: (params.external_adapter as string) ?? "wine",
+      ...TOWER_FORM_DEFAULTS,
+      ...EXEC_DEFAULTS,
+    };
+    // 用例里已保存的快照值优先；兼容旧用例（参数直接平铺在 execution_options_json）
+    for (const key of [...TOWER_FORM_FIELDS, ...SIM_OVERRIDE_FIELDS]) {
+      if (tower[key] !== undefined && tower[key] !== null) initial[key] = tower[key];
+    }
+    for (const key of EXEC_OPTION_FIELDS) {
+      if (exec[key] !== undefined && exec[key] !== null) initial[key] = exec[key];
+    }
+    form.setFieldsValue(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingCase]);
-
-  const linesQuery = useQuery({
-    queryKey: ["/api/v1/lines", "options"],
-    enabled: open && category === "fl_calc",
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/lines?limit=200");
-      if (!response.ok) throw new Error(await readApiError(response));
-      return (await response.json()) as { items: LineOption[] };
-    },
-  });
-
-  const towersQuery = useQuery({
-    queryKey: ["/api/v1/lines/towers", lineId],
-    enabled: open && category === "fl_calc" && !!lineId,
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers?limit=500`);
-      if (!response.ok) throw new Error(await readApiError(response));
-      return (await response.json()) as { items: TowerOption[] };
-    },
-  });
 
   const sourceJobsQuery = useQuery({
     queryKey: ["/api/v1/fl-analysis/jobs", "source-options"],
@@ -549,14 +613,14 @@ function FlTestCaseModal({
 
   const saveMutation = useMutation({
     mutationFn: async (values: Record<string, unknown>) => {
+      // 用例自带「编辑杆塔」+「防雷计算」两套表单的快照，不再绑定测试线路 / 测试塔；
+      // 后端按 tower 快照托管一基计算塔，execution_options_json 全量透传给任务。
       const params: Record<string, unknown> = {
         external_adapter: values.external_adapter ?? "wine",
+        tower: pickFilled(values, [...TOWER_FORM_FIELDS, ...SIM_OVERRIDE_FIELDS]),
         execution_options_json: {
-          current_waveform: values.current_waveform,
-          flashover_method: values.flashover_method,
-          altitude_correction: values.altitude_correction,
-          induced_voltage_formula: values.induced_voltage_formula,
-          binary_search: values.binary_search,
+          ...EXEC_DEFAULTS,
+          ...pickFilled(values, EXEC_OPTION_FIELDS),
         },
       };
       const expected: Record<string, unknown> = {};
@@ -577,8 +641,6 @@ function FlTestCaseModal({
         ...(category === "fl_calc"
           ? {
               calc_kind: values.calc_kind,
-              line_id: values.line_id,
-              tower_id: values.tower_id || null,
               params_json: params,
             }
           : {
@@ -603,8 +665,6 @@ function FlTestCaseModal({
     onError: (error: Error) => modalApi.error({ title: t("保存用例失败"), content: error.message }),
   });
 
-  const lineOptions = linesQuery.data?.items ?? [];
-  const towerOptions = towersQuery.data?.items ?? [];
   const jobOptions = sourceJobsQuery.data?.items ?? [];
   const sourceTowerOptions = sourceTowersQuery.data?.items ?? [];
 
@@ -633,95 +693,204 @@ function FlTestCaseModal({
         </Row>
 
         {category === "fl_calc" ? (
-          <>
-            <Row gutter={12}>
-              <Col span={8}>
-                <Form.Item name="calc_kind" label={t("计算方式")} required>
-                  <Select
-                    options={[
-                      { value: "normal", label: t("普通计算") },
-                      { value: "tongtiao", label: t("同跳计算") },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="line_id" label={t("测试线路")} required>
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
-                    onChange={(value: string) => {
-                      setLineId(value);
-                      form.setFieldValue("tower_id", undefined);
-                    }}
-                    options={lineOptions.map((l) => ({
-                      value: l.id,
-                      label: `${l.code || l.name}${l.voltage_kv ? ` (${l.voltage_kv}kV)` : ""}`,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="tower_id" label={t("目标杆塔")}>
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    disabled={!lineId}
-                    options={towerOptions.map((tw) => ({ value: tw.id, label: tw.tower_no }))}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Collapse
-              size="small"
-              items={[
-                {
-                  key: "params",
-                  label: t("计算参数（默认对齐生产口径，可按用例覆盖）"),
-                  children: (
+          <Tabs
+            size="small"
+            items={[
+              {
+                key: "basic",
+                forceRender: true,
+                label: t("基本信息"),
+                children: (
+                  <>
                     <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.Item name="calc_kind" label={t("计算方式")} required>
+                          <Select
+                            options={[
+                              { value: "normal", label: t("普通计算") },
+                              { value: "tongtiao", label: t("同跳计算") },
+                            ]}
+                          />
+                        </Form.Item>
+                      </Col>
                       <Col span={12}>
                         <Form.Item name="external_adapter" label={t("适配器")}>
                           <Select options={[{ value: "wine", label: "wine" }, { value: "placeholder", label: "placeholder" }]} />
                         </Form.Item>
                       </Col>
+                    </Row>
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                      {t("用例自带杆塔参数与计算参数，无需再准备测试线路和测试塔；保存后系统按表单快照托管一基计算塔。")}
+                    </Typography.Paragraph>
+                  </>
+                ),
+              },
+              {
+                key: "tower",
+                forceRender: true,
+                label: t("杆塔参数"),
+                children: (
+                  <>
+                    <Typography.Text strong>{t("基本信息")}</Typography.Text>
+                    <Row gutter={12} className="mt-2">
                       <Col span={12}>
-                        <Form.Item name="current_waveform" label={t("电流波形")}>
-                          <Select
-                            options={[
-                              { value: "heidler", label: "heidler" },
-                              { value: "double_slope", label: "double_slope" },
-                              { value: "double_exponential", label: "double_exponential" },
-                            ]}
-                          />
+                        <Form.Item name="tower_no" label={t("塔号")} required>
+                          <Input />
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item name="flashover_method" label={t("闪络判据")}>
-                          <Select
-                            options={[
-                              { value: "intersection", label: t("相交法") },
-                              { value: "guideline", label: t("规程法") },
-                              { value: "leader_development", label: t("先导法") },
-                            ]}
-                          />
+                        <Form.Item name="tower_type" label={t("塔型")}>
+                          <Input placeholder={t("塔型编码（如 d500shangzi/s500guxing）")} />
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item name="altitude_correction" label={t("海拔校正")}>
-                          <Select
-                            options={[
-                              { value: "none", label: t("无") },
-                              { value: "formula1", label: "formula1" },
-                              { value: "formula2", label: "formula2" },
-                            ]}
-                          />
+                        <Form.Item name="tower_model" label={t("模型")}>
+                          <Input placeholder={t("塔模型编码，用于带出几何/绝缘默认值")} />
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item name="induced_voltage_formula" label={t("感应过电压")}>
-                          <Select options={[{ value: "formula1", label: "formula1" }, { value: "formula2", label: "formula2" }]} />
+                        <Form.Item name="risk_level" label={t("风险等级")}>
+                          <Select allowClear options={[{ value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }]} />
+                        </Form.Item>
+                      </Col>
+                      {([
+                        ["longitude", "经度"],
+                        ["latitude", "纬度"],
+                        ["altitude_m", "海拔(m)"],
+                        ["ground_resistance_ohm", "接地电阻(Ω)"],
+                        ["lightning_density", "地闪密度"],
+                        ["span_small_m", "小号侧档距(m)"],
+                        ["span_large_m", "大号侧档距(m)"],
+                        ["slope_1", "地面倾角1"],
+                        ["slope_2", "地面倾角2"],
+                      ] as Array<[string, string]>).map(([name, label]) => (
+                        <Col span={12} key={name}>
+                          <TowerNumberField name={name} label={label} />
+                        </Col>
+                      ))}
+                    </Row>
+                    <Collapse
+                      size="small"
+                      style={{ marginTop: 12 }}
+                      items={[
+                        {
+                          key: "sim",
+                          forceRender: true,
+                          label: t("仿真参数（可选覆盖）"),
+                          children: (
+                            <>
+                              <Typography.Paragraph type="secondary">
+                                {t("留空时按「模型」编码从塔模型库带出默认值；模型不存在或字段缺失时用系统默认。")}
+                              </Typography.Paragraph>
+                              <Row gutter={12}>
+                                {SIM_NUMBER_LABELS.map(([name, label]) => (
+                                  <Col span={8} key={name}>
+                                    <TowerNumberField name={name} label={label} />
+                                  </Col>
+                                ))}
+                                {(["a", "b", "c"] as const).map((phase) => (
+                                  <Col span={8} key={phase}>
+                                    <Form.Item
+                                      name={`arrester_${phase}`}
+                                      label={t(`${phase.toUpperCase()}相避雷器`)}
+                                      valuePropName="checked"
+                                      normalize={(value: boolean) => (value ? "是" : "否")}
+                                      getValueProps={(value: unknown) => ({ checked: value === "是" })}
+                                    >
+                                      <Switch />
+                                    </Form.Item>
+                                  </Col>
+                                ))}
+                              </Row>
+                            </>
+                          ),
+                        },
+                      ]}
+                    />
+                  </>
+                ),
+              },
+              {
+                key: "calc",
+                forceRender: true,
+                label: t("计算参数"),
+                children: (
+                  <>
+                    {isTongtiao ? (
+                      <Typography.Paragraph type="secondary">
+                        {t("同跳计算的耐雷水平固定为 ATP、反击跳闸率=规程、绕击跳闸率=EGM，无需选择计算方法。")}
+                      </Typography.Paragraph>
+                    ) : (
+                      <>
+                        <Typography.Text strong>{t("计算方法")}</Typography.Text>
+                        <Row gutter={12} className="mt-2">
+                          <Col span={12}>
+                            <Form.Item name="fanji_naleishuiping_method" label={t("反击耐雷水平计算方法")}>
+                              <Select options={[{ value: "guicheng", label: t("规程") }, { value: "atp", label: "ATP" }]} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name="raoji_naleishuiping_method" label={t("绕击耐雷水平计算方法")}>
+                              <Select options={[{ value: "guicheng", label: t("规程") }, { value: "atp", label: "ATP" }]} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name="fanji_tzl_method" label={t("反击跳闸率计算方法")}>
+                              <Select options={[{ value: "none", label: t("无") }, { value: "guicheng", label: t("规程") }]} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name="raoji_tzl_method" label={t("绕击跳闸率计算方法")}>
+                              <Select options={[{ value: "none", label: t("无") }, { value: "guicheng", label: t("规程") }, { value: "egm", label: "EGM" }]} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </>
+                    )}
+                    <Typography.Text strong>{t("高级参数")}</Typography.Text>
+                    <Row gutter={12} className="mt-2">
+                      <Col span={12}>
+                        <Form.Item name="altitude_correction" label={t("是否海拔修正")}>
+                          <Select options={[{ value: "none", label: t("无") }, { value: "formula1", label: t("推荐公式1") }, { value: "formula2", label: t("推荐公式2") }]} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="induced_voltage_formula" label={t("感应电压公式")}>
+                          <Select options={[{ value: "formula1", label: t("公式1") }, { value: "formula2", label: t("公式2") }]} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="current_waveform" label={t("雷电流波形")}>
+                          <Select options={[{ value: "heidler", label: "Heidler" }, { value: "double_slope", label: t("双斜角") }, { value: "double_exponential", label: t("双指数") }]} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="flashover_method" label={t("绝缘子闪络判据")}>
+                          <Select options={[{ value: "guideline", label: t("规程法") }, { value: "intersection", label: t("相交法") }, { value: "leader_development", label: t("先导发展法") }]} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item label={t("波头时间(μs)")}>
+                          <Space size={8} wrap>
+                            <span>{t("最小")}</span>
+                            <Form.Item name="head_time_min_us" noStyle><InputNumber min={0.1} step={0.1} precision={2} style={{ width: 110 }} /></Form.Item>
+                            <span>{t("最大")}</span>
+                            <Form.Item name="head_time_max_us" noStyle><InputNumber min={0.1} step={0.1} precision={2} style={{ width: 110 }} /></Form.Item>
+                            <span>{t("步长")}</span>
+                            <Form.Item name="head_time_step_us" noStyle><InputNumber min={0.05} step={0.05} precision={2} style={{ width: 110 }} /></Form.Item>
+                          </Space>
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item label={t("波尾时间(μs)")}>
+                          <Space size={8} wrap>
+                            <span>{t("最小")}</span>
+                            <Form.Item name="tail_time_min_us" noStyle><InputNumber min={1} step={1} precision={2} style={{ width: 110 }} /></Form.Item>
+                            <span>{t("最大")}</span>
+                            <Form.Item name="tail_time_max_us" noStyle><InputNumber min={1} step={1} precision={2} style={{ width: 110 }} /></Form.Item>
+                            <span>{t("步长")}</span>
+                            <Form.Item name="tail_time_step_us" noStyle><InputNumber min={0.5} step={0.5} precision={2} style={{ width: 110 }} /></Form.Item>
+                          </Space>
                         </Form.Item>
                       </Col>
                       <Col span={12}>
@@ -730,10 +899,14 @@ function FlTestCaseModal({
                         </Form.Item>
                       </Col>
                     </Row>
-                  ),
-                },
-              ]}
-            />
+                  </>
+                ),
+              },
+              {
+                key: "expected",
+                forceRender: true,
+                label: t("评估标准"),
+                children: (
             <div style={{ marginTop: 12 }}>
               <Space size={8} style={{ marginBottom: 8 }}>
                 <Typography.Text strong>{t("结果评估标准")}</Typography.Text>
@@ -844,7 +1017,10 @@ function FlTestCaseModal({
                 />
               )}
             </div>
-          </>
+                ),
+              },
+            ]}
+          />
         ) : (
           <>
             <Row gutter={12}>

@@ -1,8 +1,10 @@
 """防雷测试集（fl test set）schemas。
 
 集合级分类（category）决定用例形态：
-- fl_calc  防雷计算用例：calc_kind(normal/tongtiao) + 单塔样例(line_id/tower_id)
-           + 计算参数快照(params_json) + 评估标准(expected_json.metrics)
+- fl_calc  防雷计算用例：calc_kind(normal/tongtiao) + 表单快照 params_json
+           （tower = 编辑杆塔表单字段，execution_options_json = 防雷计算表单字段）
+           + 评估标准(expected_json.metrics)；line_id/tower_id 不再由前端提交，
+           由后端按快照托管计算载体
 - retrofit 防雷改造用例：mode(jianxian/feijianxian) + 前置任务(source_job_id)
            + 参考评估方案(expected_json.plan)
 """
@@ -70,7 +72,7 @@ class FlTestCaseSummary(BaseModel):
     set_id: str
     name: str = ""
     description: str = ""
-    # fl_calc：计算方式 + 单塔样例载体（线路管理 Line + 杆塔）
+    # fl_calc：计算方式 + 系统托管计算载体（FLTC- 线路 + 1 基杆塔）
     calc_kind: FlTestCalcKind | None = None
     line_id: str | None = None
     line_code: str | None = None

@@ -41,6 +41,7 @@ from ..schemas.fl_test_set import (
 )
 from .fl_analysis_service import cancel_job, create_job, get_job_by_id, start_job
 from .fl_analysis_service import list_tower_results  # noqa: F401  (re-export convenience)
+from .fl_test_case_tower import ensure_case_tower, is_managed_line
 
 # 手动判定终值（不被自动评估覆盖）
 _MANUAL_VERDICTS = {"manual_pass", "manual_fail"}
@@ -240,15 +241,22 @@ def list_cases(db: Session, *, set_id: str) -> dict[str, Any]:
     return {"items": items, "total": len(items)}
 
 
-def _validate_case_fields(db: Session, category: str, data: dict[str, Any]) -> None:
-    """按集合类别校验用例字段（create/update 共用）。"""
+def _validate_case_fields(db: Session, category: str, data: dict[str, Any], *, creating: bool) -> None:
+    """按集合类别校验用例字段（create/update 共用）。
+
+    PATCH 只校验「本次提交了的字段」是否合法，不要求把必填字段全部重传；
+    新建时必填字段仍然强制校验。
+    """
     if category == "fl_calc":
         calc_kind = data.get("calc_kind")
-        if calc_kind not in FL_TEST_CALC_KINDS:
+        if (creating or calc_kind is not None) and calc_kind not in FL_TEST_CALC_KINDS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="防雷计算用例必须选择计算方式（normal/tongtiao）")
+        # 新版用例表单直接填「编辑杆塔」+「防雷计算」两套字段，不再绑定测试线路：
+        # line_id 由 ensure_case_tower 按表单快照自动托管。旧用例若显式传了
+        # line_id，仍按原语义校验（兼容历史数据）。
         line_id = (data.get("line_id") or "").strip()
         if not line_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="防雷计算用例必须绑定测试线路")
+            return
         line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
         if not line:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="绑定的测试线路不存在")
@@ -260,11 +268,14 @@ def _validate_case_fields(db: Session, category: str, data: dict[str, Any]) -> N
             if not tower:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="目标杆塔不属于绑定的测试线路")
     else:
-        if data.get("mode") not in FL_TEST_RETROFIT_MODES:
+        mode = data.get("mode")
+        if (creating or mode is not None) and mode not in FL_TEST_RETROFIT_MODES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="防雷改造用例必须选择改造口径（建线/非建线）")
         source_job_id = (data.get("source_job_id") or "").strip()
         if not source_job_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="防雷改造用例必须绑定前置防雷计算任务")
+            if creating:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="防雷改造用例必须绑定前置防雷计算任务")
+            return
         source = get_job_by_id(db, source_job_id)
         if not source:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="前置防雷计算任务不存在")
@@ -275,12 +286,40 @@ def _validate_case_fields(db: Session, category: str, data: dict[str, Any]) -> N
             )
 
 
+def _apply_managed_tower(
+    db: Session, row: FlTestSetCase, actor_user_id: str | None, *, force: bool = False
+) -> None:
+    """fl_calc 用例：按 params_json.tower 快照创建 / 刷新托管线路 + 单塔。
+
+    默认只有「未绑定线路」或「绑定的是系统托管线路」的用例走这里；仍绑定
+    真实测试线路的旧用例保持原样。新表单提交（带 tower 快照）时 ``force=True``，
+    旧用例改用新表单也会被切到托管塔，保证「填什么就按什么算」。
+    """
+    if not force and row.line_id:
+        line = db.execute(select(Line).where(Line.id == row.line_id)).scalar_one_or_none()
+        if line is not None and not is_managed_line(line):
+            return
+    params = dict(row.params_json or {})
+    tower_params = params.get("tower")
+    if not isinstance(tower_params, dict):
+        tower_params = {}
+    line_id, tower_id = ensure_case_tower(
+        db,
+        case_id=row.id,
+        case_name=row.name or "",
+        tower_params=tower_params,
+        actor_user_id=actor_user_id,
+    )
+    row.line_id = line_id
+    row.tower_id = tower_id
+
+
 def create_case(
     db: Session, *, set_id: str, payload: FlTestCaseCreateRequest, actor_user_id: str | None
 ) -> dict[str, Any]:
     test_set = _get_set(db, set_id)
     data = payload.model_dump()
-    _validate_case_fields(db, test_set.category, data)
+    _validate_case_fields(db, test_set.category, data, creating=True)
     max_sort = db.scalar(
         select(func.max(FlTestSetCase.sort_order)).where(FlTestSetCase.set_id == set_id)
     )
@@ -302,6 +341,14 @@ def create_case(
         update_user=actor_user_id,
     )
     db.add(row)
+    db.flush()
+    if test_set.category == "fl_calc":
+        # 新表单不传 line_id；若调用方显式绑定了真实线路（旧接口），保持原语义
+        bound_line = None
+        if payload.line_id:
+            bound_line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
+        force = bound_line is None or is_managed_line(bound_line)
+        _apply_managed_tower(db, row, actor_user_id, force=force)
     db.commit()
     return serialize_case(db, row)
 
@@ -312,7 +359,7 @@ def update_case(
     row = _get_case(db, case_id)
     test_set = _get_set(db, row.set_id)
     data = payload.model_dump(exclude_unset=True)
-    _validate_case_fields(db, test_set.category, data)
+    _validate_case_fields(db, test_set.category, data, creating=False)
     for field in ("name", "description", "calc_kind", "line_id", "tower_id", "mode", "source_job_id", "enabled"):
         if field in data:
             setattr(row, field, data[field])
@@ -322,6 +369,10 @@ def update_case(
         row.expected_json = dict(data["expected_json"])
     if "selected_tower_ids" in data and data["selected_tower_ids"] is not None:
         row.selected_tower_ids_json = list(data["selected_tower_ids"])
+    if test_set.category == "fl_calc":
+        submitted_params = data.get("params_json")
+        force = isinstance(submitted_params, dict) and "tower" in submitted_params
+        _apply_managed_tower(db, row, actor_user_id, force=force)
     row.update_user = actor_user_id
     db.commit()
     return serialize_case(db, row)
@@ -329,7 +380,17 @@ def update_case(
 
 def delete_case(db: Session, *, case_id: str) -> None:
     row = _get_case(db, case_id)
+    line_id = row.line_id
     db.delete(row)
+    if line_id:
+        line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+        # 托管线路若已无任务引用就一并清理；有历史任务则保留（job.line_id 外键）
+        if is_managed_line(line):
+            used = db.scalar(
+                select(func.count()).select_from(FlAnalysisJob).where(FlAnalysisJob.line_id == line_id)
+            ) or 0
+            if not used:
+                db.delete(line)
     db.commit()
 
 

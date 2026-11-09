@@ -40,6 +40,7 @@ from ..schemas.line import (
     TowerProfileLightningCurrentSummary,
 )
 from .analysis_text_i18n import LINE_TOWER_CSV_HEADERS_EN, translate_analysis_text, translate_csv_cell
+from .fl_test_case_tower import MANAGED_LINE_PREFIX
 from .line_preparation_service import summarize_line_preparation, summarize_line_preparations
 from .push_service import publish_topic
 
@@ -201,9 +202,17 @@ def list_lines(
     bbox_mode: str = "filter",
     limit: int | None = None,
     offset: int = 0,
+    include_managed: bool = False,
 ) -> LineListResponse:
     stmt = select(Line)
     total_stmt = select(func.count()).select_from(Line)
+
+    # 测试集按用例表单快照自动生成的 FLTC- 托管线路是内部计算载体，
+    # 不出现在「线路管理」及各业务页面的线路下拉里（用户无需管理测试塔）。
+    if not include_managed:
+        managed_filter = Line.code.notlike(f"{MANAGED_LINE_PREFIX}%")
+        stmt = stmt.where(managed_filter)
+        total_stmt = total_stmt.where(managed_filter)
 
     normalized = (keyword or "").strip()
     if normalized:

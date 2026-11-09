@@ -4,9 +4,11 @@
 「防雷计算 / 防雷改造」业务测试用例的批量回归：
 
 - 集合级分类（category）：一个测试集只装一类用例——
-    fl_calc   防雷计算用例：单塔测试样例（线路管理 Line + 1 基杆塔）
-              + 计算方式（normal 普通计算 / tongtiao 同跳计算）
-              + 计算参数快照 + 结果评估标准；
+    fl_calc   防雷计算用例：用例自带「编辑杆塔」+「防雷计算」两套表单快照
+              （params_json.tower / execution_options_json）
+              + 计算方式（normal 普通计算 / tongtiao 同跳计算）+ 结果评估标准；
+              用户不再准备测试线路/测试塔，line_id/tower_id 由后端按快照
+              自动托管一条 FLTC- 线路 + 1 基计算塔（见 fl_test_case_tower.py）；
     retrofit  防雷改造用例：建线/非建线口径 + 前置防雷计算任务
               （source_job_id，须为成功的 normal/tongtiao 任务）
               + 参考评估方案。
