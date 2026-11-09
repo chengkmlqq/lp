@@ -20,23 +20,8 @@ CAPTCHA_LENGTH = 4
 # 排除易混淆字符 (0/O, 1/I/L, 2/Z 等)
 CAPTCHA_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-# 图形验证码开关参数 key(system_params 表): 显式设为 "false" 才关闭, 默认开启
-CAPTCHA_ENABLED_PARAM_KEY = "auth.captcha.enabled"
-
-
-def _get_param(db, key: str) -> str:
-    """读取 system_params 参数值(与 sms_captcha_service 一致, 无值返回空串)。"""
-    from ..services.system_param_service import get_system_param_by_key
-
-    param = get_system_param_by_key(db, key)
-    if param is None:
-        return ""
-    return param.param_value or ""
-
-
-def is_captcha_enabled(db) -> bool:
-    """图形验证码总开关: 参数缺失/非 "false" 一律视为开启, 显式 "false" 才关闭。"""
-    return _get_param(db, CAPTCHA_ENABLED_PARAM_KEY).strip().lower() != "false"
+# 图形验证码恒开启(2026-11 决策): 不再读 system_params 开关参数,
+# 登录/短信发送一律走图形验证码人机校验。
 
 WIDTH, HEIGHT = 120, 44
 

@@ -21,7 +21,7 @@ from ...services.auth_service import (
     refresh_user_session,
     register_user,
 )
-from ...services.captcha_service import generate_captcha, is_captcha_enabled, verify_captcha
+from ...services.captcha_service import generate_captcha, verify_captcha
 from ...services.sms_captcha_service import (
     SmsCaptchaError,
     is_sms_captcha_enabled,
@@ -130,19 +130,9 @@ def register(
 def get_captcha(db: Session = Depends(get_db)) -> CaptchaResponse:
     """获取登录图形验证码(captcha_id + base64 PNG 图片)。
 
-    图形验证码总开关(auth.captcha.enabled)显式设为 "false" 时关闭:
-    不生成图码, 返回空 id/图与 captcha_enabled=False, 前端据此隐藏图码区。
-    参数缺失或非 "false" 一律视为开启(默认开启)。
+    图形验证码恒开启(不再查库判断): 每次生成都返回新图码,
+    captcha_enabled 恒为 True, 前端始终展示图码区。
     """
-    captcha_on = is_captcha_enabled(db)
-    if not captcha_on:
-        return CaptchaResponse(
-            captcha_id="",
-            image_base64="",
-            expires_in=0,
-            sms_captcha_enabled=is_sms_captcha_enabled(db),
-            captcha_enabled=False,
-        )
     captcha_id, image_base64 = generate_captcha()
     return CaptchaResponse(
         captcha_id=captcha_id,
@@ -158,14 +148,12 @@ def send_sms_captcha_endpoint(
     payload: SmsCaptchaSendRequest,
     db: Session = Depends(get_db),
 ) -> SmsCaptchaSendResponse:
-    """发送短信验证码: 图形验证码开启时须先通过图形验证码(防刷), 发到指定手机号。"""
-    if is_captcha_enabled(db):
-        # 图码总开关开启: 先过图形验证码防刷; 关闭时跳过(前端无图码区)
-        if not verify_captcha(payload.captcha_id, payload.captcha_code):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="验证码错误或已过期,请刷新后重试",
-            )
+    """发送短信验证码: 先通过图形验证码(防刷), 再发到指定手机号。"""
+    if not verify_captcha(payload.captcha_id, payload.captcha_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="验证码错误或已过期,请刷新后重试",
+        )
     try:
         result = send_sms_captcha(db, payload.phone)
     except SmsCaptchaError as exc:
@@ -208,13 +196,12 @@ def login(
                 detail="短信验证码错误或已过期,请重新获取",
             )
     else:
-        # 图形验证码分支: 总开关开启时才做人机校验, 关闭则跳过(默认开启)
-        if is_captcha_enabled(db):
-            if not verify_captcha(payload.captcha_id, payload.captcha_code):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="验证码错误或已过期,请刷新后重试",
-                )
+        # 图形验证码分支: 恒开启, 一律做人机校验
+        if not verify_captcha(payload.captcha_id, payload.captcha_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="验证码错误或已过期,请刷新后重试",
+            )
     result = login_user(
         db,
         payload,
