@@ -170,6 +170,9 @@ export default function AdminFlAnalysisPage() {
     if (statusFilter) {
       params.set("status", statusFilter);
     }
+    // 2026-11-10：防雷计算页只列计算类任务（normal/tongtiao/risk），
+    // 改造类（mitigation/scenario/report）只在防雷改造页面展示
+    params.set("job_types", "normal,tongtiao,risk");
     const query = params.toString();
     return `/api/v1/fl-analysis/jobs${query ? `?${query}` : ""}`;
   }, [keyword, paginationCurrent, paginationPageSize, voltageFilter, towerTypeFilter, statusFilter]);
