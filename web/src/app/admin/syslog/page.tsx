@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Col, Empty, Form, Input, Row, Select, Space, Spin, Table, Tabs, Tag, Typography, type CardProps } from "antd";
+import { Button, Card, Col, Empty, Form, Input, Row, Select, Space, Spin, Table, Tag, Typography, type CardProps } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
@@ -113,8 +113,6 @@ export default function AdminSyslogPage() {
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
   const pageCardRef = useRef<HTMLDivElement | null>(null);
 
-  const [actionOptions, setActionOptions] = useState<{ label: string; value: string }[]>([]);
-
   const canRead = hasPermission("menu.read") || hasPermission("menu.manage");
 
   const handleActionChange = (value: string) => {
@@ -184,15 +182,15 @@ export default function AdminSyslogPage() {
     enabled: !!user && canRead,
   });
 
-  // Build action options when actions data loads
-  useEffect(() => {
-    if (!actionsQuery.data) return;
-    const items = actionsQuery.data.items.map((action: string) => ({
-      label: getActionLabel(action, t),
-      value: action,
-    }));
-    setActionOptions(items);
-  }, [actionsQuery.data]);
+  // 动作筛选项直接由查询结果派生（原 useEffect + setState 会触发级联渲染）
+  const actionOptions = useMemo(
+    () =>
+      (actionsQuery.data?.items ?? []).map((action: string) => ({
+        label: getActionLabel(action, t),
+        value: action,
+      })),
+    [actionsQuery.data, t],
+  );
 
   useTopicSubscription(
     "admin.audit_logs",
@@ -247,7 +245,13 @@ export default function AdminSyslogPage() {
         dataIndex: "detail",
         key: "detail",
         render: (value: string | null) => (
-          <Typography.Text type="secondary">{value || "-"}</Typography.Text>
+          // 日志入参常是超长 JSON / 无空格长串：整串换行，避免撑出表格横向滚动条
+          <Typography.Text
+            type="secondary"
+            style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-all" }}
+          >
+            {value || "-"}
+          </Typography.Text>
         ),
       },
       {
@@ -255,7 +259,12 @@ export default function AdminSyslogPage() {
         dataIndex: "output",
         key: "output",
         render: (value: string | null) => (
-          <Typography.Text type="secondary">{value || "-"}</Typography.Text>
+          <Typography.Text
+            type="secondary"
+            style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-all" }}
+          >
+            {value || "-"}
+          </Typography.Text>
         ),
       },
     ],
@@ -360,17 +369,26 @@ export default function AdminSyslogPage() {
         {log.detail && (
           <div className="admin-syslog-log-card-field">
             <Typography.Text type="secondary">{t("入参")}</Typography.Text>
-            <Typography.Text type="secondary" ellipsis={{ tooltip: log.detail }}>
+            {/* 卡片视图：超长内容最多换行展示 3 行，全文仍可用 tooltip 查看 */}
+            <Typography.Paragraph
+              type="secondary"
+              ellipsis={{ rows: 3, tooltip: log.detail }}
+              style={{ marginBottom: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-all" }}
+            >
               {log.detail}
-            </Typography.Text>
+            </Typography.Paragraph>
           </div>
         )}
         {log.output && (
           <div className="admin-syslog-log-card-field">
             <Typography.Text type="secondary">{t("出参")}</Typography.Text>
-            <Typography.Text type="secondary" ellipsis={{ tooltip: log.output }}>
+            <Typography.Paragraph
+              type="secondary"
+              ellipsis={{ rows: 3, tooltip: log.output }}
+              style={{ marginBottom: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-all" }}
+            >
               {log.output}
-            </Typography.Text>
+            </Typography.Paragraph>
           </div>
         )}
       </Space>

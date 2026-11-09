@@ -2539,6 +2539,8 @@ body {
 
 .admin-syslog-table-anchor .ant-table-body {
   min-height: var(--admin-syslog-table-body-min-height, 180px);
+  /* 入参/出参超长日志已在单元格内换行，兜底禁止表格出现横向滚动条 */
+  overflow-x: hidden;
 }
 
 /* LP-252: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */

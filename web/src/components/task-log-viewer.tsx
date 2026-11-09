@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, Empty, Modal, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
@@ -24,7 +24,111 @@ import type { WsTicketResponse } from "@/types/ws";
  *
  * 备注：日志内容底部为深色终端容器，运行中指示器（task-log-streaming-indicator）
  *      样式见 globals.css，仿 AI 聊天工具输出末尾的加载动效。
+ *
+ * 长行处理：日志行（URL / JSON / 堆栈 / 长路径）常常远超抽屉宽度。早期用
+ *      whiteSpace:pre + overflow:auto，超长行会撑出横向滚动条，右侧内容看不到。
+ *      现在按容器可用宽度把每条逻辑行预折成若干「显示行」（等宽字体逐列切分），
+ *      显示行仍是固定 18px，虚拟滚动的定位精度不受影响；容器 overflow-x:hidden
+ *      兜底，任何情况下都不会出现横向滚动条。
  */
+
+const LOG_ROW_HEIGHT = 18;
+const LOG_FONT_SIZE = 12;
+const LOG_FONT_FAMILY = "ui-monospace, SFMono-Regular, Menlo, monospace";
+// 容器左右各 16px padding；clientWidth 已排除纵向滚动条，无需再扣
+const LOG_HORIZONTAL_PADDING = 32;
+// 首帧 / 非浏览器环境下 ResizeObserver 尚未给出宽度时的兜底可用文本宽度
+const LOG_FALLBACK_VIEWPORT_WIDTH = 736;
+
+let cachedLogContext: CanvasRenderingContext2D | null | undefined;
+let cachedMonoCharWidth: number | null = null;
+
+/** 复用同一块离屏 canvas，字体与日志容器保持一致。 */
+function getLogContext(): CanvasRenderingContext2D | null {
+  if (cachedLogContext !== undefined) return cachedLogContext;
+  if (typeof document === "undefined") {
+    cachedLogContext = null;
+    return null;
+  }
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (ctx) ctx.font = `${LOG_FONT_SIZE}px ${LOG_FONT_FAMILY}`;
+  cachedLogContext = ctx;
+  return ctx;
+}
+
+/** 测量等宽字体下单个 ASCII 字符的宽度。 */
+function getLogCharWidth(): number {
+  if (cachedMonoCharWidth !== null) return cachedMonoCharWidth;
+  const ctx = getLogContext();
+  if (!ctx) return LOG_FONT_SIZE * 0.6;
+  const width = ctx.measureText("0000000000").width / 10;
+  cachedMonoCharWidth = width > 0 ? width : LOG_FONT_SIZE * 0.6;
+  return cachedMonoCharWidth;
+}
+
+const charColumnCache = new Map<string, number>();
+
+/**
+ * 字符占的列数：ASCII 恒为 1；其余字符（中文/全角/emoji）用同款字体实测宽度
+ * 换算，避免按经验值 2 列低估 emoji 之类的字符，导致行尾被裁。
+ */
+function logCharColumns(ch: string): number {
+  const cached = charColumnCache.get(ch);
+  if (cached !== undefined) return cached;
+  let cols = 1;
+  if ((ch.codePointAt(0) ?? 0) >= 0x80) {
+    const ctx = getLogContext();
+    // 无 canvas（SSR 首帧）时按 2 列兜底，浏览器端会重新测量
+    const width = ctx ? ctx.measureText(ch).width : getLogCharWidth() * 2;
+    cols = Math.max(1, Math.ceil(width / getLogCharWidth()));
+  }
+  charColumnCache.set(ch, cols);
+  return cols;
+}
+
+/**
+ * 把逻辑日志行按可用宽度拆成固定行高的显示行。
+ * 无空格长串也在列边界硬折，保证任何日志都不会撑出横向滚动条。
+ */
+function wrapLogLines(lines: string[], availableWidth: number): string[] {
+  // 留 1 列余量，吸收字体度量/字体回退的误差，避免行尾字符被容器裁掉
+  const columns = Math.max(8, Math.floor(availableWidth / getLogCharWidth()) - 1);
+  const rows: string[] = [];
+  for (const raw of lines) {
+    // 快速路径：纯 ASCII 短行无需逐字符计算（绝大多数日志行走这里，
+    // 使 SSE 每批增量后整体重算折行也只耗时几毫秒）
+    if (
+      raw.length <= columns &&
+      !/[\u0080-\uffff]/u.test(raw) &&
+      !raw.includes("\t") &&
+      !raw.includes("\r")
+    ) {
+      rows.push(raw);
+      continue;
+    }
+    // tab 展开成空格：CSS pre 下 tab 的实际占位与逐字符度量不一致
+    const line = raw.replace(/\t/g, "    ").replace(/\r/g, "");
+    if (!line) {
+      rows.push("");
+      continue;
+    }
+    let segment = "";
+    let used = 0;
+    for (const ch of line) {
+      const cols = logCharColumns(ch);
+      if (used + cols > columns) {
+        rows.push(segment);
+        segment = "";
+        used = 0;
+      }
+      segment += ch;
+      used += cols;
+    }
+    rows.push(segment);
+  }
+  return rows;
+}
+
 export function TaskLogViewerDrawer({
   taskId,
   title,
@@ -50,9 +154,11 @@ export function TaskLogViewerDrawer({
   const [lines, setLines] = useState<string[]>([]);
   const pendingLinesRef = useRef<string[]>([]);
   const flushTimerRef = useRef<number | null>(null);
-  // 虚拟滚动窗口（固定行高，日志行不换行 → 精确）
+  // 虚拟滚动窗口（显示行仍是固定行高，长行已按宽度预折 → 定位保持精确）
   const [scrollTop, setScrollTop] = useState(0);
-  const LOG_ROW_HEIGHT = 18;
+  // 日志容器尺寸由 ResizeObserver 统一维护：width 用于折行、height 用于虚拟窗口；
+  // 渲染期只读 state，不再读 ref.current（React Compiler 的 refs 规则要求）
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const contentRef = useRef<HTMLDivElement | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   // 断线补偿游标：记录最近一条 SSE 事件的 id；重连时作为 Last-Event-ID 传给服务端续读
@@ -70,6 +176,29 @@ export function TaskLogViewerDrawer({
       eventSourceRef.current = null;
     }
   }, []);
+
+  /** 抽屉尺寸变化时重新测量：长行折行列数与虚拟窗口高度一起刷新。 */
+  useEffect(() => {
+    if (!open || loading) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const measure = () => {
+      const width = Math.max(0, el.clientWidth - LOG_HORIZONTAL_PADDING);
+      const height = el.clientHeight;
+      setViewportSize((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height },
+      );
+    };
+    if (typeof ResizeObserver === "undefined") {
+      // 无 ResizeObserver 时异步兜底测量（避免在 effect 内同步 setState）
+      const frameId = window.requestAnimationFrame(measure);
+      return () => window.cancelAnimationFrame(frameId);
+    }
+    // observe 后浏览器会立即回调一次，无需在 effect 内同步 setState
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, loading]);
 
   /**
    * 断线重连：关闭旧连接（终止 EventSource 自带的"复用旧 URL+旧 ticket"重连），
@@ -98,7 +227,7 @@ export function TaskLogViewerDrawer({
         })();
       }, delay * 1000);
     },
-    [closeEventSource],
+    [closeEventSource, t],
   );
   // connect / reconnect 相互引用，经 ref 调用；ref 需在渲染后写入（不能渲染期访问）
   useEffect(() => {
@@ -201,7 +330,7 @@ export function TaskLogViewerDrawer({
         reconnectRef.current?.(cancelledRef, taskId);
       });
     },
-    [fetchWithAuth],
+    [fetchWithAuth, t],
   );
   useEffect(() => {
     connectRef.current = connect;
@@ -244,7 +373,7 @@ export function TaskLogViewerDrawer({
       cancelledRef.current = true;
       closeEventSource();
     };
-  }, [open, taskId, fetchWithAuth, connect, closeEventSource]);
+  }, [open, taskId, fetchWithAuth, connect, closeEventSource, t]);
 
   const handleClose = () => {
     closeEventSource();
@@ -253,6 +382,12 @@ export function TaskLogViewerDrawer({
     setStreaming(false);
     onClose();
   };
+
+  /** 逻辑行 → 显示行；短 ASCII 行走快速路径，全量重算也只是几毫秒。 */
+  const displayRows = useMemo(
+    () => wrapLogLines(lines, viewportSize.width > 0 ? viewportSize.width : LOG_FALLBACK_VIEWPORT_WIDTH),
+    [lines, viewportSize.width],
+  );
 
   // 日志追加时自动滚底（仅流式且未结束场景）
   useEffect(() => {
@@ -263,7 +398,16 @@ export function TaskLogViewerDrawer({
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [lines, streaming, status]);
+  }, [displayRows, streaming, status]);
+
+  // 方案A：虚拟滚动——只渲染可视窗口的「显示行」（每行固定 18px，长行已按
+  // 容器宽度预折，因此定位精确且不会横向溢出）；尺寸取自 ResizeObserver 的 state
+  const viewportH = viewportSize.height || 480;
+  const total = displayRows.length;
+  const overscan = 30;
+  const start = Math.max(0, Math.floor(scrollTop / LOG_ROW_HEIGHT) - overscan);
+  const end = Math.min(total, Math.ceil((scrollTop + viewportH) / LOG_ROW_HEIGHT) + overscan);
+  const visible = displayRows.slice(start, end);
 
   const contentNode = loading ? (
     <div style={{ textAlign: "center", padding: "40px 0" }}>
@@ -278,7 +422,9 @@ export function TaskLogViewerDrawer({
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: "auto",
+          // 长行已在 wrapLogLines 里按宽度折成多行，横向永不滚动（只保留纵向）
+          overflowX: "hidden",
+          overflowY: "auto",
           padding: "16px",
           backgroundColor: "#0f172a",
           color: "#e2e8f0",
@@ -296,41 +442,33 @@ export function TaskLogViewerDrawer({
             description={status === "no-log" ? t("暂无日志") : t("等待日志...")}
           />
         ) : (
-          (() => {
-            // 方案A：虚拟滚动——只渲染可视窗口行（固定行高，白屏不换行）
-            // 容器高度实时读取（flex 撑开，Drawer/Modal 下不固定），滚动时更新
-            const viewportH = contentRef.current?.clientHeight ?? 480;
-            const total = lines.length;
-            const overscan = 30;
-            const start = Math.max(0, Math.floor(scrollTop / LOG_ROW_HEIGHT) - overscan);
-            const end = Math.min(
-              total,
-              Math.ceil((scrollTop + viewportH) / LOG_ROW_HEIGHT) + overscan,
-            );
-            const visible = lines.slice(start, end);
-            return (
-              <div style={{ height: total * LOG_ROW_HEIGHT, position: "relative" }}>
+          <div style={{ height: total * LOG_ROW_HEIGHT, position: "relative" }}>
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${start * LOG_ROW_HEIGHT}px)`,
+              }}
+            >
+              {visible.map((line, i) => (
                 <div
+                  key={start + i}
                   style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    transform: `translateY(${start * LOG_ROW_HEIGHT}px)`,
+                    height: LOG_ROW_HEIGHT,
+                    lineHeight: `${LOG_ROW_HEIGHT}px`,
+                    whiteSpace: "pre",
+                    // 兜底：字体度量偏差时裁掉行尾多余像素，绝不让单行撑高/撑宽
+                    overflow: "hidden",
+                    maxWidth: "100%",
                   }}
                 >
-                  {visible.map((line, i) => (
-                    <div
-                      key={start + i}
-                      style={{ height: LOG_ROW_HEIGHT, lineHeight: `${LOG_ROW_HEIGHT}px`, whiteSpace: "pre" }}
-                    >
-                      {line || "\u00A0"}
-                    </div>
-                  ))}
+                  {line || "\u00A0"}
                 </div>
-              </div>
-            );
-          })()
+              ))}
+            </div>
+          </div>
         )}
         {streaming && !status && (
           <div className="task-log-streaming-indicator" role="status" aria-label={t("任务运行中")}>
