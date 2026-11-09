@@ -1092,7 +1092,7 @@ export default function AdminLightningCurrentsPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <>{t("雷电流幅值统计")}</>,
+            label: <>{t("雷电幅值统计")}</>,
             closable: false,
             children: (
               <div className="modo-page-card admin-lightning-currents-list-pane">

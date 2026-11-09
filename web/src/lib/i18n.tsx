@@ -2422,6 +2422,7 @@ export const EN_DICT: Record<string, string> = {
   "雷电流幅值数据导入": "Lightning current amplitude data import",
   "雷电流幅值文件每行应为 1 个电流值（如「-15.3」），或「时间 电流」两列（如「0.0001 -15.3」）。": "Each line of the lightning current amplitude file should contain a single current value (e.g. \"-15.3\"), or two columns \"time current\" (e.g. \"0.0001 -15.3\").",
   "雷电流幅值统计": "Lightning current amplitude statistics",
+  "雷电幅值统计": "Lightning Currents",
   "雷电流幅值记录元信息已更新": "Lightning current amplitude record metadata updated",
   "雷电流幅值记录已删除": "Lightning current amplitude record deleted",
   "雷电流幅值（kA）": "Lightning current amplitude (kA)",
