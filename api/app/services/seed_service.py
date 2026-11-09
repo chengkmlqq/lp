@@ -282,7 +282,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
     },
     {
         "code": "admin.lightning_distribution",
-        "name": "雷电分布统计",
+        "name": "地闪密度统计",
         "path": "/admin/lightning-distribution",
         "icon": "Map",
         "parent_code": None,

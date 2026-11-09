@@ -3144,7 +3144,7 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "admin.fault_recurrence": "Fault Recurrence",
   "admin.fl_analysis": "Lightning Analysis",
   "admin.lightning_currents": "Lightning Currents",
-  "admin.lightning_distribution": "Lightning Distribution",
+  "admin.lightning_distribution": "Ground Flash Density Statistics",
   "admin.lightning_retrofit": "Lightning Retrofit",
   "admin.docs_view": "Docs",
   "admin.basic_data": "Master Data",
