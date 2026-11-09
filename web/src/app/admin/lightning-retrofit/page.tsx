@@ -695,9 +695,14 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
 
   const loadJob = useCallback(async () => {
     const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}`);
-    if (response.ok) {
-      const data = (await response.json()) as { job: FlAnalysisJobSummary };
-      setJob(data.job);
+    if (!response.ok) {
+      return;
+    }
+    // 详情接口返回任务字段平铺在顶层（无 job 包裹），与防雷计算页保持同样的兼容读取
+    const data = (await response.json()) as { job?: FlAnalysisJobSummary } & FlAnalysisJobSummary;
+    const next = data.job ?? data;
+    if (next?.id) {
+      setJob(next);
     }
   }, [fetchWithAuth, jobId]);
 
