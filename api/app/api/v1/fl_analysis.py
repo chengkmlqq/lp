@@ -98,6 +98,11 @@ def get_fl_analysis_jobs(
     # 2026-11-08：列表页筛选栏——按电压等级/塔形过滤
     voltage_kv: float | None = Query(default=None),
     tower_type: str | None = Query(default=None, max_length=50),
+    # 2026-11-09：测试集任务隔离——默认排除测试任务；测试集页面按 run/case 查看，
+    # include_test=true 返回全量（排查用）
+    include_test: bool = Query(default=False),
+    test_run_id: str | None = Query(default=None, max_length=32),
+    test_case_id: str | None = Query(default=None, max_length=32),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
@@ -109,6 +114,7 @@ def get_fl_analysis_jobs(
     return list_jobs(
         db, line_id=line_id, status_filter=status_filter, job_types=type_list or None,
         owner_id=owner_id, keyword=keyword, voltage_kv=voltage_kv, tower_type=tower_type,
+        include_test=include_test, test_run_id=test_run_id, test_case_id=test_case_id,
         limit=limit, offset=offset,
     )
 

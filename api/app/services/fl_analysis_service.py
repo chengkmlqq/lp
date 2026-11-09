@@ -25,6 +25,7 @@ from ..core.config import get_settings
 from ..core.database import SessionLocal
 from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisRun, FlAnalysisTowerResult, FlAnalysisTowerSnapshot
+from ..models.fl_test_set import FlTestSetRunCase
 from ..models.line import Line
 from ..models.line_tower import LineTower
 from .audit_service import compose_audit_detail, write_audit_log
@@ -317,9 +318,28 @@ def list_jobs(
     tower_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    # 2026-11-09：测试集任务隔离——默认排除带 test_run_case_id 标记的任务；
+    # 测试集页面用 test_run_id / test_case_id 按标记聚合查看，
+    # include_test=true 时返回全量（管理/排查用）。
+    include_test: bool = False,
+    test_run_id: str | None = None,
+    test_case_id: str | None = None,
 ) -> FlAnalysisJobListResponse:
     stmt = select(FlAnalysisJob)
     total_stmt = select(func.count()).select_from(FlAnalysisJob)
+
+    if test_run_id or test_case_id:
+        stmt = stmt.join(FlTestSetRunCase, FlAnalysisJob.test_run_case_id == FlTestSetRunCase.id)
+        total_stmt = total_stmt.join(FlTestSetRunCase, FlAnalysisJob.test_run_case_id == FlTestSetRunCase.id)
+        if test_run_id:
+            stmt = stmt.where(FlTestSetRunCase.run_id == test_run_id)
+            total_stmt = total_stmt.where(FlTestSetRunCase.run_id == test_run_id)
+        if test_case_id:
+            stmt = stmt.where(FlTestSetRunCase.case_id == test_case_id)
+            total_stmt = total_stmt.where(FlTestSetRunCase.case_id == test_case_id)
+    elif not include_test:
+        stmt = stmt.where(FlAnalysisJob.test_run_case_id.is_(None))
+        total_stmt = total_stmt.where(FlAnalysisJob.test_run_case_id.is_(None))
 
     if line_id:
         stmt = stmt.where(FlAnalysisJob.line_id == line_id)

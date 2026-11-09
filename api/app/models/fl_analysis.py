@@ -41,6 +41,10 @@ class FlAnalysisJob(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending")
     task_id: Mapped[str | None] = mapped_column(String(128), index=True)
     latest_run_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    # 2026-11-09：测试集标记——非空表示该任务由防雷测试集用例发起
+    # （fl_test_set_run_case.id）。防雷计算页/防雷改造页默认排除带标记的任务，
+    # 测试集页面按标记聚合查看（nullable + 无外键，历史任务不受影响）。
+    test_run_case_id: Mapped[str | None] = mapped_column(String(32), index=True)
     total_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     snapshotted_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     result_tower_count: Mapped[int] = mapped_column(Integer, default=0)
