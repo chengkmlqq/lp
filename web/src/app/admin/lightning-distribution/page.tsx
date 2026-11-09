@@ -891,13 +891,8 @@ export default function AdminLightningDistributionPage() {
                   onClick: () => openLinkedLinesModal(row),
                 },
                 {
-                  key: "backfill-history",
-                  label: t("回填记录"),
-                  onClick: () => openLinkedLinesModal(row),
-                },
-                {
                   key: "download-source",
-                  label: t("下载源文件"),
+                  label: t("下载"),
                   icon: <DownloadOutlined />,
                   visible: canRead,
                   onClick: () => {
@@ -1022,20 +1017,11 @@ export default function AdminLightningDistributionPage() {
                 const extraActions: MenuProps["items"] = [
                   {
                     key: "download-source",
-                    label: t("下载源文件"),
+                    label: t("下载"),
                     icon: <DownloadOutlined />,
                     onClick: (info) => {
                       info.domEvent?.stopPropagation();
                       void handleDownloadSource(record);
-                    },
-                  },
-                  {
-                    key: "backfill-history",
-                    label: t("回填记录"),
-                    icon: <FileTextOutlined />,
-                    onClick: (info) => {
-                      info.domEvent?.stopPropagation();
-                      openLinkedLinesModal(record);
                     },
                   },
                   ...(canReadLogs && record.task_id
