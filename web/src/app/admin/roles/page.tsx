@@ -261,23 +261,13 @@ export default function AdminRolesPage() {
   });
 
   const menuTreeOptions = useMemo(() => {
-    // 权限码按模块前缀分组:perm:list -> [perm item...](供叶子菜单挂子节点)
-    const permsByModule = new Map<string, { code: string; label: string }[]>();
-    for (const item of permissionsQuery.data ?? []) {
-      const mod = item.module || "";
-      const arr = permsByModule.get(mod) ?? [];
-      arr.push({ code: item.code, label: item.label || item.code });
-      permsByModule.set(mod, arr);
-    }
-    // 叶子菜单 -> 其 permission_code 模块前缀对应的权限码(菜单页面权限 + 该模块操作按钮)
-    // 叶子菜单 value=menu:<id>{t(", 权限码 value=perm:")}<code>, 提交/回显时分拆。
-    const menuMap = new Map<string, MenuItem>();
-    for (const menu of menus) {
-      menuMap.set(menu.id, menu);
-    }
-
+    // 2026-11-09 权限策略调整：接口层不再做权限码校验，角色配置只保留菜单级。
+    // 树 = 目录 + 页面；按钮行（type=button）不展示——勾选页面即按模块前缀
+    // 自动授予该页面的全部操作权限码（提交时推导），无需逐个按钮配置。
+    // 菜单 value=menu:<id>, 提交/回显时按前缀分拆。
     const childrenByParent = new Map<string | null, MenuItem[]>();
     for (const menu of menus) {
+      if (menu.type === "button") continue;
       const parentKey = menu.parent_id ?? "__root__";
       const group = childrenByParent.get(parentKey) ?? [];
       group.push(menu);
@@ -293,37 +283,20 @@ export default function AdminRolesPage() {
       const children = childrenByParent.get(key) ?? [];
       return children.map((menu) => {
         const isDir = menu.type === "directory";
-        const isButtonParent = menu.type === "menu";
-        const label = isDir ? `📁 ${menu.name}` : isButtonParent ? `📄 ${menu.name}` : menu.name;
+        const label = isDir ? `📁 ${menu.name}` : `📄 ${menu.name}`;
         const subChildren = buildNodes(menu.id);
-        const buttonChildren = (childrenByParent.get(menu.id) ?? []).filter((b) => b.type === "button").sort((a, b) => a.sort_order - b.sort_order).map((b) => ({ title: `🔘 ${b.name}${b.permission_code ? `（${b.permission_code}）` : ""}`, value: `menu:${b.id}`, key: b.id, selectable: true }));
-        let permNodes: DataNode[] | undefined;
-        // 叶子菜单(非目录)且带 permission_code -> 在树下挂该模块权限码 checkbox
-        if (buttonChildren.length === 0 && !isDir && subChildren.length === 0 && menu.permission_code) {
-          const mod = menu.permission_code.split(".")[0];
-          const perms = permsByModule.get(mod);
-          if (perms && perms.length > 0) {
-            permNodes = perms.map((p) => ({
-              title: p.label,
-              value: `perm:${p.code}`,
-              key: `perm:${p.code}`,
-              selectable: true,
-            }));
-          }
-        }
-        const merged = [...subChildren, ...buttonChildren, ...(permNodes ?? [])];
         return {
           title: label,
           value: `menu:${menu.id}`,
           key: menu.id,
           selectable: true,
-          children: merged.length > 0 ? merged : undefined,
+          children: subChildren.length > 0 ? subChildren : undefined,
         };
       });
     }
 
     return buildNodes(null);
-  }, [menus, permissionsQuery.data]);
+  }, [menus]);
 
   const menuNameById = useMemo(() => {
     return new Map(menus.map((menu) => [menu.id, menu.name]));
@@ -423,18 +396,17 @@ export default function AdminRolesPage() {
   }, [form]);
 
   /**
-   * 分配权限：只处理「菜单 + 操作权限（按钮级）」。
+   * 分配权限：只处理「菜单」一级（2026-11-09 权限策略调整）。
    *
-   * 勾选值用统一前缀编码：`menu:<id>{t("` 表示菜单/按钮行，`perm:")}<code>` 表示模块权限码；
-   * 提交时分拆并合并按钮自身的 permission_code（与后端 role_menus / role_permissions 双写对应）。
+   * 勾选值统一用 `menu:<id>` 表示菜单行（目录/页面/按钮）；权限码不再单独勾选，
+   * 提交时按勾选的菜单自动推导后随 menu_ids 一起双写（role_menus / role_permissions）。
    */
   const startEditPermissions = useCallback((role: RoleItem) => {
     setError(null);
     setSuccess("");
     const menuVals = (role.menu_ids ?? []).map((mid) => `menu:${mid}`);
-    const permVals = (role.permission_codes ?? []).map((pc) => `perm:${pc}`);
     setEditingPermissionRole(role);
-    permissionForm.setFieldsValue({ menu_ids: [...new Set([...menuVals, ...permVals])] });
+    permissionForm.setFieldsValue({ menu_ids: [...new Set(menuVals)] });
     setPermissionDialogOpen(true);
   }, [permissionForm]);
 
@@ -486,7 +458,7 @@ export default function AdminRolesPage() {
     }
   }, [checkRoleCodeAvailability, createRoleMutation, editingRole, form, updateRoleMutation, validateRoleCodeFormat]);
 
-  /** 提交「分配权限」：只发 menu_ids / permission_codes，不动角色名称。 */
+  /** 提交「分配权限」：只发 menu_ids，权限码按勾选菜单自动推导。 */
   const submitPermissions = useCallback(async () => {
     setError(null);
     setSuccess("");
@@ -498,17 +470,34 @@ export default function AdminRolesPage() {
       const menuIds = checkedValues
         .filter((v) => v.startsWith("menu:"))
         .map((v) => v.slice("menu:".length));
-      const permCodes = checkedValues
-        .filter((v) => v.startsWith("perm:"))
-        .map((v) => v.slice("perm:".length));
       const menuById = new Map(menus.map((m) => [m.id, m]));
-      const buttonPerms = menuIds.map((mid) => menuById.get(mid)).filter((m): m is (typeof menus)[number] => Boolean(m && m.type === "button" && m.permission_code)).map((m) => m.permission_code as string);
+
+      // 权限码自动推导（角色配置只保留菜单级，权限码不再单独勾选）：
+      // - 勾选的菜单/按钮行自带 permission_code → 直接带上；
+      // - 页面菜单（type=menu）再按模块前缀补齐该模块全部权限码，
+      //   等价于原「叶子菜单下挂模块权限码」的勾选效果。
+      const permsByModule = new Map<string, string[]>();
+      for (const item of permissionsQuery.data ?? []) {
+        const mod = item.module || "";
+        permsByModule.set(mod, [...(permsByModule.get(mod) ?? []), item.code]);
+      }
+      const derivedPerms = new Set<string>();
+      for (const mid of menuIds) {
+        const menu = menuById.get(mid);
+        if (!menu?.permission_code) continue;
+        derivedPerms.add(menu.permission_code);
+        if (menu.type === "menu") {
+          for (const code of permsByModule.get(menu.permission_code.split(".")[0]) ?? []) {
+            derivedPerms.add(code);
+          }
+        }
+      }
 
       updateRoleMutation.mutate({
         roleId: editingPermissionRole.id,
         payload: {
           menu_ids: menuIds,
-          permission_codes: [...new Set([...permCodes, ...buttonPerms])],
+          permission_codes: [...derivedPerms],
         },
       });
     } catch (candidate) {
@@ -524,7 +513,7 @@ export default function AdminRolesPage() {
       const nextError = candidate instanceof Error ? candidate.message : t("提交失败，请稍后重试");
       setError(new ApiError(nextError));
     }
-  }, [editingPermissionRole, menus, permissionForm, updateRoleMutation]);
+  }, [editingPermissionRole, menus, permissionForm, permissionsQuery.data, updateRoleMutation]);
 
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
@@ -1098,7 +1087,7 @@ export default function AdminRolesPage() {
               {!editingRole && (
                 <Col xs={24}>
                   <Typography.Text type="secondary">
-                    {t("新角色默认无任何权限，创建后请在「分配权限」中授予菜单与操作权限。")}
+                    {t("新角色默认无任何菜单，创建后请在「分配权限」中勾选菜单。")}
                   </Typography.Text>
                 </Col>
               )}
@@ -1107,7 +1096,7 @@ export default function AdminRolesPage() {
         </Modal>
       )}
 
-      {/* 分配权限：与「编辑角色」拆开的独立入口，只提交 menu_ids / permission_codes */}
+      {/* 分配权限：只保留菜单级（2026-11-09 权限策略调整），权限码按勾选菜单自动推导 */}
       {canManage && (
         <Modal
           title={editingPermissionRole ? `${t("分配权限")}：${editingPermissionRole.name}（${editingPermissionRole.code}）` : t("分配权限")}
@@ -1131,8 +1120,8 @@ export default function AdminRolesPage() {
               name="menu_ids"
               label={
                 <span>
-                  {t("菜单与操作权限")}{" "}
-                  <Tooltip title={t("勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。")}>
+                  {t("菜单权限")}{" "}
+                  <Tooltip title={t("勾选菜单即授予该页面访问权限；页面下的操作按钮权限随菜单自动授予，无需单独配置。")}>
                     <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
                   </Tooltip>
                 </span>
@@ -1144,7 +1133,7 @@ export default function AdminRolesPage() {
                 treeCheckable
                 showCheckedStrategy="SHOW_PARENT"
                 treeData={menuTreeOptions}
-                placeholder={t("请选择菜单与操作权限")}
+                placeholder={t("请选择菜单")}
                 maxTagCount={6}
                 maxTagPlaceholder={(omitted) => `+${omitted.length} ${t("项")}`}
                 style={{ width: "100%" }}
