@@ -34,7 +34,6 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
-  EnvironmentOutlined,
   EyeOutlined,
   FileTextOutlined,
   InboxOutlined,
@@ -78,13 +77,11 @@ import type {
   LineSummary,
   LineListResponse,
 } from "@/types/auth";
-import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
 
 type ImportFormValues = {
   event_year: number;
   data_years?: number;
   region_id: string;
-  city: string;
   notes: string;
 };
 
@@ -92,7 +89,6 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   event_year: new Date().getFullYear(),
   data_years: undefined,
   region_id: "",
-  city: "",
   notes: "",
 };
 
@@ -447,7 +443,6 @@ export default function AdminLightningDistributionPage() {
       formData.append("temp_file_id", tempFileId);
       formData.append("event_year", String(values.event_year));
       formData.append("region_id", values.region_id.trim());
-      formData.append("city", values.city.trim());
       if (values.data_years) formData.append("data_years", String(values.data_years));
       if (values.notes?.trim()) formData.append("notes", values.notes.trim());
 
@@ -973,12 +968,6 @@ export default function AdminLightningDistributionPage() {
 
           <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
-              <EnvironmentOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                {t("城市：")}{record.city || "-"}
-              </Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <TagOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
                 {t("地点标签：")}{record.location_tag || "-"}
@@ -1339,28 +1328,6 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3">
-          <Form.Item name="city" label={t("城市")} rules={[{ max: 128, message: t("城市最多 128 个字符") }]}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t("请搜索选择城市")}
-              filterOption={(input, option) => {
-                const keyword = input.toLowerCase().trim();
-                const data = option?.["data-data"] as CityOption | undefined;
-                if (!data) return false;
-                return (
-                  data.label.includes(input)
-                  || data.pinyin.includes(keyword)
-                  || data.initials.includes(keyword)
-                );
-              }}
-              options={CHINESE_CITIES.map((item) => ({
-                label: item.label,
-                value: item.label,
-                "data-data": item,
-              }))}
-            />
-          </Form.Item>
           <Form.Item name="region_id" label={t("地点")} rules={[{ max: 64, message: t("地点最多 64 个字符") }]}>
             <Input placeholder={t("例如 XX变电站、XX区域（闪电事件发生地点）")} />
           </Form.Item>
@@ -1375,7 +1342,12 @@ function ImportModal({
             <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder={t("留空自动推断")} />
           </Form.Item>
           <Form.Item name="notes" label={t("数据说明")} rules={[{ max: 2000, message: t("数据说明最多 2000 个字符") }]}>
-            <Input placeholder={t("可填写数据来源、采集说明等")} />
+            <Input.TextArea
+              rows={3}
+              maxLength={2000}
+              showCount
+              placeholder={t("可填写数据来源、采集说明等")}
+            />
           </Form.Item>
         </div>
 
@@ -1488,7 +1460,6 @@ function DistributionDetailView({
     <div className="admin-lightning-distribution-detail-view modo-page-card">
       <Space direction="vertical" size={16} className="w-full">
       <Descriptions bordered size="small" column={3}>
-        <Descriptions.Item label={t("城市")}>{record.city || "-"}</Descriptions.Item>
         <Descriptions.Item label={t("地点标签")}>{record.location_tag || "-"}</Descriptions.Item>
         <Descriptions.Item label={t("年份")}>{record.event_year ?? "-"}</Descriptions.Item>
         <Descriptions.Item label={t("有效点数")}>{record.valid_count}</Descriptions.Item>
