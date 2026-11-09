@@ -893,7 +893,6 @@ export default function AdminLightningDistributionPage() {
                 {
                   key: "download-source",
                   label: t("下载"),
-                  icon: <DownloadOutlined />,
                   visible: canRead,
                   onClick: () => {
                     void handleDownloadSource(row);
