@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   App,
   Button,
   Checkbox,
@@ -553,6 +554,9 @@ function FlTestCaseModal({
 
   const category = testSet?.category ?? "fl_calc";
   const isTongtiao = (Form.useWatch("calc_kind", form) ?? "normal") === "tongtiao";
+  // 由历史任务转换的回归用例绑定真实线路（非 FLTC- 托管线路），杆塔快照仅供展示
+  const boundRealLine =
+    !!editingCase?.line_code && !editingCase.line_code.startsWith("FLTC-");
 
   useEffect(() => {
     if (!open) return;
@@ -613,20 +617,27 @@ function FlTestCaseModal({
 
   const saveMutation = useMutation({
     mutationFn: async (values: Record<string, unknown>) => {
-      // 用例自带「编辑杆塔」+「防雷计算」两套表单的快照，不再绑定测试线路 / 测试塔；
-      // 后端按 tower 快照托管一基计算塔，execution_options_json 全量透传给任务。
+      // 编辑时先继承用例已有的快照，避免把导入用例专有的 adapter_config_json、
+      // selected_tower_ids、expected_json.baseline 等键覆盖丢失。
+      const prevParams = (editingCase?.params_json ?? {}) as Record<string, unknown>;
+      const prevExec = (prevParams.execution_options_json ?? {}) as Record<string, unknown>;
       const params: Record<string, unknown> = {
-        external_adapter: values.external_adapter ?? "wine",
-        tower: pickFilled(values, [...TOWER_FORM_FIELDS, ...SIM_OVERRIDE_FIELDS]),
+        ...prevParams,
+        external_adapter: values.external_adapter ?? prevParams.external_adapter ?? "wine",
+        // 绑定真实线路的用例：杆塔参数只读，保存时原样保留快照，不按表单值覆盖
+        tower: boundRealLine
+          ? (prevParams.tower ?? {})
+          : pickFilled(values, [...TOWER_FORM_FIELDS, ...SIM_OVERRIDE_FIELDS]),
         execution_options_json: {
-          ...EXEC_DEFAULTS,
+          ...(editingCase ? {} : EXEC_DEFAULTS),
+          ...prevExec,
           ...pickFilled(values, EXEC_OPTION_FIELDS),
         },
       };
-      const expected: Record<string, unknown> = {};
+      const expected: Record<string, unknown> = { ...(editingCase?.expected_json ?? {}) };
       if (category === "fl_calc") {
         expected.metrics = metrics;
-        expected.abnormal_signals = [];
+        if (!Array.isArray(expected.abnormal_signals)) expected.abnormal_signals = [];
       } else {
         expected.plan = {
           expected_terminal: values.expected_terminal ?? null,
@@ -715,12 +726,20 @@ function FlTestCaseModal({
                       </Col>
                       <Col span={12}>
                         <Form.Item name="external_adapter" label={t("适配器")}>
-                          <Select options={[{ value: "wine", label: "wine" }, { value: "placeholder", label: "placeholder" }]} />
+                          <Select
+                            options={[
+                              { value: "atp", label: "atp" },
+                              { value: "wine", label: "wine" },
+                              { value: "placeholder", label: "placeholder" },
+                            ]}
+                          />
                         </Form.Item>
                       </Col>
                     </Row>
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                      {t("用例自带杆塔参数与计算参数，无需再准备测试线路和测试塔；保存后系统按表单快照托管一基计算塔。")}
+                      {boundRealLine
+                        ? `此用例由历史任务转换，绑定真实线路 ${editingCase?.line_code ?? ""}；杆塔参数取自该线路，仅供查看，保存不会改变计算载体。`
+                        : t("用例自带杆塔参数与计算参数，无需再准备测试线路和测试塔；保存后系统按表单快照托管一基计算塔。")}
                     </Typography.Paragraph>
                   </>
                 ),
@@ -731,6 +750,15 @@ function FlTestCaseModal({
                 label: t("杆塔参数"),
                 children: (
                   <>
+                    {boundRealLine && (
+                      <Alert
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        message={t("杆塔参数为绑定线路的只读展示")}
+                        description={t("该用例由历史任务转换，绑定真实线路与杆塔；此处修改不会改变计算载体，回归仍按原线路执行。")}
+                      />
+                    )}
                     <Typography.Text strong>{t("基本信息")}</Typography.Text>
                     <Row gutter={12} className="mt-2">
                       <Col span={12}>

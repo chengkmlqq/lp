@@ -371,7 +371,16 @@ def update_case(
         row.selected_tower_ids_json = list(data["selected_tower_ids"])
     if test_set.category == "fl_calc":
         submitted_params = data.get("params_json")
-        force = isinstance(submitted_params, dict) and "tower" in submitted_params
+        has_tower_snapshot = isinstance(submitted_params, dict) and "tower" in submitted_params
+        # 绑定真实线路（非 FLTC- 托管线路）的用例，例如由历史任务转换的回归用例：
+        # 杆塔快照只是表单展示用的历史值，不能据此把计算载体切到托管塔，
+        # 否则几何会变、expected_json 里的历史基准也随之失效。
+        bound_line = (
+            db.execute(select(Line).where(Line.id == row.line_id)).scalar_one_or_none()
+            if row.line_id
+            else None
+        )
+        force = has_tower_snapshot and (bound_line is None or is_managed_line(bound_line))
         _apply_managed_tower(db, row, actor_user_id, force=force)
     row.update_user = actor_user_id
     db.commit()
