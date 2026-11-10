@@ -1842,7 +1842,20 @@ export default function AtpModelsPage() {
               type="info"
               showIcon
               message={t("发布后该版本参与仿真定位")}
-              description={`${t("模型")}：${publishTarget.name || publishTarget.code} · ${t("版本")} ${publishTarget.version || "-"}`}
+              description={
+                <div className="flex flex-col gap-1">
+                  <span>
+                    {`${t("模型")}：${publishTarget.name || publishTarget.code} · ${t("版本")} ${publishTarget.version || "-"}`}
+                  </span>
+                  {/* 标签在新建/编辑时配置，发布时只带过来展示（2026-11-10） */}
+                  <span>
+                    {`${t("标签")}：`}
+                    {(publishTarget.tags ?? []).length > 0
+                      ? (publishTarget.tags ?? []).join(" / ")
+                      : "-"}
+                  </span>
+                </div>
+              }
             />
             <Form form={publishForm} layout="vertical">
               <Form.Item
