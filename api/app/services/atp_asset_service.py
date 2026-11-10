@@ -30,6 +30,8 @@ from ..models.file_storage import FileStorageMount
 from ..models.dimension_item import DimensionItem
 from ..models.user import User
 from ..schemas.atp_asset import (
+    MAX_TAG_LENGTH,
+    MAX_TAGS,
     AtpAssetCreateRequest,
     AtpAssetDetail,
     AtpAssetFileContentResponse,
@@ -156,6 +158,34 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _normalize_tags(values: list[str] | None) -> list[str]:
+    """标签归一化（2026-11-10）：去空白、丢空项、去重（保序）、截断超长、封顶数量。
+
+    入库前统一走这里，保证前端「打标签」时随手敲的空格/重复项不会落库成脏数据，
+    也不会因为某个标签特别长把卡片左下角那一行撑爆。
+    """
+    if not values:
+        return []
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in values:
+        if not isinstance(raw, str):
+            continue
+        tag = raw.strip()
+        if not tag:
+            continue
+        tag = tag[:MAX_TAG_LENGTH]
+        # 大小写不同视为同一个标签，避免「现场实测 / 现场实测 」之外再出现大小写变体
+        key = tag.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(tag)
+        if len(result) >= MAX_TAGS:
+            break
+    return result
 
 
 def _validate_test_line_ref(db: Session, test_line_id: str | None) -> str | None:
@@ -534,6 +564,38 @@ def _format_check_detail(report: PackageInspection) -> str:
     return "\n".join(lines)
 
 
+# 已下线的预检提示码。存量资产的 format_check_json 里仍可能存着它们，
+# 读侧统一剔除，避免「详情页仍显示 W012、卡片 warning 计数也多 1」的不一致。
+# 新增废弃码往这里加即可，不用改前端。
+_RETIRED_FORMAT_CHECK_CODES = frozenset({"W012"})
+
+
+def _strip_retired_format_check_issues(check: Any) -> Any:
+    """读侧剔除已废弃的预检提示，并同步修正 warning_count（不改库里的原始报告）。"""
+    if not isinstance(check, dict):
+        return check
+    issues = check.get("issues")
+    if not isinstance(issues, list):
+        return check
+    kept = [
+        issue for issue in issues
+        if not (isinstance(issue, dict) and issue.get("code") in _RETIRED_FORMAT_CHECK_CODES)
+    ]
+    if len(kept) == len(issues):
+        return check
+    cleaned = dict(check)
+    cleaned["issues"] = kept
+    removed = len(issues) - len(kept)
+    count = check.get("warning_count")
+    if isinstance(count, int):
+        cleaned["warning_count"] = max(0, count - removed)
+    else:
+        cleaned["warning_count"] = sum(
+            1 for issue in kept if isinstance(issue, dict) and issue.get("level") == "warning"
+        )
+    return cleaned
+
+
 def _inspect_atp_package_or_400(members: dict[str, bytes]) -> PackageInspection:
     """上传包整体预检：形态判定 + 依赖闭合 + 参数段可解析性。
 
@@ -906,6 +968,9 @@ def serialize_asset(
         published_date=_row_field(item, "published_date") or None,
         # 版本描述（2026-11-10）：发布时填写的改动说明
         release_notes=_row_field(item, "release_notes") or None,
+        # 标签（2026-11-10）：发布时可打多个，卡片左下角展示。走 _row_field 兜底，
+        # 列表接口列白名单若漏加也不会 500（回落空列表）。
+        tags=list(_row_field(item, "tags_json") or []),
         shield_wire=item.shield_wire or "with",
         test_line_id=item.test_line_id,
         # 形态标记（2026-11-02）：存量行没有该字段值时回落 legacy —— 改造前入口只放行
@@ -914,7 +979,7 @@ def serialize_asset(
         # Row 里若没有该列必须回落而不是抛 KeyError（见 _row_field 注释）。
         model_format=(_row_field(item, "model_format") or "legacy"),  # type: ignore[arg-type]
         model_format_label=_MODEL_FORMAT_LABELS.get(_row_field(item, "model_format") or "legacy"),
-        format_check=(_row_field(item, "format_check_json") or None),
+        format_check=_strip_retired_format_check_issues(_row_field(item, "format_check_json") or None),
         # 异步分析状态（2026-11-03）：上传后自动触发的形态识别 + 槽位扫描
         analysis_status=_analysis_status,
         analysis_error=_analysis_error,
@@ -1040,7 +1105,9 @@ def list_assets(
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
-    # 只查列表接口需要的列（避开 tags_json 等列全行读取，400ms+ → 8ms，实测）
+    # 只查列表接口需要的列（避开描述原文/预检明细等大列全行读取，400ms+ → 8ms，实测）。
+    # 注：tags_json（2026-11-10 起卡片要展示标签）已加入白名单——它是小 JSON 数组，
+    # 单行通常几十字节，带上不影响列表性能；slots_json 这类大列仍不在其中。
     columns = (
         AtpAsset.id,
         AtpAsset.code,
@@ -1059,6 +1126,8 @@ def list_assets(
         AtpAsset.published_date,
         # 2026-11-10：版本描述（serialize_asset 会读，漏列同样 KeyError）
         AtpAsset.release_notes,
+        # 2026-11-10：标签（serialize_asset 会读，漏列同样 KeyError）
+        AtpAsset.tags_json,
         AtpAsset.shield_wire,
         # 2026-11-01：serialize_asset 访问 test_line_id（测试线路），缺则 500：
         #   KeyError: 'test_line_id'（select 列白名单漏列 → Row.__getattr__ 抛 KeyError）
@@ -1501,6 +1570,7 @@ def publish_asset(
     *,
     asset_id: str,
     release_notes: str | None = None,
+    tags: list[str] | None = None,
     actor_user_id: str | None = None,
 ) -> AtpAssetSummary:
     """发布该版本（2026-11-05）：置 is_published=1 并记录发布时间。
@@ -1508,6 +1578,7 @@ def publish_asset(
     发布后版本参与仿真定位（fl_analysis 资产 _query 只在已发布版本中选取）。
     幂等：已发布的资产再次发布只刷新 published_date。
     release_notes（2026-11-10）：发布弹窗填写的版本描述，随发布写入；传空串视为清除。
+    tags（2026-11-10）：发布时打的标签，整组覆盖；None = 保留原标签，[] = 清空。
     """
     asset = get_asset_by_id(db, asset_id)
     if not asset:
@@ -1518,6 +1589,8 @@ def publish_asset(
     asset.published_date = utcnow()
     if release_notes is not None:
         asset.release_notes = release_notes.strip()[:1000] or None
+    if tags is not None:
+        asset.tags_json = _normalize_tags(tags)
     if actor_user_id:
         asset.update_user = actor_user_id
     asset.update_date = utcnow()
@@ -1975,6 +2048,9 @@ def update_asset(
         item.release_notes = _normalize_optional_str(update_data.get("release_notes"))
         if item.release_notes:
             item.release_notes = item.release_notes[:1000]
+    if "tags" in update_data:
+        # 标签（2026-11-10）：整组覆盖，传 [] / null 清空；不传字段则保持原值
+        item.tags_json = _normalize_tags(update_data.get("tags"))
     if "test_line_id" in update_data:
         # 模型级绑定测试线路（单塔基准）：传 null 表示解绑
         item.test_line_id = _validate_test_line_ref(db, update_data["test_line_id"])

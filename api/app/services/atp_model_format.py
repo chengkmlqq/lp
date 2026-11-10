@@ -621,11 +621,14 @@ def inspect_package(
 
     警告级（放行，但会展示给人工）：
       W011 work.atp 引用的 pch 路径目录与包内不一致（LP 按文件名物化）
-      W012 $PARAMETER 段有别名引用不到中间变量（原 E013；LP 渲染时按 C# 公式写值）
 
-    参数段的「行尾 `$$` / 整数无小数点 / 中间变量超 List31」三项**不再出提示**：
-    旧版模型在导入阶段就由 preprocess_legacy_entry 删掉变量替换段（对齐 C# 的
-    `1 delete_others.py`），入库文件不可能再带这三类形态，再报只能是恒假噪音。
+    参数段的「行尾 `$$` / 整数无小数点 / 中间变量超 List31 / 别名引用」四项
+    **不再出提示**：前三项在导入阶段就由 preprocess_legacy_entry 删掉变量替换段
+    （对齐 C# 的 `1 delete_others.py`），入库文件不可能再带；别名引用（原 E013 →
+    W012）是 ATPDraw 7.x 导出的常态，C# 与 LP 都在运行前按公式把真实值写进参数段，
+    恒为噪音，2026-11-10 起不再生成。真正的兜底仍在仿真前：
+    atp_asset_test_service.stage_materialize 会在渲染 + 槽位覆盖 + 规范化之后复查
+    unresolved，仍有残留才拦截并报出具体参数名。
     """
     lower_map = _lower_index(members.keys())
     entry_key = lower_map.get(entry_name.lower())
@@ -741,25 +744,13 @@ def inspect_package(
                 entry_key,
             )
 
-    # ── W012 参数段别名 ──
-    # 2026-11-04：原 E013（error）降级为 W012（warning）。
-    # `NAME=NAME_I` 且缺 `NAME_I=值` 不是模型残缺，而是 ATPDraw 7.x 导出的**常态**：
-    # 实测 C# 生产模型库 278/278 个老版 work.atp 都是这个形态，C# 跑得通是因为
-    # 它按特征表/公式把真实值直接覆写进 work.atp，从不解析 $PARAMETER 定义。
-    # LP 侧同样如此——检测到等号别名形态就走 render_csharp_equality_template，
-    # 按 C# 公式（RER001/RELENS/RELE01~12/REHG/REHC…）整行改写成带小数点的数值，
-    # 别名在引擎读到之前就已消失。故预检这一项不能作为拒收依据；
-    # 真正的兜底在运行前：atp_asset_test_service.stage_materialize 会在
-    # 渲染 + 槽位覆盖 + 规范化之后复查 unresolved，仍有残留才拦截并报具体参数名。
-    if section.unresolved:
-        preview = "；".join(f"{n} ← 缺 {r}" for n, r in section.unresolved[:6])
-        result.add(
-            "W012", "warning",
-            f"$PARAMETER 段有 {len(section.unresolved)} 个参数是别名引用形态（缺中间变量定义）：{preview}",
-            "这是 ATPDraw 导出 ATP 的常见形态，C# 与 LP 都在运行前用公式把真实值写进参数段，"
-            "不影响计算；若某个别名既算不出值又被 TACS 引用，仿真前会报出具体参数名，无需在此人工修改",
-            entry_key,
-        )
+    # ── 参数段别名：不再出提示（2026-11-10 下线 W012）──
+    # `NAME=NAME_I` 且缺 `NAME_I=值` 不是模型残缺，而是 ATPDraw 7.x 导出的常态：
+    # C# 与 LP 都在运行前按公式把真实值整行写进 work.atp，别名在引擎读到之前
+    # 就已消失。生成这条提示只会让每个新版模型详情都挂一条恒假警告。
+    # 真正的兜底仍在仿真前的 stage_materialize：渲染 + 槽位覆盖 + 规范化之后
+    # 复查 unresolved，仍有残留才拦截并报出具体参数名。
+    # section 仍被上方 stats 使用，这里不再读取 unresolved。
 
     return result
 
