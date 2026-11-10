@@ -685,26 +685,12 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
   const { t } = useI18n();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
-  const [job, setJob] = useState<FlAnalysisJobSummary | null>(null);
   const [rows, setRows] = useState<FlAnalysisTowerResultSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   // 优化过程弹窗：展示状态机逐轮计算过程（2026-09-30）
   const [processRow, setProcessRow] = useState<FlAnalysisTowerResultSummary | null>(null);
-
-  const loadJob = useCallback(async () => {
-    const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}`);
-    if (!response.ok) {
-      return;
-    }
-    // 详情接口返回任务字段平铺在顶层（无 job 包裹），与防雷计算页保持同样的兼容读取
-    const data = (await response.json()) as { job?: FlAnalysisJobSummary } & FlAnalysisJobSummary;
-    const next = data.job ?? data;
-    if (next?.id) {
-      setJob(next);
-    }
-  }, [fetchWithAuth, jobId]);
 
   const loadResults = useCallback(async () => {
     setLoading(true);
@@ -728,16 +714,15 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
     if (!user || !canRead) {
       return;
     }
-    void loadJob();
     void loadResults();
-  }, [user, canRead, loadJob, loadResults]);
+  }, [user, canRead, loadResults]);
 
   // 2026-11-07 精准更新：每个详情 Tab 实例都会挂一个本 topic 订阅，旧实现任何任务
   // 的任何事件（含其他任务的 tower_done，每塔一次）都触发本 Tab 重取 results；
   // N 个 Tab = N 次无差别请求。改为只响应目标任务自身的事件：
-  // - tower_done（每塔一次）→ 仅刷新本任务结果表（逐塔算完即入库）；
-  // - job.* 状态变化 → 刷新任务信息 + 结果表（顺带修复：旧实现 job 信息只在
-  //   mount 时加载一次，运行中详情 Tab 的状态 Tag 永久冻结在打开时快照）。
+  // - tower_done（每塔一次）→ 逐塔算完即入库，刷新本任务结果表；
+  // - job.* 状态变化（如进入终态）→ 结果表可能有补充，一并刷新。
+  // 2026-11-10：详情头部任务信息条已去掉，不再需要拉取任务本身。
   useTopicSubscription("admin.fl-analysis", useCallback((event) => {
     const name = typeof event?.name === "string" ? event.name : "";
     if (!name.startsWith("fl_analysis.job.") && name !== "fl_analysis.tower_done") {
@@ -747,13 +732,8 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
     if (payloadJobId !== jobId) {
       return;
     }
-    if (name === "fl_analysis.tower_done") {
-      void loadResults();
-      return;
-    }
-    void loadJob();
     void loadResults();
-  }, [jobId, loadJob, loadResults]));
+  }, [jobId, loadResults]));
 
   const handleExport = () => {
     const headers = `${t("塔号")},${t("当前风险")},${t("预期风险")},${t("预期得分")},${t("措施建议")},${t("结论")}\n`;
@@ -863,16 +843,6 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
 
   return (
     <div className="modo-page-card admin-power-lines-list-pane">
-      <Alert
-        type="info"
-        showIcon
-        message={job ? (job.job_name || job.line_name || job.line_code || t("防雷改造任务")) : t("加载中…")}
-        description={
-          job
-            ? `${job.line_name || job.line_code || "-"} / ${formatJobType(job.job_type, readMitigationMode(job), t)} / ${job.status} / ${t("创建")}：${formatDateTime(job.create_date)}`
-            : undefined
-        }
-      />
       <div
         className="admin-power-lines-table-view"
         style={{ "--admin-power-lines-table-body-min-height": "240px" } as CSSProperties}
