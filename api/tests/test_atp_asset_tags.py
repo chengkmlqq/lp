@@ -17,7 +17,7 @@ from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
 from app.models.user import User
-from app.schemas.atp_asset import AtpAssetUpdateRequest
+from app.schemas.atp_asset import AtpAssetCreateRequest, AtpAssetUpdateRequest
 from app.services import atp_asset_service
 
 
@@ -138,3 +138,32 @@ def test_update_asset_omitted_tags_untouched(session: Session) -> None:
 
     assert updated is not None
     assert updated.tags == ["基准"]
+
+
+def test_create_asset_writes_tags(session: Session) -> None:
+    """新建模型时就能配标签（2026-11-10）：标签从发布弹窗挪到新建/编辑表单，
+    创建入参必须落库，且脏输入仍走同一套归一化。"""
+    created = atp_asset_service.create_asset(
+        session,
+        AtpAssetCreateRequest(
+            code="asset-tags-create",
+            name="带标签的模型",
+            description="单测用",
+            tags=["现场实测", "  ", "基准", "现场实测 "],
+        ),
+        actor_user_id="user-1",
+    )
+
+    assert created is not None
+    assert created.tags == ["现场实测", "基准"]
+
+
+def test_create_asset_without_tags_defaults_to_empty(session: Session) -> None:
+    created = atp_asset_service.create_asset(
+        session,
+        AtpAssetCreateRequest(code="asset-tags-empty", name="无标签模型", description="单测用"),
+        actor_user_id="user-1",
+    )
+
+    assert created is not None
+    assert created.tags == []

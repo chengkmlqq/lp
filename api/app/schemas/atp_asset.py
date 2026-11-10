@@ -122,6 +122,8 @@ class AtpAssetCreateRequest(BaseModel):
     test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
+    # 标签（2026-11-10）：新建时即可配置，最多 8 个；发布接口不再接收标签
+    tags: list[str] | None = Field(default=None, max_length=MAX_TAGS)
 
 
 class AtpAssetTestStatusRequest(BaseModel):

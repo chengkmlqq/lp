@@ -63,6 +63,8 @@ type AssetFormValues = {
   scene_type: string;
   arrester_config: string;
   description: string;
+  /** 标签（2026-11-10）：新建时即可配置，发布时不再重复填 */
+  tags?: string[];
   files: File[];
 };
 
@@ -77,10 +79,9 @@ type AssetEditFormValues = {
   tags?: string[];
 };
 
-/** 发布弹窗表单（2026-11-10）：版本描述 + 标签 */
+/** 发布弹窗表单（2026-11-10）：只填版本描述；标签改到新建/编辑模型时维护 */
 type PublishFormValues = {
   release_notes?: string;
-  tags?: string[];
 };
 
 const EMPTY_FORM: AssetFormValues = {
@@ -89,6 +90,7 @@ const EMPTY_FORM: AssetFormValues = {
   scene_type: "",
   arrester_config: "",
   description: "",
+  tags: [],
   files: [],
 };
 
@@ -323,6 +325,8 @@ export default function AtpModelsPage() {
         tower_type: values.tower_type.trim() || null,
         scene_type: values.scene_type.trim() || null,
         arrester_config: values.arrester_config.trim() || null,
+        // 标签（2026-11-10）：新建时配置，随资产入库；不填即无标签
+        tags: values.tags ?? [],
       };
 
       const response = await fetchWithAuth("/api/v1/atp/assets", {
@@ -396,22 +400,20 @@ export default function AtpModelsPage() {
 
   // 发布 / 下线版本（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用。
   // 「生效/失效」概念已随发布上线取消——发布即生效，下线即退出仿真定位。
-  // 2026-11-10：发布改为弹窗确认，可填写版本描述（release_notes）与标签（tags），均选填。
+  // 2026-11-10：发布只填版本描述；标签改到新建/编辑模型时维护，
+  // 发布接口不传 tags 字段＝保留原标签，避免发布动作把已有标签覆盖清空。
   const publishMutation = useMutation({
     mutationFn: async ({
       assetId,
       releaseNotes,
-      tags,
     }: {
       assetId: string;
       releaseNotes?: string | null;
-      tags?: string[];
     }) => {
       const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // tags 整组覆盖；不传字段＝保留原标签，传 []＝清空
-        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null, tags: tags ?? [] }),
+        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null }),
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -1528,7 +1530,6 @@ export default function AtpModelsPage() {
                                     setPublishTarget(target);
                                     publishForm.setFieldsValue({
                                       release_notes: target?.release_notes ?? "",
-                                      tags: target?.tags ?? [],
                                     });
                                   }}
                                   onUnpublish={(id) => unpublishMutation.mutate(id)}
@@ -1652,6 +1653,14 @@ export default function AtpModelsPage() {
               rules={[{ required: true, message: t("请输入模型描述") }]}
             >
               <Input.TextArea rows={2} placeholder={t("模型描述（必填）")} maxLength={8000} />
+            </Form.Item>
+            <Form.Item
+              name="tags"
+              label={t("标签")}
+              className="sm:col-span-2"
+              extra={t("最多 8 个，单个 32 字内。回车或逗号分隔新增，展示在模型卡片左下角")}
+            >
+              <Select mode="tags" allowClear maxCount={MAX_TAGS} tokenSeparators={[",", "，"]} placeholder={t("如：现场实测 / 基准 / 已对拍")} />
             </Form.Item>
           </div>
           <Typography.Text type="secondary" className="mb-3 block text-xs">
@@ -1823,7 +1832,6 @@ export default function AtpModelsPage() {
           publishMutation.mutate({
             assetId: publishTarget.id,
             releaseNotes: values.release_notes ?? null,
-            tags: values.tags ?? [],
           });
         }}
         destroyOnHidden
@@ -1837,19 +1845,6 @@ export default function AtpModelsPage() {
               description={`${t("模型")}：${publishTarget.name || publishTarget.code} · ${t("版本")} ${publishTarget.version || "-"}`}
             />
             <Form form={publishForm} layout="vertical">
-              <Form.Item
-                name="tags"
-                label={t("标签")}
-                extra={t("给这个版本打标签，可多个（最多 8 个，单个 32 字内）。回车或逗号分隔即可新增，展示在模型卡片左下角")}
-              >
-                <Select
-                  mode="tags"
-                  allowClear
-                  maxCount={MAX_TAGS}
-                  tokenSeparators={[",", "，"]}
-                  placeholder={t("如：现场实测 / 基准 / 已对拍")}
-                />
-              </Form.Item>
               <Form.Item
                 name="release_notes"
                 label={t("版本描述")}

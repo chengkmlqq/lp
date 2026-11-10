@@ -1506,6 +1506,8 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         test_line_id=_validate_test_line_ref(db, payload.test_line_id),
         storage_mount_code=storage_mount_code,
         storage_root_path=storage_root_path,
+        # 标签（2026-11-10）：新建时随资产入库；发布接口不再接收标签，避免两处冲突
+        tags_json=_normalize_tags(payload.tags),
         create_user=actor_user_id,
         update_user=actor_user_id,
         create_date=now,
