@@ -66,19 +66,15 @@ type AssetFormValues = {
   files: File[];
 };
 
+/**
+ * 编辑表单（2026-11-10 收敛）：只保留描述 + 标签。
+ * 名称/维度/版本/存储路径等属于资产身份与分层定位，改了会让历史任务与 ATP 目录对不上，
+ * 因此不在编辑里开放；需要调整请重新上传或走版本发布。
+ */
 type AssetEditFormValues = {
-  name: string;
-  description: string;
-  voltage_level: string;
-  tower_type: string;
-  scene_type: string;
-  arrester_config: string;
-  version: string;
-  shield_wire: string;
-  storage_mount_code: string;
-  storage_root_path: string;
+  description?: string;
   /** 标签（2026-11-10）：编辑里也能维护，不必为了改标签先下线再发布 */
-  tags: string[];
+  tags?: string[];
 };
 
 /** 发布弹窗表单（2026-11-10）：版本描述 + 标签 */
@@ -458,18 +454,11 @@ export default function AtpModelsPage() {
       if (!editingAsset) {
         throw new Error(t("未选择要编辑的模型"));
       }
+      // 2026-11-10：编辑只开放描述与标签，其余字段不提交（PATCH 缺省即不改）
+      // 描述传空串而不是 null —— 后端对 null 视为「不修改」，空串才能真正清空
       const payload = {
-        name: values.name.trim() || null,
-        description: values.description.trim() || null,
-        voltage_level: values.voltage_level.trim() || null,
-        tower_type: values.tower_type.trim() || null,
-        scene_type: values.scene_type.trim() || null,
-        arrester_config: values.arrester_config.trim() || null,
-        version: (values.version || "v1").trim() || "v1",
-        shield_wire: (values.shield_wire || "with").trim() || "with",
-        storage_mount_code: values.storage_mount_code.trim() || null,
-        storage_root_path: values.storage_root_path.trim() || null,
-        // 标签（2026-11-10）：整组覆盖，空数组即清空
+        description: (values.description ?? "").trim(),
+        // 标签：整组覆盖，空数组即清空
         tags: values.tags ?? [],
       };
       const response = await fetchWithAuth(`/api/v1/atp/assets/${editingAsset.id}`, {
@@ -624,16 +613,7 @@ export default function AtpModelsPage() {
     setModalError(null);
     setEditingAsset(asset);
     editForm.setFieldsValue({
-      name: asset.name ?? "",
       description: asset.description ?? "",
-      voltage_level: asset.voltage_level ?? "",
-      tower_type: asset.tower_type ?? "",
-      scene_type: asset.scene_type ?? "",
-      arrester_config: asset.arrester_config ?? "",
-      version: asset.version ?? "v1",
-      shield_wire: asset.shield_wire ?? "with",
-      storage_mount_code: asset.storage_mount_code ?? "",
-      storage_root_path: asset.storage_root_path ?? "",
       tags: asset.tags ?? [],
     });
     setEditModalOpen(true);
@@ -899,7 +879,8 @@ export default function AtpModelsPage() {
   // 1. 获取维度类型树（types/tree），解析出四个类型 id
   // 2026-11-10：右侧过滤栏不再重复放电压等级/塔形下拉（统一走左侧维度树），
   // 四个维度的字典都只在新建/编辑弹窗打开时才请求，页面加载少打 1+4 次接口。
-  const dimensionOptionsNeeded = Boolean(user && canRead && (modalOpen || editModalOpen));
+  // 编辑弹窗只留描述与标签，不再需要维度下拉选项，故仅新建弹窗触发加载
+  const dimensionOptionsNeeded = Boolean(user && canRead && modalOpen);
   const dimensionTypesQuery = useQuery({
     queryKey: ["/api/v1/dimensions/types/tree"],
     enabled: dimensionOptionsNeeded,
@@ -1781,7 +1762,7 @@ export default function AtpModelsPage() {
         destroyOnHidden
         okText={updateAssetMutation.isPending ? t("提交中...") : t("保存")}
         cancelText={t("取消")}
-        width={640}
+        width={560}
       >
         {modalError && (
           <Alert
@@ -1805,73 +1786,26 @@ export default function AtpModelsPage() {
           }}
           autoComplete="off"
         >
-          <div className="grid gap-x-4 md:grid-cols-2">
-            <Form.Item name="name" label={t("名称")} rules={[{ required: true, message: t("请输入名称") }]}>
-              <Input placeholder={t("模型名称")} maxLength={255} />
-            </Form.Item>
-            <Form.Item name="storage_mount_code" label={t("存储挂载")}>
-              <Input placeholder={t("如 main")} maxLength={64} />
-            </Form.Item>
-            <Form.Item name="voltage_level" label={t("电压等级")} rules={[{ required: true, message: t("请选择电压等级") }]}>
-              <Select
-                showSearch
-                allowClear
-                placeholder={t("请选择电压等级")}
-                options={voltageLevelOptions}
-              />
-            </Form.Item>
-            <Form.Item name="tower_type" label={t("塔型")} rules={[{ required: true, message: t("请选择塔型") }]}>
-              <Select
-                showSearch
-                allowClear
-                placeholder={t("请选择塔型")}
-                options={towerTypeOptions}
-              />
-            </Form.Item>
-            <Form.Item name="scene_type" label={t("场景")} rules={[{ required: true, message: t("请选择场景") }]}>
-              <Select
-                showSearch
-                allowClear
-                placeholder={t("请选择场景")}
-                options={sceneTypeOptions}
-              />
-            </Form.Item>
-            <Form.Item name="arrester_config" label={t("避雷器装设组合")} rules={[{ required: true, message: t("请选择避雷器装设组合") }]}>
-              <Select
-                showSearch
-                allowClear
-                placeholder={t("请选择避雷器装设组合")}
-                options={arresterConfigOptions}
-              />
-            </Form.Item>
-            <Form.Item name="version" label={t("版本号")} rules={[{ required: true, message: t("请输入版本号") }]}>
-              <Input placeholder={t("如 v1 / v2-rev3")} maxLength={32} />
-            </Form.Item>
-            <Form.Item name="shield_wire" label={t("避雷线")}>
-              <Select
-                allowClear
-                placeholder={t("请选择避雷线配置")}
-                options={[
-                  { value: "with", label: t("有避雷线") },
-                  { value: "without", label: t("无避雷线") },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="storage_root_path" label={t("存储目录")} className="md:col-span-2" rules={[{ required: true, message: t("请输入存储目录") }]}>
-              <Input placeholder={t("如 /atp-assets/220kV/猫头塔/平原/避雷器组合A")} maxLength={2048} />
-            </Form.Item>
-            <Form.Item name="description" label={t("描述")} className="md:col-span-2">
-              <Input.TextArea rows={2} placeholder={t("模型描述（可选）")} maxLength={8000} />
-            </Form.Item>
-            <Form.Item
-              name="tags"
-              label={t("标签")}
-              className="md:col-span-2"
-              extra={t("最多 8 个，单个 32 字内。回车或逗号分隔新增，展示在模型卡片左下角")}
-            >
-              <Select mode="tags" allowClear maxCount={MAX_TAGS} tokenSeparators={[",", "，"]} placeholder={t("如：现场实测 / 基准 / 已对拍")} />
-            </Form.Item>
-          </div>
+          {/* 编辑只保留「描述」与「标签」两项，其他字段一律不开放修改 */}
+          <Form.Item
+            name="description"
+            label={t("描述")}
+            extra={t("说明这个模型的几何特征与适用范围（选填）")}
+          >
+            <Input.TextArea
+              rows={4}
+              maxLength={8000}
+              showCount
+              placeholder={t("模型描述（可选）")}
+            />
+          </Form.Item>
+          <Form.Item
+            name="tags"
+            label={t("标签")}
+            extra={t("最多 8 个，单个 32 字内。回车或逗号分隔新增，展示在模型卡片左下角")}
+          >
+            <Select mode="tags" allowClear maxCount={MAX_TAGS} tokenSeparators={[",", "，"]} placeholder={t("如：现场实测 / 基准 / 已对拍")} />
+          </Form.Item>
         </Form>
       </Modal>
 

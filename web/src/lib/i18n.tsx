@@ -1683,6 +1683,7 @@ export const EN_DICT: Record<string, string> = {
   "模型已创建并上传文件": "Model Created and File Uploaded",
   "模型已删除": "Model Deleted",
   "模型描述（可选）": "Model Description (Optional)",
+  "说明这个模型的几何特征与适用范围（选填）": "Describe the model's geometry characteristics and applicable scope (optional)",
   "模型文件尚未上传完成，请等待上传完成后再创建模型": "Model file has not finished uploading yet; please wait for the upload to complete before creating the model",
   "模型文件打包失败，请重新选择文件夹": "Model file packaging failed; please re-select the folder",
   "模型测试": "Model Test",
