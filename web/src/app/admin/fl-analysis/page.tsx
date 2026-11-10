@@ -14,6 +14,7 @@ import {
   Segmented,
   Select,
   Space,
+  Spin,
   Typography,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
@@ -897,8 +898,16 @@ export default function AdminFlAnalysisPage() {
                   <Empty description={t("暂无防雷分析任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
                   <>
-                    <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsLoading} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
+                    <div className="admin-fl-analysis-card-region">
+                      <div className="admin-power-lines-card-scroll">
+                        <JobCardList jobs={jobs} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
+                      </div>
+                      {jobsLoading && (
+                        // 遮罩锚定「卡片区可视范围」而不是卡片内容总高度，滚动/卡片变多时 spinner 不漂移
+                        <div className="admin-fl-analysis-card-loading" aria-busy="true">
+                          <Spin />
+                        </div>
+                      )}
                     </div>
                     <div className="admin-power-lines-pagination">
                       <ModoPagination

@@ -4244,6 +4244,28 @@ body {
   padding: 12px;
 }
 
+/* 防雷计算·卡片视图查询遮罩：antd Spin 的 indicator 是绝对定位在「内容总高度」的 50%，
+   卡片越多 spinner 越往下漂，滚动后甚至完全移出可视区。改由卡片区（flex:1 + min-height:0，
+   高度恒等于可视区）自身承载绝对定位遮罩，与卡片数量、滚动位置无关。 */
+.admin-fl-analysis-card-region {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fl-analysis-card-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--fquiz-theme-bg-container) 62%, transparent);
+  /* 遮罩本身接收点击，加载期间不误触下方卡片（对齐 antd Spin 的行为） */
+}
+
 /* LP-374: 任务详情 Tab 内容容器：详情面板 + 分级结果/塔详情 Tabs 纵向排列并撑满高度 */
 .admin-fl-analysis-job-pane {
   display: flex;

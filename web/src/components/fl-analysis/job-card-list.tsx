@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import { Badge, Button, Dropdown, Empty, Progress, Space, Tag, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
   BarChartOutlined,
@@ -32,7 +32,6 @@ const { Text } = Typography;
 
 type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
-  loading: boolean;
   onDeleteJob: (job: FlAnalysisJobSummary) => void;
   /** 取消运行中/排队中的任务（终止执行 + 清理残留进程） */
   onCancelJob?: (job: FlAnalysisJobSummary) => void;
@@ -82,24 +81,17 @@ function isJobLocked(job: FlAnalysisJobSummary) {
 /** 整体进度百分比（0~99）：已完成塔数 + 当前塔内部比例 fractional，上限 99（运行中不显示 100%）。
  *  与列表视图共用 types.runningProgressPercent，避免各视图口径分叉。 */
 
-export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
+export function JobCardList({ jobs, onDeleteJob, onCancelJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
   const { t } = useI18n();
   if (jobs.length === 0) {
-    // 无数据可展示时（首载/无结果）：用居中加载指示；其余情况保留现有数据，仅在刷新时叠加遮罩
-    if (loading) {
-      return (
-        <div className="flex w-full flex-1 items-center justify-center">
-          <Spin />
-        </div>
-      );
-    }
     return <Empty description={t("暂无防雷分析任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
+  // loading 遮罩由页面层的 .admin-fl-analysis-card-region 承载（锚定卡片区可视范围）。
+  // 不用 antd Spin 包裹网格：其 indicator 绝对定位在「整个内容高度」的 50%，
+  // 卡片越多 spinner 越往下漂，滚动后甚至看不到。
   return (
-    // 查询刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
-    <Spin spinning={loading}>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {jobs.map((job) => {
           const lineName = job.line_name || job.line_code || "-";
 
@@ -293,7 +285,6 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
           </Card>
         );
       })}
-      </div>
-    </Spin>
+    </div>
   );
 }
