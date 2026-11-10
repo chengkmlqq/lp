@@ -200,6 +200,13 @@ export default function AdminFlAnalysisPage() {
 
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);
   const total = jobsQuery.data?.total ?? 0;
+  // 点击「查询」/切换筛选/翻页时 queryKey 变化，placeholderData 会保留上一份数据占位，
+  // 此时 isLoading 恒为 false，必须叠加 isPlaceholderData 才能给出 loading 反馈。
+  // 不用 isFetching：WS 事件驱动的局部重取同样会置 isFetching，那会让卡片/列表
+  // 无故闪一层遮罩（2026-11-08 移除定时轮询时一并解决的抖动问题）。
+  // isError 时不继续转圈：查询失败但保留占位数据的场景下，错误已由下方 toast 提示，
+  // 避免遮罩一直挂着；下一次重试成功即恢复正常。
+  const jobsLoading = jobsQuery.isLoading || (jobsQuery.isPlaceholderData && !jobsQuery.isError);
 
   const selectedLine = useMemo(() => {
     return linesQuery.data?.items.find((item) => item.id === selectedLineId) ?? null;
@@ -870,7 +877,7 @@ export default function AdminFlAnalysisPage() {
                         htmlType="button"
                         icon={<SearchOutlined />}
                         onClick={handleSearch}
-                        className="admin-search-btn" loading={jobsQuery.isFetching}
+                        className="admin-search-btn" loading={jobsLoading}
                       >
                         {t("查询")}
                       </Button>
@@ -886,12 +893,12 @@ export default function AdminFlAnalysisPage() {
                   />
                 </div>
 
-                 {jobs.length === 0 ? (
+                 {jobs.length === 0 && !jobsLoading ? (
                   <Empty description={t("暂无防雷分析任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
+                      <JobCardList jobs={jobs} loading={jobsLoading} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <ModoPagination
@@ -914,7 +921,7 @@ export default function AdminFlAnalysisPage() {
                   >
                     <JobTable
                       jobs={jobs}
-                      loading={jobsQuery.isLoading}
+                      loading={jobsLoading}
                       total={total}
                       pagination={pagination}
                       onPaginationChange={(next) => setPagination(next)}
