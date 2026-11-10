@@ -130,6 +130,17 @@ def test_validate_accepts_valid_model_members() -> None:
     atp_asset_service._validate_atp_model_members(list(_valid_entries()))
 
 
+def test_validate_accepts_acp_project_file() -> None:
+    """2026-11-10：.acp（ATPDraw 工程文件）放开上传，作配套存档。
+
+    只放宽清单白名单，不进入 _CHECKED_SUFFIXES —— 形态判定/预检仍只读
+    .atp/.dat/.pch，.acp 不参与计算。
+    """
+    atp_asset_service._validate_atp_model_members([*_valid_entries(), "work.acp"])
+    # 大小写不敏感
+    atp_asset_service._validate_atp_model_members([*_valid_entries(), "WORK.ACP"])
+
+
 def test_validate_rejects_illegal_extension() -> None:
     paths = ["work.atp", "long.dat", "short.dat", "dahao.dat", "xiaohao.dat", "short.lib"]
     with pytest.raises(HTTPException) as exc:
@@ -197,6 +208,31 @@ def test_upload_files_valid_zip_writes_all(tmp_path) -> None:
         asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
         for name in ("work.atp", "long.dat", "short.dat", "dahao.dat", "xiaohao.dat"):
             assert (asset_root / name).is_file(), name
+    finally:
+        session.close()
+
+
+def test_upload_files_zip_with_acp_writes_project_file(tmp_path) -> None:
+    """zip 里带 .acp 时应正常入库（同目录存档），不影响形态判定。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = _create_asset(session)
+        entries = dict(_valid_entries())
+        entries["work.acp"] = b"ATPDraw project archive"
+
+        updated = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=asset.id,
+            files=[_DummyUploadFile("model.zip", _build_zip(entries))],
+            actor_user_id="tester",
+        )
+        assert updated is not None
+
+        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
+        assert (asset_root / "work.acp").is_file()
+        assert (asset_root / "work.atp").is_file()
     finally:
         session.close()
 
