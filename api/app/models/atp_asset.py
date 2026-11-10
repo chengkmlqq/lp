@@ -50,6 +50,19 @@ class AtpAsset(Base):
     # 存量行由迁移 035 回填为已发布（行为不变）；新建默认未发布，需显式发布。
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # ===== 发布生命周期状态（2026-11-10 新增）=====
+    # 把原来的「已发布 / 未发布」二态细分成人能一眼看懂的四个状态：
+    #   new       新建：从未发布过（含刚上传文件、还没走发布流程）
+    #   published 已发布：文件即发布内容，参与仿真定位
+    #   changed   变更：由「已发布」版本覆盖上传派生出的新版本，文件已变、待重新发布
+    #   offline   下线：曾发布后被人工下线，保留文件与记录但不参与仿真
+    # 与 is_published 的分工：is_published 只表示「这一版对仿真是否可见」（changed/new/
+    # offline 均为 False），publish_state 表示生命周期。覆盖上传已发布模型时**不原地改**
+    # 旧行，而是派生一条 changed 新版本 —— 这样「上一个发布过的版本」文件与生效状态都完好，
+    # 仿真不会因为一次覆盖上传就断档。
+    # 存量为 NULL 时由 _derive_publish_state 按 is_published / published_date 兜底派生，
+    # 因此本列保持 nullable（启动时 _sync_missing_columns 可安全自动补列，不会卡死老行）。
+    publish_state: Mapped[str | None] = mapped_column(String(20), index=True)
     # release_notes: 版本描述（发布时弹窗填写，2026-11-10）：说明该版本改了什么，
     # 供版本历史与版本对比展示；未发布/未填写为 NULL。
     release_notes: Mapped[str | None] = mapped_column(String(1000))

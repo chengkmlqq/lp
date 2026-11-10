@@ -5,6 +5,7 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Empty,
   Form,
   Input,
@@ -51,7 +52,14 @@ import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { ApiError, downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/lib/api";
-import type { AtpAssetListResponse, AtpAssetSummary, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
+import { publishStateMeta, resolvePublishState } from "@/lib/atp-model-state";
+import type {
+  AtpAssetListResponse,
+  AtpAssetPublishState,
+  AtpAssetSummary,
+  DimensionTypeTreeItem,
+  TempUploadResponse,
+} from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
 /** 标签上限（2026-11-10）：与后端 schemas/atp_asset.py 的 MAX_TAGS 保持一致 */
@@ -82,6 +90,8 @@ type AssetEditFormValues = {
 /** 发布弹窗表单（2026-11-10）：只填版本描述；标签改到新建/编辑模型时维护 */
 type PublishFormValues = {
   release_notes?: string;
+  /** 发布后是否同时切换为生效版本（2026-11-10 版本切换），默认勾选 */
+  set_active?: boolean;
 };
 
 const EMPTY_FORM: AssetFormValues = {
@@ -156,9 +166,9 @@ const ATP_DIMENSION_FIELD_TO_TYPE_CODE: Record<string, string> = {
 const ATP_DIMENSION_FIELDS = ["voltage_level", "tower_type", "scene_type", "arrester_config"] as const;
 type AtpDimensionField = (typeof ATP_DIMENSION_FIELDS)[number];
 
-// 发布状态过滤（2026-11-10）：undefined = 全部；published/unpublished 走服务端 is_published 参数。
+// 发布状态过滤（2026-11-10）：undefined = 全部；其余走服务端 publish_state 参数。
 // 电压等级/塔形过滤统一由左侧维度树承担，右侧过滤栏不再重复放这两项。
-type PublishStatusFilter = "published" | "unpublished";
+type PublishStatusFilter = AtpAssetPublishState;
 
 function flattenTypeNodes(types: DimensionTypeTreeItem[]): DimensionTypeTreeItem[] {
   return types.flatMap((t) => [t, ...flattenTypeNodes(t.children)]);
@@ -406,14 +416,17 @@ export default function AtpModelsPage() {
     mutationFn: async ({
       assetId,
       releaseNotes,
+      setActive,
     }: {
       assetId: string;
       releaseNotes?: string | null;
+      setActive?: boolean;
     }) => {
       const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null }),
+        // set_active：发布即切换生效版本（2026-11-10 版本切换）。不传 = 保持现状。
+        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null, set_active: setActive ?? null }),
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -827,7 +840,7 @@ export default function AtpModelsPage() {
       params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
       if (searchKeyword.trim()) params.set("keyword", searchKeyword.trim());
       if (publishStatusFilter) {
-        params.set("is_published", publishStatusFilter === "published" ? "true" : "false");
+        params.set("publish_state", publishStatusFilter);
       }
       if (activeFilter) {
         if (activeFilter.voltage_level) params.set("voltage_level", activeFilter.voltage_level);
@@ -1061,8 +1074,25 @@ export default function AtpModelsPage() {
     const asset = assetItems.find((item) => item.id === id);
     if (asset) {
       openDetail(asset);
+      return;
     }
-  }, [assetItems, openDetail]);
+    // 列表里还没有这条（典型场景：已发布模型覆盖上传后刚派生的「变更」版本）：
+    // 直接用 id 打开详情 Tab，标题先用 id 兜底，进详情页后能看到真实模型名与版本。
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === id)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key: id,
+          label: <>{t("模型详情")} - {id.slice(0, 8)}</>,
+          assetId: id,
+        },
+      ];
+    });
+    setActiveTabKey(id);
+  }, [assetItems, openDetail, t]);
 
   /** 从操作列打开模型测试 Tab（同一模型已开则直接切过去）。 */
   const openTestTab = useCallback((asset: AtpAssetSummary) => {
@@ -1161,22 +1191,26 @@ export default function AtpModelsPage() {
         title: t("状态"),
         key: "state",
         width: 110,
-        render: (_, item) => (
-          <span className="inline-flex items-center gap-2">
-            {item.is_published !== false ? (
-              <span className="admin-atp-models-state-chip is-published">
-                <span className="admin-atp-models-state-chip-dot" />
-                {t("已发布")}
-              </span>
-            ) : (
-              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-            )}
-            {item.status === "processing" ? <span className="admin-atp-models-state-chip is-processing">{t("处理中")}</span> : null}
-            {item.status === "disabled" ? <span className="admin-atp-models-state-chip is-danger">{t("已停用")}</span> : null}
-            {item.status === "archived" ? <span className="admin-atp-models-state-chip is-warning">{t("已归档")}</span> : null}
-            {item.status === "draft" ? <span className="admin-atp-models-state-chip is-muted">{t("草稿")}</span> : null}
-          </span>
-        ),
+        render: (_, item) => {
+          // 发布生命周期四态（2026-11-10）：新建 / 变更 / 已发布 / 下线
+          const stateMeta = publishStateMeta(resolvePublishState(item), t);
+          return (
+            <span className="inline-flex items-center gap-2">
+              <Tooltip title={stateMeta.hint}>
+                <span className={`admin-atp-models-state-chip ${stateMeta.className}`}>
+                  {resolvePublishState(item) === "published" ? (
+                    <span className="admin-atp-models-state-chip-dot" />
+                  ) : null}
+                  {stateMeta.text}
+                </span>
+              </Tooltip>
+              {item.status === "processing" ? <span className="admin-atp-models-state-chip is-processing">{t("处理中")}</span> : null}
+              {item.status === "disabled" ? <span className="admin-atp-models-state-chip is-danger">{t("已停用")}</span> : null}
+              {item.status === "archived" ? <span className="admin-atp-models-state-chip is-warning">{t("已归档")}</span> : null}
+              {item.status === "draft" ? <span className="admin-atp-models-state-chip is-muted">{t("草稿")}</span> : null}
+            </span>
+          );
+        },
       },
       {
         title: t("更新时间"),
@@ -1401,8 +1435,10 @@ export default function AtpModelsPage() {
                             style={{ minWidth: 150 }}
                             value={publishStatusFilter}
                             options={[
+                              { value: "new", label: t("新建") },
+                              { value: "changed", label: t("变更") },
                               { value: "published", label: t("已发布") },
-                              { value: "unpublished", label: t("未发布") },
+                              { value: "offline", label: t("下线") },
                             ]}
                             placeholder={t("全部发布状态")}
                             onChange={handlePublishStatusFilterChange}
@@ -1530,6 +1566,8 @@ export default function AtpModelsPage() {
                                     setPublishTarget(target);
                                     publishForm.setFieldsValue({
                                       release_notes: target?.release_notes ?? "",
+                                      // 发布即切生效：避免「发布了但仿真还在用旧版本」的困惑
+                                      set_active: true,
                                     });
                                   }}
                                   onUnpublish={(id) => unpublishMutation.mutate(id)}
@@ -1572,6 +1610,7 @@ export default function AtpModelsPage() {
             children: (
               <AtpModelDetailTab
                 assetId={tab.assetId}
+                onOpenAsset={openDetailById}
               />
             ),
           })),
@@ -1832,6 +1871,7 @@ export default function AtpModelsPage() {
           publishMutation.mutate({
             assetId: publishTarget.id,
             releaseNotes: values.release_notes ?? null,
+            setActive: values.set_active !== false,
           });
         }}
         destroyOnHidden
@@ -1841,7 +1881,11 @@ export default function AtpModelsPage() {
             <Alert
               type="info"
               showIcon
-              message={t("发布后该版本参与仿真定位")}
+              message={
+                resolvePublishState(publishTarget) === "changed"
+                  ? t("发布后该版本将取代上一个已发布版本")
+                  : t("发布后该版本参与仿真定位")
+              }
               description={
                 <div className="flex flex-col gap-1">
                   <span>
@@ -1869,6 +1913,13 @@ export default function AtpModelsPage() {
                   showCount
                   placeholder={t("如：修正上字塔横担斜材坡度，几何与 115 线路实测一致")}
                 />
+              </Form.Item>
+              <Form.Item
+                name="set_active"
+                valuePropName="checked"
+                extra={t("同维度组合内只能有一个生效版本；发布后旧版本自动失效，可在版本历史里随时切回")}
+              >
+                <Checkbox>{t("同时设为生效版本")}</Checkbox>
               </Form.Item>
             </Form>
           </div>

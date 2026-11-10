@@ -1160,6 +1160,8 @@ export type AtpEngineStatusResponse = {
 };
 
 export type AtpAssetStatus = "draft" | "enabled" | "disabled" | "archived" | "processing";
+/** 发布生命周期四态（2026-11-10）：新建 / 变更 / 已发布 / 下线 */
+export type AtpAssetPublishState = "new" | "changed" | "published" | "offline";
 export type AtpAssetRunnerKind = "atp" | "egm" | "hybrid";
 export type AtpAssetRunStatus = "pending" | "running" | "success" | "failed";
 
@@ -1214,6 +1216,14 @@ export type AtpAssetSummary = {
   is_active: boolean;
   /** 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用 */
   is_published?: boolean;
+  /**
+   * 发布生命周期（2026-11-10）：
+   * - `new` 新建：从未发布过
+   * - `changed` 变更：已发布模型的文件被更新后派生的新版本，待重新发布
+   * - `published` 已发布：文件即发布内容，参与仿真定位
+   * - `offline` 下线：人工下线，保留数据但不参与仿真
+   */
+  publish_state?: AtpAssetPublishState;
   published_date?: string | null;
   /** 版本描述（2026-11-10）：发布时弹窗填写，说明本版本改动 */
   release_notes?: string | null;
@@ -1307,6 +1317,8 @@ export type AtpAssetVersionSummary = {
   version: string;
   is_active: boolean;
   is_published: boolean;
+  /** 发布生命周期四态（2026-11-10）：新建 / 变更 / 已发布 / 下线 */
+  publish_state?: AtpAssetPublishState;
   published_date: string | null;
   release_notes: string | null;
   /** 标签（2026-11-10）：版本历史里逐版展示 */

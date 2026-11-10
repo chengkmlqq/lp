@@ -891,3 +891,190 @@ def test_list_assets_filters_by_publish_status() -> None:
         assert snapshot(is_published=False) == (1, {"PUB-2"})
     finally:
         session.close()
+
+
+# ===== 发布生命周期四态 + 变更版本派生（2026-11-10）=====
+
+
+def test_publish_state_lifecycle(tmp_path) -> None:
+    """新建 → 已发布 → 下线 → 重新发布，publish_state 与 is_published 同步维护。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        created = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(code="STATE-1", name="状态流转", description="测试"),
+            actor_user_id="tester",
+        )
+        assert created is not None
+        assert created.publish_state == "new"
+        assert created.is_published is False
+
+        published = atp_asset_service.publish_asset(session, asset_id=created.id, actor_user_id="tester")
+        assert published.publish_state == "published"
+        assert published.is_published is True
+
+        offline = atp_asset_service.unpublish_asset(session, asset_id=created.id, actor_user_id="tester")
+        assert offline.publish_state == "offline"
+        assert offline.is_published is False
+
+        online = atp_asset_service.publish_asset(session, asset_id=created.id, actor_user_id="tester")
+        assert online.publish_state == "published"
+    finally:
+        session.close()
+
+
+def test_upload_to_published_asset_forks_changed_version(monkeypatch, tmp_path) -> None:
+    """已发布模型再次上传文件 → 派生 changed 新版本；旧版本文件与状态保持可用。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        monkeypatch.setattr(
+            atp_asset_service, "_enqueue_asset_analysis", lambda asset_id, token: "task"
+        )
+        dims = {
+            "voltage_level": "110",
+            "tower_type": "M123",
+            "scene_type": "fanji",
+            "arrester_config": "M1",
+        }
+        created = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(code="FORK-1", name="覆盖上传", description="测试", **dims),
+            actor_user_id="tester",
+        )
+        assert created is not None
+        first = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=created.id,
+            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            actor_user_id="tester",
+        )
+        assert first.id == created.id
+        assert first.publish_state == "new"
+
+        published = atp_asset_service.publish_asset(
+            session, asset_id=created.id, set_active=True, actor_user_id="tester"
+        )
+        assert published.publish_state == "published"
+        assert published.is_active is True
+        old_root = published.storage_root_path
+        assert old_root
+
+        forked = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=created.id,
+            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            actor_user_id="tester",
+            replace=True,
+        )
+
+        # 新版本：变更态、未发布、不生效、版本号递增、目录独立
+        assert forked.id != created.id
+        assert forked.publish_state == "changed"
+        assert forked.is_published is False
+        assert forked.is_active is False
+        assert forked.version == "v2"
+        assert forked.code == "FORK-1-v2"
+        assert forked.storage_root_path != old_root
+
+        # 旧版本：文件、发布状态、生效标记全部原样，仿真不会断档
+        old = atp_asset_service.get_asset_by_id(session, created.id)
+        assert old is not None
+        assert old.publish_state == "published"
+        assert old.is_published is True
+        assert old.is_active is True
+        assert old.storage_root_path == old_root
+        assert atp_asset_service.list_asset_files(session, asset_id=old.id).total > 0
+        assert atp_asset_service.list_asset_files(session, asset_id=forked.id).total > 0
+
+        # 再次上传「变更版本」的文件仍派生出更新的版本（不会原地覆盖变更版本本身）
+        again = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=forked.id,
+            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            actor_user_id="tester",
+            replace=True,
+        )
+        assert again.id == forked.id  # changed 不是已发布态，原地覆盖自己的目录
+        assert again.publish_state == "changed"
+    finally:
+        session.close()
+
+
+def test_activate_requires_published_version(tmp_path) -> None:
+    """版本切换只允许切到已发布版本，未发布/变更/下线版本一律拒绝。"""
+    from fastapi import HTTPException
+
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(code="ACT-1", name="生效校验", description="测试"),
+            actor_user_id="tester",
+        )
+        assert asset is not None
+        with pytest.raises(HTTPException) as excinfo:
+            atp_asset_service.activate_asset(session, asset_id=asset.id, actor_user_id="tester")
+        assert excinfo.value.status_code == 400
+
+        atp_asset_service.publish_asset(session, asset_id=asset.id, actor_user_id="tester")
+        activated = atp_asset_service.activate_asset(session, asset_id=asset.id, actor_user_id="tester")
+        assert activated.is_active is True
+    finally:
+        session.close()
+
+
+def test_list_assets_filter_by_publish_state(tmp_path) -> None:
+    """四态过滤：含 publish_state=NULL 的存量行按 is_published/published_date 兜底归类。"""
+    from datetime import datetime, timezone
+
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        session.add_all(
+            [
+                AtpAsset(code="PS-NEW", name="新建", status="enabled", is_published=False, publish_state="new"),
+                AtpAsset(code="PS-CHG", name="变更", status="enabled", is_published=False, publish_state="changed"),
+                AtpAsset(code="PS-PUB", name="已发布", status="enabled", is_published=True, publish_state="published"),
+                AtpAsset(code="PS-OFF", name="下线", status="enabled", is_published=False, publish_state="offline"),
+                # 加列前的存量行：只有 is_published / published_date
+                AtpAsset(code="PS-LEGACY-PUB", name="存量已发布", status="enabled", is_published=True),
+                AtpAsset(
+                    code="PS-LEGACY-OFF",
+                    name="存量下线",
+                    status="enabled",
+                    is_published=False,
+                    published_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                ),
+                AtpAsset(code="PS-LEGACY-NEW", name="存量未发布", status="enabled", is_published=False),
+            ]
+        )
+        session.commit()
+
+        def snapshot(state: str):
+            response = atp_asset_service.list_assets(
+                session,
+                keyword=None,
+                status_filter=None,
+                voltage_level=None,
+                tower_type=None,
+                scene_type=None,
+                publish_state=state,
+            )
+            return response.total, {item.code for item in response.items}
+
+        assert snapshot("new") == (2, {"PS-NEW", "PS-LEGACY-NEW"})
+        assert snapshot("changed") == (1, {"PS-CHG"})
+        assert snapshot("published") == (2, {"PS-PUB", "PS-LEGACY-PUB"})
+        assert snapshot("offline") == (2, {"PS-OFF", "PS-LEGACY-OFF"})
+
+        # 四态合计覆盖全部资产，不重不漏
+        totals = {state: snapshot(state)[0] for state in ("new", "changed", "published", "offline")}
+        assert sum(totals.values()) == 7
+    finally:
+        session.close()

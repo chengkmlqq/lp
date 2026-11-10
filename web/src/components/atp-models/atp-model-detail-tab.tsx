@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
   Button,
+  Checkbox,
   Drawer,
   Empty,
   Input,
@@ -28,6 +29,7 @@ import {
   FolderOutlined,
   ReloadOutlined,
   SearchOutlined,
+  SwapOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import { useMemo, useState } from "react";
@@ -39,6 +41,7 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { readApiError } from "@/lib/api";
 import { packModelFilesZip } from "@/lib/atp-model-pack";
 import { checkWarningCount, describeModelFormat, MODEL_ANALYZING_META } from "@/lib/atp-model-format";
+import { publishStateMeta, resolvePublishState } from "@/lib/atp-model-state";
 import type {
   AtpAssetFileListResponse,
   AtpAssetRunStatus,
@@ -112,7 +115,14 @@ function runStatusMeta(status: AtpAssetRunStatus | null, t: (s: string) => strin
  *   带文件名筛选与分页，对齐知识构建页「概览 + 表格」的阅读节奏；
  * - 属性网格沿用卡片的两列 dl 视觉（标签灰 12px / 值深 13px），详情页放宽为四列。
  */
-export function AtpModelDetailTab({ assetId }: { assetId: string }) {
+export function AtpModelDetailTab({
+  assetId,
+  onOpenAsset,
+}: {
+  assetId: string;
+  /** 覆盖上传派生「变更版本」后，用新版本 id 打开详情（父级负责开新 tab） */
+  onOpenAsset?: (assetId: string) => void;
+}) {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [fileKeyword, setFileKeyword] = useState("");
@@ -127,6 +137,13 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
   const [compareTarget, setCompareTarget] = useState<AtpAssetVersionSummary | null>(null);
   const [compareOtherId, setCompareOtherId] = useState<string | undefined>(undefined);
   const [diffFilter, setDiffFilter] = useState<"all" | "changed" | "added" | "removed" | "same">("all");
+  // ===== 版本切换（2026-11-10）：把某个已发布版本设为同维度组内的生效版本 =====
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  // ===== 发布 / 下线（2026-11-10）：详情页直接完成「变更 → 重新发布」 =====
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishNotes, setPublishNotes] = useState("");
+  const [publishSetActive, setPublishSetActive] = useState(true);
+  const [publishBusy, setPublishBusy] = useState(false);
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
   const canManage = hasPermission("atp.manage");
@@ -245,12 +262,26 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
       if (!uploadResponse.ok) {
         throw new Error(await readApiError(uploadResponse));
       }
+      const uploaded = (await uploadResponse.json()) as AtpAssetSummary;
+      setReplaceOpen(false);
+      setReplaceFiles([]);
+      // 已发布模型的文件变更会派生成「变更」新版本（后端行为，2026-11-10）：
+      // 旧版本文件保持在线继续参与仿真，新文件落在新版本里等重新发布。
+      if (uploaded.id && uploaded.id !== assetId) {
+        Modal.success({
+          title: t("已生成变更版本"),
+          content: t("原已发布版本继续参与仿真；新文件已存为变更版本 {version}，验证通过后重新发布即可上线。").replace(
+            "{version}",
+            uploaded.version || "-",
+          ),
+        });
+        onOpenAsset?.(uploaded.id);
+        return;
+      }
       Modal.success({
         title: t("模型文件已覆盖"),
         content: t("旧文件已清理，测试结论已重置；后台正在重新检测模型形态与槽位。"),
       });
-      setReplaceOpen(false);
-      setReplaceFiles([]);
       handleRefresh();
     } catch (error) {
       Modal.error({
@@ -260,6 +291,100 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
     } finally {
       setReplaceUploading(false);
     }
+  };
+
+  /**
+   * 发布当前版本（2026-11-10）：新建 → 已发布、变更 → 已发布、下线 → 重新上线
+   * 都走这一个入口。可选同时设为生效版本（同维度组内唯一）。
+   */
+  const handlePublish = async () => {
+    setPublishBusy(true);
+    try {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          release_notes: publishNotes.trim() || null,
+          set_active: publishSetActive,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      setPublishOpen(false);
+      Modal.success({
+        title: t("版本已发布"),
+        content: publishSetActive ? t("该版本已设为生效版本") : undefined,
+      });
+      handleRefresh();
+    } catch (error) {
+      Modal.error({
+        title: t("发布失败"),
+        content: error instanceof Error ? error.message : t("请稍后重试"),
+      });
+    } finally {
+      setPublishBusy(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    setPublishBusy(true);
+    try {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/unpublish`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      Modal.success({ title: t("版本已下线") });
+      handleRefresh();
+    } catch (error) {
+      Modal.error({
+        title: t("下线失败"),
+        content: error instanceof Error ? error.message : t("请稍后重试"),
+      });
+    } finally {
+      setPublishBusy(false);
+    }
+  };
+
+  /**
+   * 版本切换（2026-11-10）：把某个已发布版本设为同维度组内的生效版本。
+   * 只允许切到已发布版本（后端也会拒），切换后旧版本自动失效——防雷计算随后
+   * 就用这个版本的文件，所以给一次确认，避免误点。
+   */
+  const handleActivateVersion = (item: AtpAssetVersionSummary) => {
+    Modal.confirm({
+      title: t("切换生效版本"),
+      content: t(
+        "将 {version} 设为生效版本后，同维度组合内其他版本自动失效，防雷计算会改用该版本的文件。",
+      ).replace("{version}", item.version || "-"),
+      okText: t("切换"),
+      cancelText: t("取消"),
+      onOk: async () => {
+        setActivatingId(item.id);
+        try {
+          const response = await fetchWithAuth(`/api/v1/atp/assets/${item.id}/activate`, {
+            method: "POST",
+          });
+          if (!response.ok) {
+            throw new Error(await readApiError(response));
+          }
+          Modal.success({
+            title: t("已切换生效版本"),
+            content: t("当前生效版本：{version}").replace("{version}", item.version || "-"),
+          });
+          handleRefresh();
+        } catch (error) {
+          Modal.error({
+            title: t("切换失败"),
+            content: error instanceof Error ? error.message : t("请稍后重试"),
+          });
+        } finally {
+          setActivatingId(null);
+        }
+      },
+    });
   };
 
   if (initializing) {
@@ -291,7 +416,9 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
   const warnCount = checkWarningCount(asset?.format_check);
   const checkIssues = asset?.format_check?.issues ?? [];
   const abnormal = asset ? statusMeta(asset.status, t) : null;
-  const published = asset?.is_published !== false;
+  // 发布生命周期四态（2026-11-10）：新建 / 变更 / 已发布 / 下线
+  const publishState = asset ? resolvePublishState(asset) : "new";
+  const publishMeta = publishStateMeta(publishState, t);
   const runStatus = runStatusMeta(asset?.last_run_status ?? null, t);
 
   const fileColumns: ColumnsType<AtpAssetFileListResponse["items"][number]> = [
@@ -382,14 +509,15 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
       dataIndex: "is_published",
       key: "is_published",
       width: 110,
-      render: (value: boolean, item) =>
-        value ? (
-          <Tooltip title={item.published_date ? formatDateTime(item.published_date) : undefined}>
-            <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
+      render: (_value: boolean, item) => {
+        // 四态（2026-11-10）：新建 / 变更 / 已发布 / 下线
+        const meta = publishStateMeta(resolvePublishState(item), t);
+        return (
+          <Tooltip title={item.published_date ? `${t("发布时间")} ${formatDateTime(item.published_date)}` : meta.hint}>
+            <span className={`admin-atp-models-state-chip ${meta.className}`}>{meta.text}</span>
           </Tooltip>
-        ) : (
-          <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-        ),
+        );
+      },
     },
     {
       title: t("标签"),
@@ -455,36 +583,53 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
     {
       title: t("操作"),
       key: "operation",
-      width: 130,
+      width: 220,
       align: "right",
-      render: (_value, item) =>
-        item.id === assetId ? (
-          <span className="admin-atp-models-file-none">-</span>
-        ) : (
-          <Space size={4}>
+      render: (_value, item) => (
+        <Space size={4}>
+          {/* 版本切换（2026-11-10）：只有已发布且当前未生效的版本可以切过去 */}
+          {canManage && item.is_published && !item.is_active ? (
             <Button
               type="link"
               size="small"
               style={{ padding: 0 }}
-              icon={<DiffOutlined />}
-              onClick={() => {
-                setCompareTarget(item);
-                setCompareOtherId(item.id);
-                setDiffFilter("all");
-              }}
+              icon={<SwapOutlined />}
+              loading={activatingId === item.id}
+              onClick={() => handleActivateVersion(item)}
             >
-              {t("对比")}
+              {t("切换生效")}
             </Button>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              href={`/admin/atp-models/${item.id}`}
-            >
-              {t("查看详情")}
-            </Button>
-          </Space>
-        ),
+          ) : null}
+          {item.id !== assetId ? (
+            <>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                icon={<DiffOutlined />}
+                onClick={() => {
+                  setCompareTarget(item);
+                  setCompareOtherId(item.id);
+                  setDiffFilter("all");
+                }}
+              >
+                {t("对比")}
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                href={`/admin/atp-models/${item.id}`}
+              >
+                {t("查看详情")}
+              </Button>
+            </>
+          ) : null}
+          {item.id === assetId && !(canManage && item.is_published && !item.is_active) ? (
+            <span className="admin-atp-models-file-none">-</span>
+          ) : null}
+        </Space>
+      ),
     },
   ];
 
@@ -551,11 +696,12 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
                   <span className="admin-atp-models-detail-name-text" title={asset.name || asset.code}>
                     {asset.name || asset.code}
                   </span>
-                  {published ? (
-                    <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
-                  ) : (
-                    <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-                  )}
+                  <Tooltip title={publishMeta.hint}>
+                    <span className={`admin-atp-models-state-chip ${publishMeta.className}`}>
+                      {publishState === "published" ? <span className="admin-atp-models-state-chip-dot" /> : null}
+                      {publishMeta.text}
+                    </span>
+                  </Tooltip>
                 </div>
                 <div className="admin-atp-models-detail-subline">
                   <span title={asset.code}>{asset.code}</span>
@@ -583,13 +729,43 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
                   ) : null}
                 </div>
               </div>
-              <Tooltip title={t("刷新")}>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={handleRefresh}
-                  loading={assetQuery.isFetching || filesQuery.isFetching}
-                />
-              </Tooltip>
+              <Space size={6} className="shrink-0">
+                {/* 发布 / 下线（2026-11-10）：详情页也能走完「变更 → 重新发布」，
+                    不必退回列表卡片操作 */}
+                {canManage ? (
+                  publishState === "published" ? (
+                    <Popconfirm
+                      title={t("下线该版本？")}
+                      description={t("下线后不参与仿真定位，文件与运行记录保留，可随时重新发布上线。")}
+                      okText={t("下线")}
+                      cancelText={t("取消")}
+                      onConfirm={() => void handleUnpublish()}
+                    >
+                      <Button danger loading={publishBusy}>
+                        {t("下线")}
+                      </Button>
+                    </Popconfirm>
+                  ) : (
+                    <Button
+                      type="primary"
+                      onClick={() => {
+                        setPublishNotes(asset.release_notes ?? "");
+                        setPublishSetActive(true);
+                        setPublishOpen(true);
+                      }}
+                    >
+                      {publishState === "new" ? t("发布") : t("重新发布")}
+                    </Button>
+                  )
+                ) : null}
+                <Tooltip title={t("刷新")}>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={handleRefresh}
+                    loading={assetQuery.isFetching || filesQuery.isFetching}
+                  />
+                </Tooltip>
+              </Space>
             </div>
 
             <div className="admin-atp-models-detail-stats">
@@ -823,7 +999,7 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
       {/* 重新上传覆盖（2026-11-10）：清空该版本目录后写入新文件，测试结论重置 */}
       <Modal
         open={replaceOpen}
-        title={t("重新上传覆盖")}
+        title={publishState === "published" ? t("上传变更文件") : t("重新上传覆盖")}
         okText={t("覆盖上传")}
         cancelText={t("取消")}
         okButtonProps={{
@@ -843,10 +1019,18 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
       >
         <div className="flex flex-col gap-3">
           <Alert
-            type="warning"
+            type={publishState === "published" ? "info" : "warning"}
             showIcon
-            message={t("将清空该版本的现有模型文件并写入新文件")}
-            description={t("旧文件不可恢复；上传后测试结论会重置，后台将自动重新检测模型形态与槽位。")}
+            message={
+              publishState === "published"
+                ? t("已发布模型：新文件会存为「变更版本」")
+                : t("将清空该版本的现有模型文件并写入新文件")
+            }
+            description={
+              publishState === "published"
+                ? t("当前已发布版本的文件保持不变、继续参与仿真；新文件另存为一个变更版本，验证通过后重新发布即可上线。")
+                : t("旧文件不可恢复；上传后测试结论会重置，后台将自动重新检测模型形态与槽位。")
+            }
           />
           <Upload.Dragger
             multiple
@@ -862,6 +1046,52 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
             <p className="ant-upload-text">{t("选择模型文件夹或文件（支持 zip 整包）")}</p>
             <p className="ant-upload-hint">{t("上传后自动按原有目录结构打包覆盖")}</p>
           </Upload.Dragger>
+        </div>
+      </Modal>
+
+      {/* 发布 / 重新发布（2026-11-10）：新建 → 已发布、变更 → 已发布、下线 → 重新上线 */}
+      <Modal
+        open={publishOpen}
+        title={publishState === "new" ? t("发布版本") : t("重新发布")}
+        okText={t("发布")}
+        cancelText={t("取消")}
+        okButtonProps={{ loading: publishBusy }}
+        onOk={() => void handlePublish()}
+        onCancel={() => {
+          if (!publishBusy) setPublishOpen(false);
+        }}
+        destroyOnHidden
+      >
+        <div className="flex flex-col gap-3">
+          <Alert
+            type="info"
+            showIcon
+            message={
+              publishState === "changed"
+                ? t("发布后该版本将取代上一个已发布版本")
+                : publishState === "offline"
+                  ? t("发布后重新参与仿真定位")
+                  : t("发布后该版本参与仿真定位")
+            }
+            description={`${t("模型")}：${asset?.name || asset?.code || "-"} · ${t("版本")} ${asset?.version || "-"}`}
+          />
+          <div>
+            <div style={{ marginBottom: 6 }}>{t("版本描述")}</div>
+            <Input.TextArea
+              rows={4}
+              maxLength={1000}
+              showCount
+              value={publishNotes}
+              onChange={(event) => setPublishNotes(event.target.value)}
+              placeholder={t("如：修正上字塔横担斜材坡度，几何与 115 线路实测一致")}
+            />
+          </div>
+          <Checkbox checked={publishSetActive} onChange={(event) => setPublishSetActive(event.target.checked)}>
+            {t("同时设为生效版本")}
+          </Checkbox>
+          <div className="admin-atp-models-detail-toolbar-note">
+            {t("同维度组合内只能有一个生效版本；发布后旧版本自动失效，可在版本历史里随时切回")}
+          </div>
         </div>
       </Modal>
 
@@ -898,7 +1128,7 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
                 .filter((item) => item.id !== assetId)
                 .map((item) => ({
                   value: item.id,
-                  label: `${item.version}${item.is_published ? ` · ${t("已发布")}` : ` · ${t("未发布")}`}`,
+                  label: `${item.version} · ${publishStateMeta(resolvePublishState(item), t).text}`,
                 }))}
               placeholder={t("选择要对比的版本")}
             />
@@ -924,8 +1154,8 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
                   {
                     key: "published",
                     label: t("发布状态"),
-                    a: compareQuery.data.asset_a.is_published ? t("已发布") : t("未发布"),
-                    b: compareQuery.data.asset_b.is_published ? t("已发布") : t("未发布"),
+                    a: publishStateMeta(resolvePublishState(compareQuery.data.asset_a), t).text,
+                    b: publishStateMeta(resolvePublishState(compareQuery.data.asset_b), t).text,
                   },
                   {
                     key: "release_notes",

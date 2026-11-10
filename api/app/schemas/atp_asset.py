@@ -22,6 +22,12 @@ AtpAssetAnalysisStatus = Literal["pending", "running", "success", "failed"]
 # 测试结论（2026-11-07）：实跑仿真后的判定，与 analysis_status（解析期）无关
 #   passed 通过 / failed 未通过 / suspect 可疑；None = 未测试
 AtpAssetTestStatus = Literal["passed", "failed", "suspect"]
+# 发布生命周期（2026-11-10）：四态
+#   new       新建：从未发布
+#   published 已发布：文件即发布内容，参与仿真定位
+#   changed   变更：已发布模型文件被更新后派生的新版本，待重新发布
+#   offline   下线：人工下线，保留数据但不参与仿真
+AtpAssetPublishState = Literal["new", "changed", "published", "offline"]
 # 标签（2026-11-10）：自由文本，单个 ≤ 32 字、每条资产 ≤ 8 个。
 # 上限是为了卡片左下角那一行放得下——标签是扫读用的，堆太多就失去意义。
 MAX_TAGS = 8
@@ -47,6 +53,8 @@ class AtpAssetSummary(BaseModel):
     # 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用
     is_published: bool = True
     published_date: datetime | None = None
+    # 发布生命周期（2026-11-10）：new 新建 / changed 变更 / published 已发布 / offline 下线
+    publish_state: AtpAssetPublishState = "new"
     # 版本描述（2026-11-10）：发布时弹窗填写，说明本版本改动
     release_notes: str | None = None
     # 标签（2026-11-10）：发布时给版本打的自由标签（如「现场实测」「基准」），
@@ -139,6 +147,10 @@ class AtpAssetPublishRequest(BaseModel):
     release_notes: str | None = Field(default=None, max_length=1000)
     # 发布时打标签：整组覆盖（不是追加）。不传 = 保留原标签，传 [] = 清空。
     tags: list[str] | None = Field(default=None, max_length=MAX_TAGS)
+    # 发布后是否把该版本设为「生效版本」（同维度组内唯一）：
+    #   None = 不改动（保留现状，兼容旧调用）；True = 切换生效；False = 明确不改。
+    # 发布「变更」版本时前端默认勾选，保证发布即生效、旧版本自动失效。
+    set_active: bool | None = None
 
 
 class AtpAssetVersionSummary(BaseModel):
@@ -148,6 +160,7 @@ class AtpAssetVersionSummary(BaseModel):
     version: str
     is_active: bool = False
     is_published: bool = False
+    publish_state: AtpAssetPublishState = "new"
     published_date: datetime | None = None
     release_notes: str | None = None
     # 标签（2026-11-10）：版本历史里逐版展示，便于区分「同一维度组合的不同迭代」

@@ -19,6 +19,7 @@ import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 import { checkWarningCount } from "@/lib/atp-model-format";
+import { publishStateMeta, resolvePublishState } from "@/lib/atp-model-state";
 import { resolveFormatMeta } from "./atp-model-format-tag";
 
 /** 右下角最多平铺几个操作按钮，其余收进「更多」 */
@@ -157,7 +158,10 @@ export function AtpModelCard({
       .join(" · ") || "-";
 
   const abnormal = statusMeta(asset.status, t);
-  const published = asset.is_published !== false;
+  // 发布生命周期四态（2026-11-10）：新建 / 变更 / 已发布 / 下线
+  const publishState = resolvePublishState(asset);
+  const publishMeta = publishStateMeta(publishState, t);
+  const published = publishState === "published";
 
   // 形态说明：页脚那行灰字要给完整解释（决定仿真链路），预检 warning 数一并带出
   const formatMeta = resolveFormatMeta(asset);
@@ -216,9 +220,15 @@ export function AtpModelCard({
     } else {
       actions.push({
         key: "publish",
-        label: t("发布"),
+        // 变更/下线版本再发布即「重新上线」，文案区分开，避免看成新建发布
+        label: publishState === "new" ? t("发布") : t("重新发布"),
         icon: <SendOutlined />,
-        tooltip: t("发布该版本（发布后参与仿真定位）"),
+        tooltip:
+          publishState === "changed"
+            ? t("重新发布变更版本（发布后取代上一个已发布版本）")
+            : publishState === "offline"
+              ? t("重新发布上线（发布后重新参与仿真定位）")
+              : t("发布该版本（发布后参与仿真定位）"),
         disabled: rowBusy,
         run: () => onPublish(asset.id),
       });
@@ -286,11 +296,12 @@ export function AtpModelCard({
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {published ? (
-              <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
-            ) : (
-              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-            )}
+            <Tooltip title={publishMeta.hint}>
+              <span className={`admin-atp-models-state-chip ${publishMeta.className}`}>
+                {publishState === "published" ? <span className="admin-atp-models-state-chip-dot" /> : null}
+                {publishMeta.text}
+              </span>
+            </Tooltip>
           </div>
         </div>
 

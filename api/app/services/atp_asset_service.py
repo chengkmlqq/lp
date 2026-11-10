@@ -20,7 +20,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import get_settings
@@ -81,6 +81,17 @@ ATP_ASSET_TOPIC = "admin.atp-assets"
 VALID_ASSET_STATUS = {"draft", "enabled", "disabled", "archived"}
 # 测试结论三档（2026-11-07）：passed 通过 / failed 未通过 / suspect 可疑
 VALID_TEST_STATUS = {"passed", "failed", "suspect"}
+# 发布生命周期四态（2026-11-10）：见 models/atp_asset.py 的 publish_state 注释
+PUBLISH_STATE_NEW = "new"
+PUBLISH_STATE_CHANGED = "changed"
+PUBLISH_STATE_PUBLISHED = "published"
+PUBLISH_STATE_OFFLINE = "offline"
+VALID_PUBLISH_STATES = {
+    PUBLISH_STATE_NEW,
+    PUBLISH_STATE_CHANGED,
+    PUBLISH_STATE_PUBLISHED,
+    PUBLISH_STATE_OFFLINE,
+}
 VALID_RUNNER_KIND = {"atp", "egm", "hybrid"}
 VALID_RUN_STATUS = {"pending", "running", "success", "failed"}
 LOG_MAX_CHARS = 200_000
@@ -888,6 +899,22 @@ def _row_field(item: Any, name: str, default: Any = None) -> Any:
         return default
 
 
+def _derive_publish_state(item: Any) -> str:
+    """发布生命周期状态读取，兼容未回填的存量行（publish_state=NULL）。
+
+    存量 781 个资产在加列前只有 is_published：已发布 → published；未发布但曾有过
+    发布时间 → offline（曾上线后被下线）；从未发布 → new。这样加列当天页面不会
+    出现一堆「新建」，也不需要先跑迁移脚本才有正确展示。
+    """
+    state = _row_field(item, "publish_state") or None
+    if state in VALID_PUBLISH_STATES:
+        return str(state)
+    published = _row_field(item, "is_published")
+    if published is None or published:
+        return PUBLISH_STATE_PUBLISHED
+    return PUBLISH_STATE_OFFLINE if _row_field(item, "published_date") else PUBLISH_STATE_NEW
+
+
 def _analysis_fields_for_display(item: Any) -> tuple[str | None, str | None]:
     """返回 (analysis_status, analysis_error)，把「卡死的 pending/running」降级成失败。
 
@@ -968,6 +995,8 @@ def serialize_asset(
         is_active=bool(item.is_active),
         # 发布状态（2026-11-05）：存量行/旧列表 Row 可能没有该列 → 回落已发布（历史行为）
         is_published=bool(_row_field(item, "is_published") if _row_field(item, "is_published") is not None else True),
+        # 发布生命周期四态（2026-11-10）：NULL 存量按 is_published/published_date 兜底派生
+        publish_state=_derive_publish_state(item),  # type: ignore[arg-type]
         published_date=_row_field(item, "published_date") or None,
         # 版本描述（2026-11-10）：发布时填写的改动说明
         release_notes=_row_field(item, "release_notes") or None,
@@ -1095,6 +1124,42 @@ def _load_asset_last_run_map(db: Session, asset_ids: list[str]) -> dict[str, tup
     return result
 
 
+def _publish_state_predicate(state: str) -> Any:
+    """四态过滤的 SQL 条件，NULL 存量按 _derive_publish_state 同一口径展开。
+
+    只写 `publish_state = 'published'` 会漏掉加列后尚未回填的存量行（NULL），
+    页面会出现「过滤已发布却看不到 700 多个模型」这种自相矛盾的结果。
+    """
+    column = AtpAsset.publish_state
+    if state == PUBLISH_STATE_CHANGED:
+        return column == PUBLISH_STATE_CHANGED
+    if state == PUBLISH_STATE_PUBLISHED:
+        return or_(
+            column == PUBLISH_STATE_PUBLISHED,
+            and_(
+                column.is_(None),
+                or_(AtpAsset.is_published.is_(True), AtpAsset.is_published.is_(None)),
+            ),
+        )
+    if state == PUBLISH_STATE_OFFLINE:
+        return or_(
+            column == PUBLISH_STATE_OFFLINE,
+            and_(
+                column.is_(None),
+                AtpAsset.is_published.is_(False),
+                AtpAsset.published_date.is_not(None),
+            ),
+        )
+    return or_(
+        column == PUBLISH_STATE_NEW,
+        and_(
+            column.is_(None),
+            AtpAsset.is_published.is_(False),
+            AtpAsset.published_date.is_(None),
+        ),
+    )
+
+
 def list_assets(
     db: Session,
     *,
@@ -1106,6 +1171,7 @@ def list_assets(
     arrester_config: str | None = None,
     test_status: str | None = None,
     is_published: bool | None = None,
+    publish_state: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
@@ -1127,6 +1193,8 @@ def list_assets(
         AtpAsset.is_active,
         # 2026-11-05：发布状态（serialize_asset 会读，漏列抛 KeyError，同上事故）
         AtpAsset.is_published,
+        # 2026-11-10：发布生命周期四态（serialize_asset 会读，漏列同样 KeyError）
+        AtpAsset.publish_state,
         AtpAsset.published_date,
         # 2026-11-10：版本描述（serialize_asset 会读，漏列同样 KeyError）
         AtpAsset.release_notes,
@@ -1210,6 +1278,19 @@ def list_assets(
         )
         stmt = stmt.where(published_predicate)
         total_stmt = total_stmt.where(published_predicate)
+
+    # 发布生命周期四态筛选（2026-11-10）：优先级高于 is_published（前端已改用这个）。
+    # NULL 存量按 _derive_publish_state 的同一口径在 SQL 侧展开，保证列表与卡片一致。
+    normalized_state = (publish_state or "").strip().lower()
+    if normalized_state:
+        if normalized_state not in VALID_PUBLISH_STATES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid publish_state filter: {publish_state}",
+            )
+        state_predicate = _publish_state_predicate(normalized_state)
+        stmt = stmt.where(state_predicate)
+        total_stmt = total_stmt.where(state_predicate)
 
     items = db.execute(
         stmt.order_by(AtpAsset.update_date.desc(), AtpAsset.code.asc())
@@ -1502,6 +1583,8 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         # 显式传 True 的入口（脚本导入等）同步记录发布时间。
         is_published=bool(payload.is_published),
         published_date=now if payload.is_published else None,
+        # 发布生命周期（2026-11-10）：未发布即「新建」，显式发布的直接落「已发布」
+        publish_state=PUBLISH_STATE_PUBLISHED if payload.is_published else PUBLISH_STATE_NEW,
         shield_wire=shield_wire,
         test_line_id=_validate_test_line_ref(db, payload.test_line_id),
         storage_mount_code=storage_mount_code,
@@ -1525,18 +1608,11 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
     return serialize_asset(saved, run_count=0, last_run_status=None, last_run_date=None, db=db)
 
 
-def activate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
-    """把指定资产设为「生效」（同维度组内其他版本自动失效）。
+def _exclusive_activate(db: Session, asset: AtpAsset) -> None:
+    """把 asset 置为同维度组内唯一生效版本（组内其他版本全部失效）。
 
-    事务内：先 SELECT ... FOR UPDATE 锁定同维度组行，组内全部 is_active=0，
-    再置本资产 is_active=1。防止并发激活导致组内双生效（竞态）。
+    调用方负责事务与并发（activate_asset 用 SELECT FOR UPDATE 锁行）。
     """
-    asset = db.scalar(
-        select(AtpAsset).where(AtpAsset.id == asset_id).with_for_update()
-    )
-    if not asset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
-    # 同维度组条件（维度字段可能为 None，逐项判定）
     dims = dict(
         voltage_level=asset.voltage_level,
         tower_type=asset.tower_type,
@@ -1544,10 +1620,9 @@ def activate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = No
         arrester_config=asset.arrester_config,
         shield_wire=asset.shield_wire or "with",
     )
-    # 组内全部失效
     db.execute(
         update(AtpAsset)
-        .where(AtpAsset.id != asset_id)
+        .where(AtpAsset.id != asset.id)
         .where(
             *[
                 getattr(AtpAsset, key) == val
@@ -1557,6 +1632,28 @@ def activate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = No
         .values(is_active=False)
     )
     asset.is_active = True
+
+
+def activate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
+    """把指定资产设为「生效」（同维度组内其他版本自动失效）。
+
+    事务内：先 SELECT ... FOR UPDATE 锁定同维度组行，组内全部 is_active=0，
+    再置本资产 is_active=1。防止并发激活导致组内双生效（竞态）。
+
+    2026-11-10（版本切换）：只允许切到**已发布**的版本。新建/变更/下线版本代表
+    「还没上线」或「已撤下」，把它们设为生效会让仿真用到未发布的文件。
+    """
+    asset = db.scalar(
+        select(AtpAsset).where(AtpAsset.id == asset_id).with_for_update()
+    )
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if _derive_publish_state(asset) != PUBLISH_STATE_PUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只有已发布的版本才能切换为生效版本，请先发布该版本",
+        )
+    _exclusive_activate(db, asset)
     if actor_user_id:
         asset.update_user = actor_user_id
     asset.update_date = utcnow()
@@ -1589,6 +1686,7 @@ def publish_asset(
     asset_id: str,
     release_notes: str | None = None,
     tags: list[str] | None = None,
+    set_active: bool | None = None,
     actor_user_id: str | None = None,
 ) -> AtpAssetSummary:
     """发布该版本（2026-11-05）：置 is_published=1 并记录发布时间。
@@ -1597,6 +1695,9 @@ def publish_asset(
     幂等：已发布的资产再次发布只刷新 published_date。
     release_notes（2026-11-10）：发布弹窗填写的版本描述，随发布写入；传空串视为清除。
     tags（2026-11-10）：发布时打的标签，整组覆盖；None = 保留原标签，[] = 清空。
+    set_active（2026-11-10 版本切换）：True 时把该版本一并切成同维度组内唯一生效版本。
+    发布是「新建 → 已发布」「变更 → 已发布」「下线 → 重新上线」的统一出口，
+    因此这里统一把 publish_state 落成 published。
     """
     asset = get_asset_by_id(db, asset_id)
     if not asset:
@@ -1604,11 +1705,14 @@ def publish_asset(
     if asset.status == "archived":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档的模型不能发布，请先恢复")
     asset.is_published = True
+    asset.publish_state = PUBLISH_STATE_PUBLISHED
     asset.published_date = utcnow()
     if release_notes is not None:
         asset.release_notes = release_notes.strip()[:1000] or None
     if tags is not None:
         asset.tags_json = _normalize_tags(tags)
+    if set_active:
+        _exclusive_activate(db, asset)
     if actor_user_id:
         asset.update_user = actor_user_id
     asset.update_date = utcnow()
@@ -1623,11 +1727,13 @@ def unpublish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = N
     """下线该版本（2026-11-05）：置 is_published=0，不再参与仿真定位。
 
     不清除 is_active（生效标记保留，重新发布后立即恢复原生效语义）。
+    2026-11-10：publish_state 落成 offline（「下线」），重新发布会回到 published。
     """
     asset = get_asset_by_id(db, asset_id)
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     asset.is_published = False
+    asset.publish_state = PUBLISH_STATE_OFFLINE
     if actor_user_id:
         asset.update_user = actor_user_id
     asset.update_date = utcnow()
@@ -1688,6 +1794,7 @@ def _serialize_asset_version(asset: AtpAsset, *, file_count: int | None = None, 
         version=asset.version or "v1",
         is_active=bool(asset.is_active),
         is_published=bool(_row_field(asset, "is_published") if _row_field(asset, "is_published") is not None else True),
+        publish_state=_derive_publish_state(asset),  # type: ignore[arg-type]
         published_date=_row_field(asset, "published_date") or None,
         release_notes=_row_field(asset, "release_notes") or None,
         tags=list(_row_field(asset, "tags_json") or []),
@@ -2400,6 +2507,121 @@ def read_asset_file_content(
     )
 
 
+def _next_version_for_asset(db: Session, asset: AtpAsset) -> str:
+    """同维度组合内下一个版本号（vN 递增），供「变更版本」派生用。"""
+    versions = db.scalars(
+        select(AtpAsset.version).where(*_dimension_group_conditions(asset))
+    ).all()
+    existing = {v for v in versions if v}
+    numbers = [int(m.group(1)) for v in existing if (m := re.fullmatch(r"v(\d+)", v.strip(), re.IGNORECASE))]
+    candidate = f"v{max(numbers, default=0) + 1}"
+    while candidate in existing:
+        numbers.append(int(candidate[1:]))
+        candidate = f"v{max(numbers) + 1}"
+    return candidate
+
+
+def _unique_asset_code(db: Session, base: str, suffix: str) -> str:
+    """code 必须全局唯一（uq_atp_asset_code），派生版本用「原code-版本号」并避开撞车。"""
+    head = base.strip()[: max(1, 60 - len(suffix))]
+    candidate = f"{head}-{suffix}"
+    if not get_asset_by_code(db, candidate):
+        return candidate
+    index = 2
+    while True:
+        candidate = f"{head}-{suffix}{index}"
+        if not get_asset_by_code(db, candidate):
+            return candidate
+        index += 1
+
+
+def _storage_has_files(driver: StorageDriver, storage_root_path: str) -> bool:
+    """目录里是否已有真实文件（判断「这个已发布版本是否真有内容要保护」）。"""
+    try:
+        tree = _walk_storage_tree(driver, storage_root_path)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            return False
+        raise
+    except Exception:  # noqa: BLE001 - 存储侧异常按「无文件」处理，退回原地写入
+        return False
+    return bool(tree.files)
+
+
+def _fork_published_asset(db: Session, asset: AtpAsset, *, actor_user_id: str) -> AtpAsset:
+    """把一个**已发布**版本的文件变更派生为一条新的「变更」版本记录（2026-11-10）。
+
+    为什么不原地覆盖：已发布的文件是对外承诺的那一份，仿真正在用它。原地覆盖会
+    让「上一个发布过的版本」当场消失，一次误操作就会打断线上计算。派生新版本后：
+      * 旧版本文件、发布状态、生效标记全部不动 → 仿真继续用旧版本；
+      * 新版本 publish_state=changed，文件是新的，等人工验证后重新发布；
+      * 两个版本都在同维度组合内，版本历史/对比直接可用。
+    新版本用「原 code-版本号」，保证 code 唯一约束与存储目录都不撞。
+    """
+    now = utcnow()
+    version = _next_version_for_asset(db, asset)
+    code = _unique_asset_code(db, asset.code, version)
+    storage_root_path = _build_asset_storage_root_by_dimensions(
+        voltage_level=asset.voltage_level,
+        tower_type=asset.tower_type,
+        scene_type=asset.scene_type,
+        arrester_config=asset.arrester_config,
+        shield_wire=asset.shield_wire or "with",
+        version=version,
+        fallback_code=code,
+    )
+    # 极端兜底：历史数据的目录不是按维度生成的，可能与新路径撞上 —— 那时加后缀另开目录，
+    # 否则下面 replace 清空目录会把旧版本文件删掉。
+    if asset.storage_root_path and storage_root_path.rstrip("/") == asset.storage_root_path.rstrip("/"):
+        storage_root_path = f"{storage_root_path.rstrip('/')}-{uuid4().hex[:6]}"
+    forked = AtpAsset(
+        code=code,
+        name=asset.name,
+        description=asset.description or "",
+        status=asset.status,
+        voltage_level=asset.voltage_level,
+        tower_type=asset.tower_type,
+        scene_type=asset.scene_type,
+        arrester_config=asset.arrester_config,
+        version=version,
+        # 变更版本不生效、不可被仿真选用，等重新发布后再由发布动作决定是否切生效
+        is_active=False,
+        is_published=False,
+        published_date=None,
+        publish_state=PUBLISH_STATE_CHANGED,
+        shield_wire=asset.shield_wire or "with",
+        test_line_id=asset.test_line_id,
+        storage_mount_code=asset.storage_mount_code or "main",
+        storage_root_path=storage_root_path,
+        tags_json=list(asset.tags_json or []),
+        model_format=asset.model_format,
+        # 文件是新的，旧的形态预检/测试结论一律不继承
+        format_check_json={},
+        analysis_status=None,
+        analysis_error=None,
+        test_status=None,
+        test_message=None,
+        test_date=None,
+        create_user=actor_user_id,
+        update_user=actor_user_id,
+        create_date=now,
+        update_date=now,
+    )
+    _check_asset_storage_path_conflict(db, storage_root_path)
+    db.add(forked)
+    db.commit()
+    db.refresh(forked)
+    logger.info(
+        "[ATP] 已发布模型 %s(v%s) 文件变更 → 派生变更版本 %s(v%s)",
+        asset.code, asset.version, forked.code, forked.version,
+    )
+    _publish_change(
+        "asset.changed",
+        {"action": "changed", "asset_id": forked.id, "forked_from": asset.id},
+    )
+    return forked
+
+
 def upload_asset_files(
     db: Session,
     *,
@@ -2418,6 +2640,19 @@ def upload_asset_files(
     _check_asset_storage_path_conflict(db, storage_root_path, asset_id)
     mount = _resolve_mount(db, mount_code)
     driver = _build_driver_or_400(mount)
+
+    # 变更版本派生（2026-11-10）：已发布且目录里有真实文件时，再次上传文件不能原地覆盖
+    # —— 那会把正在被仿真使用的已发布内容直接换掉。改为派生一条 publish_state=changed
+    # 的新版本承载新文件，旧版本原封不动继续可用，等人工验证后重新发布。
+    if _derive_publish_state(asset) == PUBLISH_STATE_PUBLISHED and _storage_has_files(driver, storage_root_path):
+        asset = _fork_published_asset(db, asset, actor_user_id=actor_user_id)
+        asset_id = asset.id
+        storage_root_path = asset.storage_root_path or _build_asset_storage_root(asset.code)
+        mount_code = asset.storage_mount_code or "main"
+        mount = _resolve_mount(db, mount_code)
+        driver = _build_driver_or_400(mount)
+        # 新目录是空的，不需要走「清空旧文件」分支；后面的写入流程与首次上传一致。
+
     driver.ensure_directory(storage_root_path)
 
     # 重新上传覆盖（2026-11-10）：replace=True 时先清空该版本的存储目录再写入，

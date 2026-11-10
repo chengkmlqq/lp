@@ -92,6 +92,10 @@ def get_atp_asset_list(
     arrester_config: str | None = Query(default=None),
     test_status: str | None = Query(default=None),
     is_published: bool | None = Query(default=None, description="按发布状态过滤：true=已发布，false=未发布；不传=全部"),
+    publish_state: str | None = Query(
+        default=None,
+        description="按发布生命周期过滤：new=新建 / changed=变更 / published=已发布 / offline=下线；不传=全部",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
@@ -107,6 +111,7 @@ def get_atp_asset_list(
         arrester_config=arrester_config,
         test_status=test_status,
         is_published=is_published,
+        publish_state=publish_state,
         limit=limit,
         offset=offset,
     )
@@ -420,12 +425,15 @@ def publish_atp_asset_endpoint(
 
     2026-11-10：支持随发布填写版本描述（release_notes）与标签（tags），均选填，
     兼容旧客户端不传 body。
+    2026-11-10（版本切换）：set_active=true 时把该版本一并切成同维度组内唯一生效版本，
+    用于「变更版本重新发布后立即上线」。
     """
     updated = publish_asset(
         db,
         asset_id=asset_id,
         release_notes=payload.release_notes if payload else None,
         tags=payload.tags if payload else None,
+        set_active=payload.set_active if payload else None,
         actor_user_id=current_user.user.id,
     )
     return AtpAssetDetail(**updated.model_dump())
