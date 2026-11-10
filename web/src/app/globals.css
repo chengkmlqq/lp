@@ -2935,6 +2935,9 @@ body {
   max-width: 96px;
   display: inline-block;
   vertical-align: middle;
+  /* 页脚是 flex 行：允许标签收缩，避免多个长标签把右侧操作按钮挤出卡片 */
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
