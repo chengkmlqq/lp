@@ -43,6 +43,10 @@ from ..schemas.atp_asset import (
     AtpAssetRunSummary,
     AtpAssetSummary,
     AtpAssetUpdateRequest,
+    AtpAssetVersionCompareResponse,
+    AtpAssetVersionFileDiffEntry,
+    AtpAssetVersionListResponse,
+    AtpAssetVersionSummary,
     AtpEngineStatusResponse,
 )
 from .legacy_atp_adapter import build_legacy_atp_status_checks
@@ -900,6 +904,8 @@ def serialize_asset(
         # 发布状态（2026-11-05）：存量行/旧列表 Row 可能没有该列 → 回落已发布（历史行为）
         is_published=bool(_row_field(item, "is_published") if _row_field(item, "is_published") is not None else True),
         published_date=_row_field(item, "published_date") or None,
+        # 版本描述（2026-11-10）：发布时填写的改动说明
+        release_notes=_row_field(item, "release_notes") or None,
         shield_wire=item.shield_wire or "with",
         test_line_id=item.test_line_id,
         # 形态标记（2026-11-02）：存量行没有该字段值时回落 legacy —— 改造前入口只放行
@@ -1051,6 +1057,8 @@ def list_assets(
         # 2026-11-05：发布状态（serialize_asset 会读，漏列抛 KeyError，同上事故）
         AtpAsset.is_published,
         AtpAsset.published_date,
+        # 2026-11-10：版本描述（serialize_asset 会读，漏列同样 KeyError）
+        AtpAsset.release_notes,
         AtpAsset.shield_wire,
         # 2026-11-01：serialize_asset 访问 test_line_id（测试线路），缺则 500：
         #   KeyError: 'test_line_id'（select 列白名单漏列 → Row.__getattr__ 抛 KeyError）
@@ -1488,11 +1496,18 @@ def deactivate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = 
     return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
 
 
-def publish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
+def publish_asset(
+    db: Session,
+    *,
+    asset_id: str,
+    release_notes: str | None = None,
+    actor_user_id: str | None = None,
+) -> AtpAssetSummary:
     """发布该版本（2026-11-05）：置 is_published=1 并记录发布时间。
 
     发布后版本参与仿真定位（fl_analysis 资产 _query 只在已发布版本中选取）。
     幂等：已发布的资产再次发布只刷新 published_date。
+    release_notes（2026-11-10）：发布弹窗填写的版本描述，随发布写入；传空串视为清除。
     """
     asset = get_asset_by_id(db, asset_id)
     if not asset:
@@ -1501,6 +1516,8 @@ def publish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = Non
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档的模型不能发布，请先恢复")
     asset.is_published = True
     asset.published_date = utcnow()
+    if release_notes is not None:
+        asset.release_notes = release_notes.strip()[:1000] or None
     if actor_user_id:
         asset.update_user = actor_user_id
     asset.update_date = utcnow()
@@ -1528,6 +1545,152 @@ def unpublish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = N
     db.refresh(asset)
     _publish_change("asset.unpublished", {"action": "unpublished", "asset_id": asset.id})
     return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+# ===== 版本历史与对比（2026-11-10）=====
+
+
+def _dimension_group_conditions(asset: AtpAsset) -> list[Any]:
+    """同维度组合（电压/塔型/场景/避雷器/避雷线）的等值条件，NULL 用 IS NULL。"""
+    conditions: list[Any] = []
+    for column in (
+        AtpAsset.voltage_level,
+        AtpAsset.tower_type,
+        AtpAsset.scene_type,
+        AtpAsset.arrester_config,
+    ):
+        value = getattr(asset, column.key)
+        conditions.append(column.is_(None) if value is None else column == value)
+    conditions.append(AtpAsset.shield_wire == (asset.shield_wire or "with"))
+    return conditions
+
+
+def _dimension_group_key(asset: AtpAsset) -> tuple[str | None, str | None, str | None, str | None, str]:
+    """维度组合的可比较键（版本归属判定用）。"""
+    return (
+        asset.voltage_level,
+        asset.tower_type,
+        asset.scene_type,
+        asset.arrester_config,
+        asset.shield_wire or "with",
+    )
+
+
+def _version_storage_stats(db: Session, asset: AtpAsset) -> tuple[int | None, int | None]:
+    """带 db 的版本目录统计；目录不存在（从未上传）返回 (None, None)。"""
+    if not asset.storage_root_path:
+        return (None, None)
+    try:
+        mount = _resolve_mount(db, asset.storage_mount_code or "main")
+        driver = _build_driver_or_400(mount)
+        tree = _walk_storage_tree(driver, asset.storage_root_path)
+    except HTTPException:
+        return (None, None)
+    except Exception:  # noqa: BLE001 - 存储故障不阻断版本列表
+        return (None, None)
+    return (len(tree.files), int(sum(obj.size or 0 for obj in tree.files)))
+
+
+def _serialize_asset_version(asset: AtpAsset, *, file_count: int | None = None, total_size: int | None = None) -> AtpAssetVersionSummary:
+    return AtpAssetVersionSummary(
+        id=asset.id,
+        version=asset.version or "v1",
+        is_active=bool(asset.is_active),
+        is_published=bool(_row_field(asset, "is_published") if _row_field(asset, "is_published") is not None else True),
+        published_date=_row_field(asset, "published_date") or None,
+        release_notes=_row_field(asset, "release_notes") or None,
+        test_status=_row_field(asset, "test_status") or None,
+        test_message=_row_field(asset, "test_message") or None,
+        model_format=_row_field(asset, "model_format") or "legacy",
+        file_count=file_count,
+        total_size=total_size,
+        create_date=asset.create_date,
+        create_user=asset.create_user,
+        update_date=asset.update_date,
+        update_user=asset.update_user,
+    )
+
+
+def list_asset_versions(db: Session, *, asset_id: str) -> AtpAssetVersionListResponse:
+    """同维度组合内的全部版本（含自身），按创建时间倒序。
+
+    版本 = 同一维度组合下的一条 atp_asset 记录（多版本改造后每版独立目录与文件）。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    siblings = db.execute(
+        select(AtpAsset)
+        .where(*_dimension_group_conditions(asset))
+        .order_by(AtpAsset.create_date.desc())
+    ).scalars().all()
+    items: list[AtpAssetVersionSummary] = []
+    for sibling in siblings:
+        file_count, total_size = _version_storage_stats(db, sibling)
+        items.append(_serialize_asset_version(sibling, file_count=file_count, total_size=total_size))
+    return AtpAssetVersionListResponse(asset_id=asset_id, items=items, total=len(items))
+
+
+def compare_asset_versions(db: Session, *, asset_id: str, other_id: str) -> AtpAssetVersionCompareResponse:
+    """对比同维度组合的两个版本。
+
+    文件级对比按「相对路径 + 大小」判定（不下载文件内容算哈希——模型包动辄上百 MB，
+    走 OSS 全量读取太贵；路径+大小足以发现改名/增删/换包，这正是版本对比要回答的问题）。
+    """
+    asset_a = get_asset_by_id(db, asset_id)
+    if not asset_a:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    asset_b = get_asset_by_id(db, other_id)
+    if not asset_b:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="对比版本不存在")
+    if asset_a.id == asset_b.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能与自身对比")
+    if _dimension_group_key(asset_a) != _dimension_group_key(asset_b):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="两个版本不属于同一维度组合，无法对比")
+
+    def _relative_files(asset: AtpAsset) -> dict[str, int]:
+        if not asset.storage_root_path:
+            return {}
+        try:
+            mount = _resolve_mount(db, asset.storage_mount_code or "main")
+            driver = _build_driver_or_400(mount)
+            tree = _walk_storage_tree(driver, asset.storage_root_path)
+        except Exception:  # noqa: BLE001 - 单侧读不到时按空目录对比
+            return {}
+        return {_relative_from_root(asset.storage_root_path, obj.path): int(obj.size or 0) for obj in tree.files}
+
+    files_a = _relative_files(asset_a)
+    files_b = _relative_files(asset_b)
+
+    entries: list[AtpAssetVersionFileDiffEntry] = []
+    counts = {"same": 0, "changed": 0, "added": 0, "removed": 0}
+    for path in sorted(set(files_a) | set(files_b)):
+        in_a, in_b = path in files_a, path in files_b
+        if in_a and in_b:
+            same = files_a[path] == files_b[path]
+            entry = AtpAssetVersionFileDiffEntry(
+                relative_path=path,
+                status="same" if same else "changed",
+                size_a=files_a[path],
+                size_b=files_b[path],
+            )
+            counts["same" if same else "changed"] += 1
+        elif in_b:
+            entry = AtpAssetVersionFileDiffEntry(relative_path=path, status="added", size_a=None, size_b=files_b[path])
+            counts["added"] += 1
+        else:
+            entry = AtpAssetVersionFileDiffEntry(relative_path=path, status="removed", size_a=files_a[path], size_b=None)
+            counts["removed"] += 1
+        entries.append(entry)
+
+    file_count_a, total_size_a = _version_storage_stats(db, asset_a)
+    file_count_b, total_size_b = _version_storage_stats(db, asset_b)
+    return AtpAssetVersionCompareResponse(
+        asset_a=_serialize_asset_version(asset_a, file_count=file_count_a, total_size=total_size_a),
+        asset_b=_serialize_asset_version(asset_b, file_count=file_count_b, total_size=total_size_b),
+        files=entries,
+        summary=counts,
+    )
 
 
 def mark_asset_test_status(
@@ -1807,6 +1970,11 @@ def update_asset(
         item.version = str(update_data["version"]).strip() or "v1"
     if "shield_wire" in update_data and update_data["shield_wire"] is not None:
         item.shield_wire = str(update_data["shield_wire"]).strip() or "with"
+    if "release_notes" in update_data:
+        # 版本描述（2026-11-10）：传 null/空串视为清除
+        item.release_notes = _normalize_optional_str(update_data.get("release_notes"))
+        if item.release_notes:
+            item.release_notes = item.release_notes[:1000]
     if "test_line_id" in update_data:
         # 模型级绑定测试线路（单塔基准）：传 null 表示解绑
         item.test_line_id = _validate_test_line_ref(db, update_data["test_line_id"])
@@ -2144,6 +2312,7 @@ def upload_asset_files(
     files: list[Any] | None = None,
     temp_file_id: str | None = None,
     actor_user_id: str,
+    replace: bool = False,
 ) -> AtpAssetSummary:
     asset = get_asset_by_id(db, asset_id)
     if not asset:
@@ -2155,6 +2324,25 @@ def upload_asset_files(
     mount = _resolve_mount(db, mount_code)
     driver = _build_driver_or_400(mount)
     driver.ensure_directory(storage_root_path)
+
+    # 重新上传覆盖（2026-11-10）：replace=True 时先清空该版本的存储目录再写入，
+    # 避免旧模型包的残留文件（改名/删掉后的成员）混进新版本。文件变了，旧的
+    # 「测试结论」也不再可信，一并清掉，重新走测试流程。
+    cleared_file_count = 0
+    if replace:
+        try:
+            existing_tree: StorageTree | None = _walk_storage_tree(driver, storage_root_path)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                existing_tree = None  # 目录还不存在（从未上传过），无需清理
+            else:
+                raise
+        if existing_tree is not None and existing_tree.files:
+            cleared_file_count = len(existing_tree.files)
+            for entry in existing_tree.files:
+                driver.delete_path(entry.path, is_dir=False, recursive=False)
+            for dir_path in sorted(existing_tree.dir_paths, key=len, reverse=True):
+                driver.delete_path(f"{storage_root_path.rstrip('/')}/{dir_path}", is_dir=True, recursive=False)
 
     # 2026-11-07 全面上传体检：旧实现把整份 zip 读进内存（BytesIO）且所有成员
     # archive.read() 全量驻留在 pending 列表里，几百 MB 模型包内存峰值翻倍。
@@ -2311,6 +2499,15 @@ def upload_asset_files(
         )
     # 形态标记 + 预检报告（warning 清单）随本次上传落库
     _apply_format_report(asset, format_report)
+    if replace:
+        # 覆盖上传：旧测试结论作废（文件已变），重新测试后由 test-status 接口回填
+        asset.test_status = None
+        asset.test_message = None
+        asset.test_date = None
+        logger.info(
+            "[ATP] 资产 %s 覆盖上传完成：清理旧文件 %d 个，测试结论已重置",
+            asset.code, cleared_file_count,
+        )
     asset.update_user = actor_user_id
     asset.update_date = utcnow()
     db.commit()

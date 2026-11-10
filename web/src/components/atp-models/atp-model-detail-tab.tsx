@@ -8,15 +8,23 @@ import {
   Empty,
   Input,
   Modal,
+  Popconfirm,
+  Segmented,
+  Select,
   Space,
   Spin,
   Table,
   Tabs,
+  Tag,
   Tooltip,
   Typography,
+  Upload,
+  type UploadFile,
 } from "antd";
 import {
+  CloudUploadOutlined,
   ClusterOutlined,
+  DiffOutlined,
   FolderOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -29,12 +37,16 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { readApiError } from "@/lib/api";
+import { packModelFilesZip } from "@/lib/atp-model-pack";
 import { checkWarningCount, describeModelFormat, MODEL_ANALYZING_META } from "@/lib/atp-model-format";
 import type {
   AtpAssetFileListResponse,
   AtpAssetRunStatus,
   AtpAssetStatus,
   AtpAssetSummary,
+  AtpAssetVersionCompareResponse,
+  AtpAssetVersionListResponse,
+  AtpAssetVersionSummary,
 } from "@/types/auth";
 import { AtpDatDetailView } from "./atp-dat-detail-view";
 import { AtpFileContentViewer } from "./atp-file-content-viewer";
@@ -107,8 +119,17 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
   const [datDetail, setDatDetail] = useState<{ path: string; name: string } | null>(null);
   // 通用文件在线查看：所有非目录文件均可打开（dat 另有结构化「查看详情」）
   const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+  // ===== 重新上传覆盖（2026-11-10）=====
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replaceFiles, setReplaceFiles] = useState<UploadFile[]>([]);
+  const [replaceUploading, setReplaceUploading] = useState(false);
+  // ===== 版本对比（2026-11-10）=====
+  const [compareTarget, setCompareTarget] = useState<AtpAssetVersionSummary | null>(null);
+  const [compareOtherId, setCompareOtherId] = useState<string | undefined>(undefined);
+  const [diffFilter, setDiffFilter] = useState<"all" | "changed" | "added" | "removed" | "same">("all");
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
+  const canManage = hasPermission("atp.manage");
 
   const assetQuery = useQuery({
     queryKey: ["/api/v1/atp/assets", assetId],
@@ -148,6 +169,35 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
   const asset = assetQuery.data;
   const files = useMemo(() => filesQuery.data?.items ?? [], [filesQuery.data?.items]);
 
+  // ===== 版本历史（2026-11-10）：同维度组合的全部版本，含发布状态/描述/文件数 =====
+  const versionsQuery = useQuery({
+    queryKey: ["/api/v1/atp/assets", assetId, "versions"],
+    enabled: Boolean(user && canRead && assetId),
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/versions`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetVersionListResponse;
+    },
+  });
+  const versions = useMemo(() => versionsQuery.data?.items ?? [], [versionsQuery.data?.items]);
+
+  // ===== 版本对比（2026-11-10）：当前版本 vs 选定版本，按「相对路径+大小」判定文件差异 =====
+  const compareQuery = useQuery({
+    queryKey: ["/api/v1/atp/assets", assetId, "versions", "compare", compareOtherId],
+    enabled: Boolean(compareTarget && compareOtherId && compareOtherId !== assetId),
+    queryFn: async () => {
+      const response = await fetchWithAuth(
+        `/api/v1/atp/assets/${assetId}/versions/compare?other_id=${encodeURIComponent(compareOtherId ?? "")}`,
+      );
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetVersionCompareResponse;
+    },
+  });
+
   const filteredFiles = useMemo(() => {
     const keyword = fileKeyword.trim().toLowerCase();
     if (!keyword) return files;
@@ -161,6 +211,55 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
   const handleRefresh = () => {
     assetQuery.refetch();
     filesQuery.refetch();
+    versionsQuery.refetch();
+  };
+
+  // ===== 重新上传覆盖（2026-11-10）：打包 zip → 临时上传 → replace=true 提交 =====
+  const handleReplaceUpload = async () => {
+    if (replaceFiles.length === 0) return;
+    setReplaceUploading(true);
+    try {
+      const rawFiles = replaceFiles
+        .map((item) => item.originFileObj)
+        .filter((file): file is NonNullable<typeof file> => Boolean(file)) as File[];
+      if (rawFiles.length === 0) {
+        throw new Error(t("请先选择要上传的模型文件"));
+      }
+      const zipBlob = await packModelFilesZip(rawFiles);
+      const tempForm = new FormData();
+      tempForm.append("file", zipBlob, "model.zip");
+      const tempResponse = await fetchWithAuth("/api/v1/uploads/temp", {
+        method: "POST",
+        body: tempForm,
+      });
+      if (!tempResponse.ok) {
+        throw new Error(await readApiError(tempResponse));
+      }
+      const tempPayload = (await tempResponse.json()) as { temp_file_id: string };
+      const filesForm = new FormData();
+      filesForm.append("temp_file_id", tempPayload.temp_file_id);
+      const uploadResponse = await fetchWithAuth(
+        `/api/v1/atp/assets/${assetId}/files?replace=true`,
+        { method: "POST", body: filesForm },
+      );
+      if (!uploadResponse.ok) {
+        throw new Error(await readApiError(uploadResponse));
+      }
+      Modal.success({
+        title: t("模型文件已覆盖"),
+        content: t("旧文件已清理，测试结论已重置；后台正在重新检测模型形态与槽位。"),
+      });
+      setReplaceOpen(false);
+      setReplaceFiles([]);
+      handleRefresh();
+    } catch (error) {
+      Modal.error({
+        title: t("覆盖上传失败"),
+        content: error instanceof Error ? error.message : t("请稍后重试"),
+      });
+    } finally {
+      setReplaceUploading(false);
+    }
   };
 
   if (initializing) {
@@ -262,6 +361,156 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
         ),
     },
   ];
+
+  // 版本历史表列（2026-11-10）
+  const versionColumns: ColumnsType<AtpAssetVersionSummary> = [
+    {
+      title: t("版本"),
+      dataIndex: "version",
+      key: "version",
+      width: 110,
+      render: (_value, item) => (
+        <Space size={4}>
+          <span style={{ fontWeight: item.id === assetId ? 600 : 400 }}>{item.version || "-"}</span>
+          {item.id === assetId ? <Tag color="blue">{t("当前")}</Tag> : null}
+          {item.is_active ? <Tag color="green">{t("生效")}</Tag> : null}
+        </Space>
+      ),
+    },
+    {
+      title: t("发布状态"),
+      dataIndex: "is_published",
+      key: "is_published",
+      width: 110,
+      render: (value: boolean, item) =>
+        value ? (
+          <Tooltip title={item.published_date ? formatDateTime(item.published_date) : undefined}>
+            <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
+          </Tooltip>
+        ) : (
+          <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
+        ),
+    },
+    {
+      title: t("版本描述"),
+      dataIndex: "release_notes",
+      key: "release_notes",
+      ellipsis: true,
+      render: (value: string | null) => value || <span className="admin-atp-models-file-none">-</span>,
+    },
+    {
+      title: t("测试结论"),
+      dataIndex: "test_status",
+      key: "test_status",
+      width: 100,
+      render: (value: AtpAssetSummary["test_status"], item) => {
+        if (value === "passed") return <span className="admin-atp-models-state-chip is-active">{t("通过")}</span>;
+        if (value === "failed") return <span className="admin-atp-models-state-chip is-danger">{t("未通过")}</span>;
+        if (value === "suspect") return <span className="admin-atp-models-state-chip is-warning">{t("可疑")}</span>;
+        return (
+          <Tooltip title={item.test_message || undefined}>
+            <span className="admin-atp-models-state-chip is-muted">{t("未测试")}</span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: t("文件"),
+      key: "files",
+      width: 140,
+      render: (_value, item) =>
+        item.file_count === null ? (
+          "-"
+        ) : (
+          <span>
+            {item.file_count} {t("个")} · {formatSize(item.total_size ?? 0)}
+          </span>
+        ),
+    },
+    {
+      title: t("创建时间"),
+      dataIndex: "create_date",
+      key: "create_date",
+      width: 150,
+      render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: t("操作"),
+      key: "operation",
+      width: 130,
+      align: "right",
+      render: (_value, item) =>
+        item.id === assetId ? (
+          <span className="admin-atp-models-file-none">-</span>
+        ) : (
+          <Space size={4}>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              icon={<DiffOutlined />}
+              onClick={() => {
+                setCompareTarget(item);
+                setCompareOtherId(item.id);
+                setDiffFilter("all");
+              }}
+            >
+              {t("对比")}
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              href={`/admin/atp-models/${item.id}`}
+            >
+              {t("查看详情")}
+            </Button>
+          </Space>
+        ),
+    },
+  ];
+
+  // 对比结果表列（按文件路径 + 大小判定）
+  const diffColumns: ColumnsType<AtpAssetVersionCompareResponse["files"][number]> = [
+    {
+      title: t("文件"),
+      dataIndex: "relative_path",
+      key: "relative_path",
+      ellipsis: true,
+    },
+    {
+      title: t("差异"),
+      dataIndex: "status",
+      key: "status",
+      width: 90,
+      render: (value: string) => {
+        if (value === "changed") return <Tag color="orange">{t("变更")}</Tag>;
+        if (value === "added") return <Tag color="green">{t("新增")}</Tag>;
+        if (value === "removed") return <Tag color="red">{t("删除")}</Tag>;
+        return <Tag>{t("相同")}</Tag>;
+      },
+    },
+    {
+      title: t("本版本"),
+      key: "size_a",
+      width: 110,
+      align: "right",
+      render: (_value, item) => (item.size_a === null ? "-" : formatSize(item.size_a)),
+    },
+    {
+      title: t("对比版本"),
+      key: "size_b",
+      width: 110,
+      align: "right",
+      render: (_value, item) => (item.size_b === null ? "-" : formatSize(item.size_b)),
+    },
+  ];
+
+  const diffRows = useMemo(() => {
+    const rows = compareQuery.data?.files ?? [];
+    if (diffFilter === "all") return rows;
+    return rows.filter((row) => row.status === diffFilter);
+  }, [compareQuery.data?.files, diffFilter]);
 
   return (
     <div className="admin-atp-models-detail-pane modo-page-card">
@@ -471,6 +720,17 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
                       <span className="admin-atp-models-detail-toolbar-note">
                         {t("共 {n} 个文件").replace("{n}", String(filteredFiles.length))}
                       </span>
+                      {canManage ? (
+                        <Button
+                          icon={<CloudUploadOutlined />}
+                          onClick={() => {
+                            setReplaceFiles([]);
+                            setReplaceOpen(true);
+                          }}
+                        >
+                          {t("重新上传覆盖")}
+                        </Button>
+                      ) : null}
                     </div>
                     {filteredFiles.length === 0 && !filesQuery.isLoading ? (
                       <div style={{ padding: "24px 0" }}>
@@ -490,6 +750,27 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
                         columns={fileColumns}
                       />
                     )}
+                  </div>
+                ),
+              },
+              {
+                key: "versions",
+                label: `${t("版本历史")} (${versions.length})`,
+                children: (
+                  <div className="admin-atp-models-detail-section">
+                    <div className="admin-atp-models-detail-toolbar">
+                      <span className="admin-atp-models-detail-toolbar-note">
+                        {t("同维度组合下的全部版本；发布时填写的版本描述在此追溯")}
+                      </span>
+                      <Button icon={<ReloadOutlined />} onClick={() => versionsQuery.refetch()} loading={versionsQuery.isFetching} />
+                    </div>
+                    <Table
+                      rowKey="id"
+                      loading={versionsQuery.isFetching}
+                      dataSource={versions}
+                      pagination={{ pageSize: 10, showSizeChanger: false }}
+                      columns={versionColumns}
+                    />
                   </div>
                 ),
               },
@@ -520,6 +801,193 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
           <AtpFileContentViewer assetId={assetId} relativePath={previewFile.path} name={previewFile.name} />
         ) : null}
       </Drawer>
+
+      {/* 重新上传覆盖（2026-11-10）：清空该版本目录后写入新文件，测试结论重置 */}
+      <Modal
+        open={replaceOpen}
+        title={t("重新上传覆盖")}
+        okText={t("覆盖上传")}
+        cancelText={t("取消")}
+        okButtonProps={{
+          disabled: replaceFiles.length === 0,
+          loading: replaceUploading,
+        }}
+        onOk={() => {
+          void handleReplaceUpload();
+        }}
+        onCancel={() => {
+          if (!replaceUploading) {
+            setReplaceOpen(false);
+            setReplaceFiles([]);
+          }
+        }}
+        destroyOnHidden
+      >
+        <div className="flex flex-col gap-3">
+          <Alert
+            type="warning"
+            showIcon
+            message={t("将清空该版本的现有模型文件并写入新文件")}
+            description={t("旧文件不可恢复；上传后测试结论会重置，后台将自动重新检测模型形态与槽位。")}
+          />
+          <Upload.Dragger
+            multiple
+            directory
+            fileList={replaceFiles}
+            beforeUpload={() => false}
+            onChange={({ fileList: next }) => setReplaceFiles(next)}
+            accept=".zip,.atp,.dat,.lib,.pch"
+          >
+            <p className="ant-upload-drag-icon">
+              <CloudUploadOutlined />
+            </p>
+            <p className="ant-upload-text">{t("选择模型文件夹或文件（支持 zip 整包）")}</p>
+            <p className="ant-upload-hint">{t("上传后自动按原有目录结构打包覆盖")}</p>
+          </Upload.Dragger>
+        </div>
+      </Modal>
+
+      {/* 版本对比（2026-11-10）：元数据并排 + 文件级差异 */}
+      <Modal
+        open={Boolean(compareTarget)}
+        title={t("版本对比")}
+        width={860}
+        footer={
+          <Button
+            type="primary"
+            onClick={() => {
+              setCompareTarget(null);
+              setCompareOtherId(undefined);
+            }}
+          >
+            {t("关闭")}
+          </Button>
+        }
+        onCancel={() => {
+          setCompareTarget(null);
+          setCompareOtherId(undefined);
+        }}
+        destroyOnHidden
+      >
+        <div className="flex flex-col gap-3">
+          <Space wrap size={8}>
+            <span>{t("对比版本")}</span>
+            <Select
+              style={{ minWidth: 260 }}
+              value={compareOtherId}
+              onChange={(value) => setCompareOtherId(value)}
+              options={versions
+                .filter((item) => item.id !== assetId)
+                .map((item) => ({
+                  value: item.id,
+                  label: `${item.version}${item.is_published ? ` · ${t("已发布")}` : ` · ${t("未发布")}`}`,
+                }))}
+              placeholder={t("选择要对比的版本")}
+            />
+            {compareQuery.data ? (
+              <span className="admin-atp-models-detail-toolbar-note">
+                {t("相同 {a} · 变更 {b} · 新增 {c} · 删除 {d}")
+                  .replace("{a}", String(compareQuery.data.summary.same ?? 0))
+                  .replace("{b}", String(compareQuery.data.summary.changed ?? 0))
+                  .replace("{c}", String(compareQuery.data.summary.added ?? 0))
+                  .replace("{d}", String(compareQuery.data.summary.removed ?? 0))}
+              </span>
+            ) : null}
+          </Space>
+
+          {compareQuery.data ? (
+            <>
+              <Table
+                rowKey="key"
+                size="small"
+                pagination={false}
+                dataSource={[
+                  { key: "version", label: t("版本号"), a: compareQuery.data.asset_a.version, b: compareQuery.data.asset_b.version },
+                  {
+                    key: "published",
+                    label: t("发布状态"),
+                    a: compareQuery.data.asset_a.is_published ? t("已发布") : t("未发布"),
+                    b: compareQuery.data.asset_b.is_published ? t("已发布") : t("未发布"),
+                  },
+                  {
+                    key: "release_notes",
+                    label: t("版本描述"),
+                    a: compareQuery.data.asset_a.release_notes || "-",
+                    b: compareQuery.data.asset_b.release_notes || "-",
+                  },
+                  {
+                    key: "files",
+                    label: t("文件数/大小"),
+                    a:
+                      compareQuery.data.asset_a.file_count === null
+                        ? "-"
+                        : `${compareQuery.data.asset_a.file_count} · ${formatSize(compareQuery.data.asset_a.total_size ?? 0)}`,
+                    b:
+                      compareQuery.data.asset_b.file_count === null
+                        ? "-"
+                        : `${compareQuery.data.asset_b.file_count} · ${formatSize(compareQuery.data.asset_b.total_size ?? 0)}`,
+                  },
+                  {
+                    key: "test_status",
+                    label: t("测试结论"),
+                    a: compareQuery.data.asset_a.test_status || t("未测试"),
+                    b: compareQuery.data.asset_b.test_status || t("未测试"),
+                  },
+                  {
+                    key: "update_date",
+                    label: t("更新时间"),
+                    a: formatDateTime(compareQuery.data.asset_a.update_date),
+                    b: formatDateTime(compareQuery.data.asset_b.update_date),
+                  },
+                ]}
+                columns={[
+                  { title: t("项目"), dataIndex: "label", key: "label", width: 120 },
+                  {
+                    title: t("本版本"),
+                    dataIndex: "a",
+                    key: "a",
+                    width: 320,
+                    ellipsis: true,
+                  },
+                  {
+                    title: t("对比版本"),
+                    dataIndex: "b",
+                    key: "b",
+                    width: 320,
+                    ellipsis: true,
+                  },
+                ]}
+              />
+              <Segmented
+                value={diffFilter}
+                onChange={(value) => setDiffFilter(value as typeof diffFilter)}
+                options={[
+                  { value: "all", label: t("全部") },
+                  { value: "changed", label: `${t("变更")} ${compareQuery.data.summary.changed ?? 0}` },
+                  { value: "added", label: `${t("新增")} ${compareQuery.data.summary.added ?? 0}` },
+                  { value: "removed", label: `${t("删除")} ${compareQuery.data.summary.removed ?? 0}` },
+                  { value: "same", label: `${t("相同")} ${compareQuery.data.summary.same ?? 0}` },
+                ]}
+              />
+              <Table
+                rowKey="relative_path"
+                size="small"
+                loading={compareQuery.isFetching}
+                dataSource={diffRows}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
+                columns={diffColumns}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {t("文件差异按「相对路径 + 文件大小」判定；内容相同但大小一致的文件视为相同。")}
+              </Typography.Text>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <Spin />
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

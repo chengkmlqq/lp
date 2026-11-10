@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,9 @@ from ...schemas.atp_asset import (
     AtpAssetTreeChild,
     AtpAssetTreeChildrenResponse,
     AtpAssetUpdateRequest,
+    AtpAssetPublishRequest,
+    AtpAssetVersionCompareResponse,
+    AtpAssetVersionListResponse,
     AtpBatchTestRunListResponse,
     AtpBatchTestRunRequest,
     AtpBatchTestRunSummary,
@@ -42,6 +45,8 @@ from ...services.atp_asset_service import (
     get_run_detail,
     get_slot_options,
     list_asset_files,
+    list_asset_versions,
+    compare_asset_versions,
     list_assets,
     list_asset_tree_children,
     list_runs,
@@ -155,6 +160,7 @@ def upload_atp_asset_files_endpoint(
     asset_id: str,
     temp_file_id: str | None = Form(default=None),
     files: list[UploadFile] | None = File(default=None),
+    replace: bool = Query(default=False),
     current_user: CurrentUser = Depends(require_permission("atp.manage")),
     db: Session = Depends(get_db),
 ) -> AtpAssetDetail:
@@ -164,6 +170,9 @@ def upload_atp_asset_files_endpoint(
     1. 传统方式：直接上传文件（files 字段，zip 或散文件）
     2. 两段式：先调用通用 upload-temp 端点获取 temp_file_id，再提交 temp_file_id
     临时文件在消费后自动删除，或由 24h 定时清理任务兜底。
+
+    replace=true（2026-11-10）：重新上传覆盖——先清空该版本的存储目录再写入新文件，
+    并重置测试结论（文件已变，旧结论作废）。
     """
     if temp_file_id:
         from ...core.file_upload import _check_upload, describe_temp_upload, get_upload_limit_mb
@@ -184,6 +193,7 @@ def upload_atp_asset_files_endpoint(
         files=files or [],
         temp_file_id=temp_file_id,
         actor_user_id=current_user.user.id,
+        replace=replace,
     )
     return AtpAssetDetail(**updated.model_dump())
 
@@ -299,6 +309,30 @@ def get_atp_asset_detail(
     return AtpAssetDetail(**detail.model_dump())
 
 
+@router.get("/assets/{asset_id}/versions", response_model=AtpAssetVersionListResponse)
+def list_atp_asset_versions_endpoint(
+    asset_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetVersionListResponse:
+    """同维度组合内的版本历史（2026-11-10）：含自身，按创建时间倒序。
+
+    每个版本带发布状态、发布时间、版本描述、测试结论与文件数/总大小。
+    """
+    return list_asset_versions(db, asset_id=asset_id)
+
+
+@router.get("/assets/{asset_id}/versions/compare", response_model=AtpAssetVersionCompareResponse)
+def compare_atp_asset_versions_endpoint(
+    asset_id: str,
+    other_id: str = Query(min_length=1),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetVersionCompareResponse:
+    """两个版本对比（2026-11-10）：元数据并排 + 文件级差异（按相对路径+大小判定）。"""
+    return compare_asset_versions(db, asset_id=asset_id, other_id=other_id)
+
+
 # --- 目标 1：槽位扫描 / 查看 / 覆盖检测 ---
 
 
@@ -376,11 +410,20 @@ def deactivate_atp_asset_endpoint(
 @router.post("/assets/{asset_id}/publish", response_model=AtpAssetDetail)
 def publish_atp_asset_endpoint(
     asset_id: str,
+    payload: AtpAssetPublishRequest | None = Body(default=None),
     current_user: CurrentUser = Depends(require_permission("atp.manage")),
     db: Session = Depends(get_db),
 ) -> AtpAssetDetail:
-    """发布该版本（2026-11-05）：发布后参与仿真定位。"""
-    updated = publish_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    """发布该版本（2026-11-05）：发布后参与仿真定位。
+
+    2026-11-10：支持随发布填写版本描述（release_notes，选填，兼容旧客户端不传 body）。
+    """
+    updated = publish_asset(
+        db,
+        asset_id=asset_id,
+        release_notes=payload.release_notes if payload else None,
+        actor_user_id=current_user.user.id,
+    )
     return AtpAssetDetail(**updated.model_dump())
 
 

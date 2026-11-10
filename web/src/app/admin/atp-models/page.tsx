@@ -212,12 +212,15 @@ export default function AtpModelsPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
   const [editForm] = Form.useForm<AssetEditFormValues>();
+  const [publishForm] = Form.useForm<{ release_notes?: string }>();
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<AtpAssetSummary | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // 发布确认弹窗（2026-11-10）：发布前可填写版本描述
+  const [publishTarget, setPublishTarget] = useState<AtpAssetSummary | null>(null);
   const [fileList, setFileList] = useState<File[]>([]);
   // 上传文件清单默认折叠，避免几十个 pch 把弹窗撑长
   const [fileListExpanded, setFileListExpanded] = useState(false);
@@ -397,9 +400,14 @@ export default function AtpModelsPage() {
 
   // 发布 / 下线版本（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用。
   // 「生效/失效」概念已随发布上线取消——发布即生效，下线即退出仿真定位。
+  // 2026-11-10：发布改为弹窗确认，可填写版本描述（release_notes，选填）。
   const publishMutation = useMutation({
-    mutationFn: async (assetId: string) => {
-      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, { method: "POST" });
+    mutationFn: async ({ assetId, releaseNotes }: { assetId: string; releaseNotes?: string | null }) => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null }),
+      });
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -407,6 +415,7 @@ export default function AtpModelsPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      setPublishTarget(null);
       setSuccess(t("版本已发布"));
       setError(null);
     },
@@ -1546,7 +1555,11 @@ export default function AtpModelsPage() {
                                   onEdit={(asset) => openEditModal(asset)}
                                   onDelete={(id) => deleteMutation.mutate(id)}
                                   onTest={(asset) => openTestTab(asset)}
-                                  onPublish={(id) => publishMutation.mutate(id)}
+                                  onPublish={(id) => {
+                                    const target = assetItems.find((item) => item.id === id) ?? null;
+                                    setPublishTarget(target);
+                                    publishForm.setFieldsValue({ release_notes: target?.release_notes ?? "" });
+                                  }}
                                   onUnpublish={(id) => unpublishMutation.mutate(id)}
                                   publishBusy={publishMutation.isPending || unpublishMutation.isPending}
                                 />
@@ -1860,6 +1873,47 @@ export default function AtpModelsPage() {
             </Form.Item>
           </div>
         </Form>
+      </Modal>
+
+      {/* 发布确认弹窗（2026-11-10）：发布前填写版本描述 */}
+      <Modal
+        open={Boolean(publishTarget)}
+        title={t("发布版本")}
+        onCancel={() => setPublishTarget(null)}
+        okText={t("发布")}
+        cancelText={t("取消")}
+        okButtonProps={{ loading: publishMutation.isPending }}
+        onOk={() => {
+          if (!publishTarget) return;
+          const values = publishForm.getFieldsValue();
+          publishMutation.mutate({ assetId: publishTarget.id, releaseNotes: values.release_notes ?? null });
+        }}
+        destroyOnHidden
+      >
+        {publishTarget ? (
+          <div className="flex flex-col gap-3">
+            <Alert
+              type="info"
+              showIcon
+              message={t("发布后该版本参与仿真定位")}
+              description={`${t("模型")}：${publishTarget.name || publishTarget.code} · ${t("版本")} ${publishTarget.version || "-"}`}
+            />
+            <Form form={publishForm} layout="vertical">
+              <Form.Item
+                name="release_notes"
+                label={t("版本描述")}
+                extra={t("说明本版本改了什么（选填），会记录到版本历史里供追溯与对比")}
+              >
+                <Input.TextArea
+                  rows={4}
+                  maxLength={1000}
+                  showCount
+                  placeholder={t("如：修正上字塔横担斜材坡度，几何与 115 线路实测一致")}
+                />
+              </Form.Item>
+            </Form>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

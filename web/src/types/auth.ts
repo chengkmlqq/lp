@@ -1215,6 +1215,8 @@ export type AtpAssetSummary = {
   /** 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用 */
   is_published?: boolean;
   published_date?: string | null;
+  /** 版本描述（2026-11-10）：发布时弹窗填写，说明本版本改动 */
+  release_notes?: string | null;
   /**
    * 测试结论（2026-11-07）：实跑仿真后的三档判定，与 analysis_status（解析期）无关。
    * - `passed` 通过：跑通且数值合理
@@ -1291,6 +1293,47 @@ export type AtpAssetFileUploadResponse = {
   storage_root_path: string;
   uploaded_count: number;
   success: boolean;
+};
+
+// ── ATP 模型版本历史与对比（2026-11-10）──
+
+export type AtpAssetVersionSummary = {
+  id: string;
+  version: string;
+  is_active: boolean;
+  is_published: boolean;
+  published_date: string | null;
+  release_notes: string | null;
+  test_status?: AtpAssetTestStatus | null;
+  test_message?: string | null;
+  model_format?: string;
+  file_count: number | null;
+  total_size: number | null;
+  create_date: string;
+  create_user: string | null;
+  update_date: string;
+  update_user: string | null;
+};
+
+export type AtpAssetVersionListResponse = {
+  asset_id: string;
+  items: AtpAssetVersionSummary[];
+  total: number;
+};
+
+export type AtpAssetVersionFileDiffEntry = {
+  relative_path: string;
+  /** same=同路径同大小 / changed=同路径大小不同 / added=仅 B 有 / removed=仅 A 有 */
+  status: "same" | "changed" | "added" | "removed";
+  size_a: number | null;
+  size_b: number | null;
+};
+
+export type AtpAssetVersionCompareResponse = {
+  asset_a: AtpAssetVersionSummary;
+  asset_b: AtpAssetVersionSummary;
+  files: AtpAssetVersionFileDiffEntry[];
+  summary: Record<"same" | "changed" | "added" | "removed", number>;
 };
 
 // ── ATP 模型单模型测试（分段执行 + compare.json 对拍产物）──

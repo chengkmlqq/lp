@@ -50,6 +50,9 @@ class AtpAsset(Base):
     # 存量行由迁移 035 回填为已发布（行为不变）；新建默认未发布，需显式发布。
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # release_notes: 版本描述（发布时弹窗填写，2026-11-10）：说明该版本改了什么，
+    # 供版本历史与版本对比展示；未发布/未填写为 NULL。
+    release_notes: Mapped[str | None] = mapped_column(String(1000))
     # shield_wire: 避雷线配置维度（with/without）。110kV 无避雷线变体（ganzino 等
     # 塔型后缀）归一后落此处，塔型维度回归纯净。
     shield_wire: Mapped[str] = mapped_column(String(16), default="with", nullable=False)

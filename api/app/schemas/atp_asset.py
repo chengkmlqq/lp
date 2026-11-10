@@ -43,6 +43,8 @@ class AtpAssetSummary(BaseModel):
     # 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用
     is_published: bool = True
     published_date: datetime | None = None
+    # 版本描述（2026-11-10）：发布时弹窗填写，说明本版本改动
+    release_notes: str | None = None
     shield_wire: str = "with"
     # 模型级绑定的测试线路（单塔基准）：非空时测试默认用它
     test_line_id: str | None = None
@@ -122,6 +124,54 @@ class AtpAssetTestStatusRequest(BaseModel):
     message: str | None = Field(default=None, max_length=512)
 
 
+class AtpAssetPublishRequest(BaseModel):
+    """发布请求（2026-11-10）：发布时可填写版本描述（选填）。"""
+
+    release_notes: str | None = Field(default=None, max_length=1000)
+
+
+class AtpAssetVersionSummary(BaseModel):
+    """同维度组合内的一个版本（版本历史/对比用）。"""
+
+    id: str
+    version: str
+    is_active: bool = False
+    is_published: bool = False
+    published_date: datetime | None = None
+    release_notes: str | None = None
+    test_status: AtpAssetTestStatus | None = None
+    test_message: str | None = None
+    model_format: str = "legacy"
+    file_count: int | None = None
+    total_size: int | None = None
+    create_date: datetime
+    create_user: str | None = None
+    update_date: datetime
+    update_user: str | None = None
+
+
+class AtpAssetVersionListResponse(BaseModel):
+    asset_id: str
+    items: list[AtpAssetVersionSummary]
+    total: int
+
+
+class AtpAssetVersionFileDiffEntry(BaseModel):
+    relative_path: str
+    # same=同路径同大小 / changed=同路径大小不同 / added=仅 B 有 / removed=仅 A 有
+    status: str
+    size_a: int | None = None
+    size_b: int | None = None
+
+
+class AtpAssetVersionCompareResponse(BaseModel):
+    asset_a: AtpAssetVersionSummary
+    asset_b: AtpAssetVersionSummary
+    files: list[AtpAssetVersionFileDiffEntry]
+    # 汇总：same / changed / added / removed 各多少个
+    summary: dict[str, int]
+
+
 class AtpAssetUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=8000)
@@ -133,6 +183,8 @@ class AtpAssetUpdateRequest(BaseModel):
     version: str | None = Field(default=None, max_length=32)
     is_active: bool | None = None
     shield_wire: str | None = Field(default=None, max_length=16)
+    # 版本描述（2026-11-10）：不发布也可编辑
+    release_notes: str | None = Field(default=None, max_length=1000)
     test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
