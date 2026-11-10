@@ -1105,6 +1105,7 @@ def list_assets(
     scene_type: str | None,
     arrester_config: str | None = None,
     test_status: str | None = None,
+    is_published: bool | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
@@ -1197,6 +1198,18 @@ def list_assets(
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"Invalid test_status filter: {test_status}")
+
+    # 发布状态筛选（2026-11-10）：True=已发布，False=未发布，None=不过滤。
+    # 存量行已由迁移 035 回填，但 serialize_asset 把 NULL 也视作已发布，
+    # 这里保持一致：NULL 归入「已发布」，避免列表与卡片状态自相矛盾。
+    if is_published is not None:
+        published_predicate = (
+            or_(AtpAsset.is_published.is_(True), AtpAsset.is_published.is_(None))
+            if is_published
+            else AtpAsset.is_published.is_(False)
+        )
+        stmt = stmt.where(published_predicate)
+        total_stmt = total_stmt.where(published_predicate)
 
     items = db.execute(
         stmt.order_by(AtpAsset.update_date.desc(), AtpAsset.code.asc())

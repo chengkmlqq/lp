@@ -158,8 +158,9 @@ const ATP_DIMENSION_FIELD_TO_TYPE_CODE: Record<string, string> = {
 const ATP_DIMENSION_FIELDS = ["voltage_level", "tower_type", "scene_type", "arrester_config"] as const;
 type AtpDimensionField = (typeof ATP_DIMENSION_FIELDS)[number];
 
-// 过滤栏常驻下拉只需要电压等级/塔形两个维度（页面加载即取，其余维度等弹窗打开再取）
-const ATP_FILTER_BAR_FIELDS: readonly AtpDimensionField[] = ["voltage_level", "tower_type"];
+// 发布状态过滤（2026-11-10）：undefined = 全部；published/unpublished 走服务端 is_published 参数。
+// 电压等级/塔形过滤统一由左侧维度树承担，右侧过滤栏不再重复放这两项。
+type PublishStatusFilter = "published" | "unpublished";
 
 function flattenTypeNodes(types: DimensionTypeTreeItem[]): DimensionTypeTreeItem[] {
   return types.flatMap((t) => [t, ...flattenTypeNodes(t.children)]);
@@ -203,20 +204,6 @@ function parseAtpTreeKey(key: string): AtpTreePathFilter | null {
   return Object.keys(filter).length > 0 ? filter : null;
 }
 
-// 维度过滤条件 → 树 key（反向构造；空条件返回 "all"）。
-// 过滤栏的电压等级/塔形下拉与左侧维度树共用 selectedTreeKey 单一数据源，
-// 下拉改动即合成树 key，表格查询与树高亮自然保持一致（合成 key 若无对应
-// 树节点则不高亮，但过滤仍然生效）。
-function buildAtpTreeKey(filter: AtpTreePathFilter | null): string {
-  if (!filter) return "all";
-  const segments: string[] = [];
-  for (const level of ATP_TREE_LEVELS) {
-    const code = filter[level.field];
-    if (code) segments.push(`${level.prefix}:${code}`);
-  }
-  return segments.length > 0 ? segments.join("|") : "all";
-}
-
 export default function AtpModelsPage() {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
@@ -227,6 +214,8 @@ export default function AtpModelsPage() {
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 发布状态过滤：undefined = 全部（allowClear 清除后即回到全部）
+  const [publishStatusFilter, setPublishStatusFilter] = useState<PublishStatusFilter | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<AtpAssetSummary | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -680,28 +669,11 @@ export default function AtpModelsPage() {
     setPagination((previous) => ({ ...previous, current: 1 }));
   }, []);
 
-  // 过滤栏电压等级/塔形下拉：与维度树共用 selectedTreeKey，改某一维度其余层级保留
-  const handleDimensionFilterChange = useCallback((field: AtpDimensionField, code: string | undefined) => {
-    setSelectedTreeKey((previous) => {
-      const filter = { ...(parseAtpTreeKey(previous) ?? {}) };
-      if (code) {
-        filter[field] = code;
-      } else {
-        delete filter[field];
-      }
-      return buildAtpTreeKey(filter);
-    });
+  // 发布状态过滤即时生效：Select 变更（含清除）即应用并重置分页
+  const handlePublishStatusFilterChange = useCallback((value: PublishStatusFilter | undefined) => {
+    setPublishStatusFilter(value);
     setPagination((previous) => ({ ...previous, current: 1 }));
   }, []);
-
-  const handleVoltageFilterChange = useCallback(
-    (code: string | undefined) => handleDimensionFilterChange("voltage_level", code),
-    [handleDimensionFilterChange],
-  );
-  const handleTowerFilterChange = useCallback(
-    (code: string | undefined) => handleDimensionFilterChange("tower_type", code),
-    [handleDimensionFilterChange],
-  );
 
   // ===== 左侧维度树（后台接口懒加载：点击展开才请求下一层） =====
   // 数据源：GET /api/v1/atp/assets/tree/children?path=<父路径>，path 空 = 第一层；
@@ -863,6 +835,7 @@ export default function AtpModelsPage() {
         pageSize: paginationPageSize,
         keyword: searchKeyword.trim(),
         filter: activeFilter ?? null,
+        publishStatus: publishStatusFilter ?? null,
       },
     ],
     enabled: Boolean(user && canRead),
@@ -871,6 +844,9 @@ export default function AtpModelsPage() {
       params.set("limit", String(paginationPageSize));
       params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
       if (searchKeyword.trim()) params.set("keyword", searchKeyword.trim());
+      if (publishStatusFilter) {
+        params.set("is_published", publishStatusFilter === "published" ? "true" : "false");
+      }
       if (activeFilter) {
         if (activeFilter.voltage_level) params.set("voltage_level", activeFilter.voltage_level);
         if (activeFilter.tower_type) params.set("tower_type", activeFilter.tower_type);
@@ -921,13 +897,12 @@ export default function AtpModelsPage() {
   // 维度项查询只服务于「新建/编辑」弹窗的 Select 选项，弹窗打开时才发起，
   // 避免页面加载就多打 1+4 次字典接口（types/tree + 每类型一次 dimensions）。
   // 1. 获取维度类型树（types/tree），解析出四个类型 id
-  // 2026-11-08：过滤栏常驻显示电压等级/塔形下拉，这两个维度页面加载即取；
-  // 场景/避雷器仍只在新建/编辑弹窗打开时才请求。
+  // 2026-11-10：右侧过滤栏不再重复放电压等级/塔形下拉（统一走左侧维度树），
+  // 四个维度的字典都只在新建/编辑弹窗打开时才请求，页面加载少打 1+4 次接口。
   const dimensionOptionsNeeded = Boolean(user && canRead && (modalOpen || editModalOpen));
-  const filterOptionsNeeded = Boolean(user && canRead);
   const dimensionTypesQuery = useQuery({
     queryKey: ["/api/v1/dimensions/types/tree"],
-    enabled: dimensionOptionsNeeded || filterOptionsNeeded,
+    enabled: dimensionOptionsNeeded,
     queryFn: async () => {
       const response = await fetchWithAuth("/api/v1/dimensions/types/tree");
       if (!response.ok) {
@@ -954,7 +929,7 @@ export default function AtpModelsPage() {
       const typeId = dimensionTypeIds[field];
       return {
         queryKey: ["/api/v1/dimensions", { type_id: typeId, enabled: true }],
-        enabled: Boolean(typeId && (dimensionOptionsNeeded || ATP_FILTER_BAR_FIELDS.includes(field))),
+        enabled: Boolean(typeId && dimensionOptionsNeeded),
         queryFn: async () => {
           const params = new URLSearchParams();
           params.set("type_id", typeId!);
@@ -1437,28 +1412,17 @@ export default function AtpModelsPage() {
                   <div className="admin-atp-models-main">
                     <div className="admin-filter-bar">
                       <Form layout="inline">
-                        <Form.Item label={t("电压等级")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Form.Item label={t("发布状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                           <Select
                             allowClear
-                            showSearch
-                            optionFilterProp="label"
                             style={{ minWidth: 150 }}
-                            value={activeFilter?.voltage_level}
-                            options={voltageLevelOptions}
-                            placeholder={t("全部电压等级")}
-                            onChange={handleVoltageFilterChange}
-                          />
-                        </Form.Item>
-                        <Form.Item label={t("塔形")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                          <Select
-                            allowClear
-                            showSearch
-                            optionFilterProp="label"
-                            style={{ minWidth: 150 }}
-                            value={activeFilter?.tower_type}
-                            options={towerTypeOptions}
-                            placeholder={t("全部塔形")}
-                            onChange={handleTowerFilterChange}
+                            value={publishStatusFilter}
+                            options={[
+                              { value: "published", label: t("已发布") },
+                              { value: "unpublished", label: t("未发布") },
+                            ]}
+                            placeholder={t("全部发布状态")}
+                            onChange={handlePublishStatusFilterChange}
                           />
                         </Form.Item>
                         <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>

@@ -91,6 +91,7 @@ def get_atp_asset_list(
     scene_type: str | None = Query(default=None),
     arrester_config: str | None = Query(default=None),
     test_status: str | None = Query(default=None),
+    is_published: bool | None = Query(default=None, description="按发布状态过滤：true=已发布，false=未发布；不传=全部"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
@@ -105,6 +106,7 @@ def get_atp_asset_list(
         scene_type=scene_type,
         arrester_config=arrester_config,
         test_status=test_status,
+        is_published=is_published,
         limit=limit,
         offset=offset,
     )

@@ -373,6 +373,8 @@ export const EN_DICT: Record<string, string> = {
   "全部电压等级": "All voltage levels",
   "全部塔形": "All tower shapes",
   "全部塔型": "All tower types",
+  "全部发布状态": "All publish statuses",
+  "未发布": "Unpublished",
   "发布版本": "Publish version",
   "发布后该版本参与仿真定位": "Once published, this version participates in simulation locating",
   "版本描述": "Release notes",

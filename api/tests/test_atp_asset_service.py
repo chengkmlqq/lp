@@ -855,3 +855,39 @@ def test_stale_pending_analysis_is_downgraded_to_failed(tmp_path) -> None:
         assert fresh.analysis_status == "pending"
     finally:
         session.close()
+
+
+def test_list_assets_filters_by_publish_status() -> None:
+    """发布状态过滤（2026-11-10）：true=已发布 / false=未发布 / 不传=全部。
+
+    ATP 模型管理页是服务端分页，过滤必须落在 SQL 上并同时收窄 total，
+    否则翻页与卡片数会对不上。
+    """
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        session.add_all(
+            [
+                AtpAsset(code="PUB-1", name="已发布模型", status="enabled", is_published=True),
+                AtpAsset(code="PUB-2", name="未发布模型", status="enabled", is_published=False),
+            ]
+        )
+        session.commit()
+
+        def snapshot(**filters):
+            response = atp_asset_service.list_assets(
+                session,
+                keyword=None,
+                status_filter=None,
+                voltage_level=None,
+                tower_type=None,
+                scene_type=None,
+                **filters,
+            )
+            return response.total, {item.code for item in response.items}
+
+        assert snapshot() == (2, {"PUB-1", "PUB-2"})
+        assert snapshot(is_published=True) == (1, {"PUB-1"})
+        assert snapshot(is_published=False) == (1, {"PUB-2"})
+    finally:
+        session.close()
