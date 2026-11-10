@@ -54,6 +54,9 @@ import { ApiError, downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/l
 import type { AtpAssetListResponse, AtpAssetSummary, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
+/** 标签上限（2026-11-10）：与后端 schemas/atp_asset.py 的 MAX_TAGS 保持一致 */
+const MAX_TAGS = 8;
+
 type AssetFormValues = {
   voltage_level: string;
   tower_type: string;
@@ -74,6 +77,14 @@ type AssetEditFormValues = {
   shield_wire: string;
   storage_mount_code: string;
   storage_root_path: string;
+  /** 标签（2026-11-10）：编辑里也能维护，不必为了改标签先下线再发布 */
+  tags: string[];
+};
+
+/** 发布弹窗表单（2026-11-10）：版本描述 + 标签 */
+type PublishFormValues = {
+  release_notes?: string;
+  tags?: string[];
 };
 
 const EMPTY_FORM: AssetFormValues = {
@@ -212,7 +223,7 @@ export default function AtpModelsPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
   const [editForm] = Form.useForm<AssetEditFormValues>();
-  const [publishForm] = Form.useForm<{ release_notes?: string }>();
+  const [publishForm] = Form.useForm<PublishFormValues>();
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -400,13 +411,22 @@ export default function AtpModelsPage() {
 
   // 发布 / 下线版本（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用。
   // 「生效/失效」概念已随发布上线取消——发布即生效，下线即退出仿真定位。
-  // 2026-11-10：发布改为弹窗确认，可填写版本描述（release_notes，选填）。
+  // 2026-11-10：发布改为弹窗确认，可填写版本描述（release_notes）与标签（tags），均选填。
   const publishMutation = useMutation({
-    mutationFn: async ({ assetId, releaseNotes }: { assetId: string; releaseNotes?: string | null }) => {
+    mutationFn: async ({
+      assetId,
+      releaseNotes,
+      tags,
+    }: {
+      assetId: string;
+      releaseNotes?: string | null;
+      tags?: string[];
+    }) => {
       const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null }),
+        // tags 整组覆盖；不传字段＝保留原标签，传 []＝清空
+        body: JSON.stringify({ release_notes: releaseNotes?.trim() || null, tags: tags ?? [] }),
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -460,6 +480,8 @@ export default function AtpModelsPage() {
         shield_wire: (values.shield_wire || "with").trim() || "with",
         storage_mount_code: values.storage_mount_code.trim() || null,
         storage_root_path: values.storage_root_path.trim() || null,
+        // 标签（2026-11-10）：整组覆盖，空数组即清空
+        tags: values.tags ?? [],
       };
       const response = await fetchWithAuth(`/api/v1/atp/assets/${editingAsset.id}`, {
         method: "PATCH",
@@ -623,6 +645,7 @@ export default function AtpModelsPage() {
       shield_wire: asset.shield_wire ?? "with",
       storage_mount_code: asset.storage_mount_code ?? "",
       storage_root_path: asset.storage_root_path ?? "",
+      tags: asset.tags ?? [],
     });
     setEditModalOpen(true);
   }, [editForm]);
@@ -1558,7 +1581,10 @@ export default function AtpModelsPage() {
                                   onPublish={(id) => {
                                     const target = assetItems.find((item) => item.id === id) ?? null;
                                     setPublishTarget(target);
-                                    publishForm.setFieldsValue({ release_notes: target?.release_notes ?? "" });
+                                    publishForm.setFieldsValue({
+                                      release_notes: target?.release_notes ?? "",
+                                      tags: target?.tags ?? [],
+                                    });
                                   }}
                                   onUnpublish={(id) => unpublishMutation.mutate(id)}
                                   publishBusy={publishMutation.isPending || unpublishMutation.isPending}
@@ -1692,7 +1718,7 @@ export default function AtpModelsPage() {
               <Space size={6}>
                 <span>{t("上传模型文件")}</span>
                 <Tooltip
-                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch 文件。旧版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。")}
+                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch / .acp 文件。旧版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。.acp 仅作 ATPDraw 工程存档，不参与计算。")}
                 >
                   <QuestionCircleOutlined className="text-[var(--ant-color-text-tertiary)]" />
                 </Tooltip>
@@ -1709,11 +1735,13 @@ export default function AtpModelsPage() {
                 beforeUpload={(file) => {
                   // 2026-11-03：白名单是 .atp / .dat / .pch —— 7.2+ 的 $INSERT 模型几何
                   // 全在序号 pch 里，漏掉 pch 会让新版模型必然缺依赖（后端 E010 拒收）。
+                  // 2026-11-10：.acp 放开，作为 ATPDraw 工程配套存档一并上传。
                   const lowerName = (file.name || "").toLowerCase();
                   if (
                     lowerName.endsWith(".atp") ||
                     lowerName.endsWith(".dat") ||
-                    lowerName.endsWith(".pch")
+                    lowerName.endsWith(".pch") ||
+                    lowerName.endsWith(".acp")
                   ) {
                     setFileList((prev) => [...prev, file]);
                   }
@@ -1732,7 +1760,7 @@ export default function AtpModelsPage() {
                       {t("点击或拖拽模型文件夹到此区域上传")}
                     </p>
                     <p className="mb-0 mt-1 text-xs text-[var(--ant-color-text-tertiary)]">
-                      {t("仅接收 .atp / .dat / .pch")}
+                      {t("仅接收 .atp / .dat / .pch / .acp")}
                     </p>
                   </div>
                 ) : (
@@ -1871,6 +1899,14 @@ export default function AtpModelsPage() {
             <Form.Item name="description" label={t("描述")} className="md:col-span-2">
               <Input.TextArea rows={2} placeholder={t("模型描述（可选）")} maxLength={8000} />
             </Form.Item>
+            <Form.Item
+              name="tags"
+              label={t("标签")}
+              className="md:col-span-2"
+              extra={t("最多 8 个，单个 32 字内。回车或逗号分隔新增，展示在模型卡片左下角")}
+            >
+              <Select mode="tags" allowClear maxCount={MAX_TAGS} tokenSeparators={[",", "，"]} placeholder={t("如：现场实测 / 基准 / 已对拍")} />
+            </Form.Item>
           </div>
         </Form>
       </Modal>
@@ -1886,7 +1922,11 @@ export default function AtpModelsPage() {
         onOk={() => {
           if (!publishTarget) return;
           const values = publishForm.getFieldsValue();
-          publishMutation.mutate({ assetId: publishTarget.id, releaseNotes: values.release_notes ?? null });
+          publishMutation.mutate({
+            assetId: publishTarget.id,
+            releaseNotes: values.release_notes ?? null,
+            tags: values.tags ?? [],
+          });
         }}
         destroyOnHidden
       >
@@ -1899,6 +1939,19 @@ export default function AtpModelsPage() {
               description={`${t("模型")}：${publishTarget.name || publishTarget.code} · ${t("版本")} ${publishTarget.version || "-"}`}
             />
             <Form form={publishForm} layout="vertical">
+              <Form.Item
+                name="tags"
+                label={t("标签")}
+                extra={t("给这个版本打标签，可多个（最多 8 个，单个 32 字内）。回车或逗号分隔即可新增，展示在模型卡片左下角")}
+              >
+                <Select
+                  mode="tags"
+                  allowClear
+                  maxCount={MAX_TAGS}
+                  tokenSeparators={[",", "，"]}
+                  placeholder={t("如：现场实测 / 基准 / 已对拍")}
+                />
+              </Form.Item>
               <Form.Item
                 name="release_notes"
                 label={t("版本描述")}

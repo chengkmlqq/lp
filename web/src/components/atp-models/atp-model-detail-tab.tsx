@@ -392,6 +392,24 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
         ),
     },
     {
+      title: t("标签"),
+      dataIndex: "tags",
+      key: "tags",
+      width: 160,
+      render: (value: string[] | undefined) =>
+        value && value.length > 0 ? (
+          <Space size={2} wrap>
+            {value.map((tag) => (
+              <Tag key={tag} className="admin-atp-models-card-tag" title={tag}>
+                {tag}
+              </Tag>
+            ))}
+          </Space>
+        ) : (
+          <span className="admin-atp-models-file-none">-</span>
+        ),
+    },
+    {
       title: t("版本描述"),
       dataIndex: "release_notes",
       key: "release_notes",
@@ -836,7 +854,7 @@ export function AtpModelDetailTab({ assetId }: { assetId: string }) {
             fileList={replaceFiles}
             beforeUpload={() => false}
             onChange={({ fileList: next }) => setReplaceFiles(next)}
-            accept=".zip,.atp,.dat,.lib,.pch"
+            accept=".zip,.atp,.dat,.lib,.pch,.acp"
           >
             <p className="ant-upload-drag-icon">
               <CloudUploadOutlined />

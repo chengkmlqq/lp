@@ -416,12 +416,14 @@ def publish_atp_asset_endpoint(
 ) -> AtpAssetDetail:
     """发布该版本（2026-11-05）：发布后参与仿真定位。
 
-    2026-11-10：支持随发布填写版本描述（release_notes，选填，兼容旧客户端不传 body）。
+    2026-11-10：支持随发布填写版本描述（release_notes）与标签（tags），均选填，
+    兼容旧客户端不传 body。
     """
     updated = publish_asset(
         db,
         asset_id=asset_id,
         release_notes=payload.release_notes if payload else None,
+        tags=payload.tags if payload else None,
         actor_user_id=current_user.user.id,
     )
     return AtpAssetDetail(**updated.model_dump())

@@ -2920,6 +2920,33 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 卡片左下角标签（2026-11-10）：接替原来的「新版/旧版」形态说明位置。
+   中性灰底细边、不做语义着色——标签是分类信息，不该和「已发布/处理中」这类状态 chip 抢色。
+   单条限宽 + 省略号：标签是扫读用的，长标签不能把操作按钮挤出去。 */
+.admin-atp-models-card-tag.ant-tag {
+  margin: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  border-color: var(--ant-color-border-secondary, #f0f0f0);
+  background: color-mix(in srgb, var(--ant-color-fill-quaternary, #f5f5f5) 70%, transparent);
+  color: var(--fquiz-theme-text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  max-width: 96px;
+  display: inline-block;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 溢出的标签收成「+N」，悬停看全部 */
+.admin-atp-models-card-tag.is-more.ant-tag {
+  cursor: help;
+  color: var(--fquiz-theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .admin-atp-models-card > .ant-card-head {
   min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));

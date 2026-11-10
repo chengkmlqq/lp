@@ -97,8 +97,10 @@ ATP_ASSET_FILES_ROOT = "/atp-assets"
 #     全库 483 个此类模型里 204 个跑不起来的首要原因就是 pch 缺失/被覆盖（见 E010）。
 # .lib/.lis/.pl4/.log 仍为运行产物，由 geometry/simulate 现场生成，不允许上传
 # （2026-09-26 实测：geometry 每轮按当轮参数重算覆盖 .lib，上传的 .lib 无兜底价值）。
+# .acp（ATPDraw 工程文件）2026-11-10 起允许上传：仅作为配套工程存档，方便回溯
+# 模型在 ATPDraw 里的原始组态；不参与形态判定、LCC 重算与仿真。
 # ⚠️ 若未来接入带 egm 引擎的资产包（egm 子目录 + .exe），需在此放开对应扩展名。
-_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat", ".pch")
+_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat", ".pch", ".acp")
 # 老版模型的四个标准几何源名（仅作文档/日志引用；完整性校验已移到
 # atp_model_format.inspect_package 的 E002，因为只有先判定形态才知道该不该要求 .dat）
 _DAT_MODEL_NAMES: tuple[str, ...] = ("long", "short", "dahao", "xiaohao")
@@ -440,10 +442,11 @@ def _normalize_archive_member_path(value: str) -> str | None:
 def _validate_atp_model_members(relative_paths: list[str]) -> None:
     """校验上传的 ATP 模型文件清单（zip 成员或散文件，只读不写）。
 
-    规则（2026-11-08 收紧，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
-    1. 白名单：只允许 .atp / .dat / .pch；发现其他扩展名 → 400 并列出
+    规则（2026-11-08 收紧，2026-11-10 放开 .acp，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
+    1. 白名单：只允许 .atp / .dat / .pch / .acp；发现其他扩展名 → 400 并列出
        · .lib 是 LCC 派生件（由 .dat 重算），单独给提示而不是笼统报「非法文件」
-       · .acp / .lis / .pl4 / .dbg 属于 ATPDraw 工程或运行输出，一律不收
+       · .acp 是 ATPDraw 工程文件，允许上传但只作存档（不参与形态判定与仿真）
+       · .lis / .pl4 / .dbg 属于运行输出，一律不收
     2. 入口：必须存在 work.atp，或恰好一个 .atp
     3. 几何完整性 / 形态判定 / 参数段可解析性 → 由 atp_model_format.inspect_package
        按形态分级判定（老版要四个 .dat，新版要 pch 齐全），不在此处硬卡
@@ -474,8 +477,8 @@ def _validate_atp_model_members(relative_paths: list[str]) -> None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"ATP 模型只接受 .atp / .dat / .pch 文件，发现非法文件：{shown}{suffix}。"
-                ".acp 是 ATPDraw 工程文件、.lis/.pl4/.dbg 是运行输出，均不参与计算，请勿上传"
+                f"ATP 模型只接受 .atp / .dat / .pch / .acp 文件，发现非法文件：{shown}{suffix}。"
+                ".lis/.pl4/.dbg 是运行输出，均不参与计算，请勿上传"
             ),
         )
     atp_files = sorted(path for path in relative_paths if path.lower().endswith(".atp"))
@@ -1672,6 +1675,7 @@ def _serialize_asset_version(asset: AtpAsset, *, file_count: int | None = None, 
         is_published=bool(_row_field(asset, "is_published") if _row_field(asset, "is_published") is not None else True),
         published_date=_row_field(asset, "published_date") or None,
         release_notes=_row_field(asset, "release_notes") or None,
+        tags=list(_row_field(asset, "tags_json") or []),
         test_status=_row_field(asset, "test_status") or None,
         test_message=_row_field(asset, "test_message") or None,
         model_format=_row_field(asset, "model_format") or "legacy",

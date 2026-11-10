@@ -22,6 +22,10 @@ AtpAssetAnalysisStatus = Literal["pending", "running", "success", "failed"]
 # 测试结论（2026-11-07）：实跑仿真后的判定，与 analysis_status（解析期）无关
 #   passed 通过 / failed 未通过 / suspect 可疑；None = 未测试
 AtpAssetTestStatus = Literal["passed", "failed", "suspect"]
+# 标签（2026-11-10）：自由文本，单个 ≤ 32 字、每条资产 ≤ 8 个。
+# 上限是为了卡片左下角那一行放得下——标签是扫读用的，堆太多就失去意义。
+MAX_TAGS = 8
+MAX_TAG_LENGTH = 32
 
 
 class AtpAssetSummary(BaseModel):
@@ -45,6 +49,9 @@ class AtpAssetSummary(BaseModel):
     published_date: datetime | None = None
     # 版本描述（2026-11-10）：发布时弹窗填写，说明本版本改动
     release_notes: str | None = None
+    # 标签（2026-11-10）：发布时给版本打的自由标签（如「现场实测」「基准」），
+    # 支持多个，展示在模型卡片左下角；PATCH 也可单独维护。
+    tags: list[str] = Field(default_factory=list)
     shield_wire: str = "with"
     # 模型级绑定的测试线路（单塔基准）：非空时测试默认用它
     test_line_id: str | None = None
@@ -125,9 +132,11 @@ class AtpAssetTestStatusRequest(BaseModel):
 
 
 class AtpAssetPublishRequest(BaseModel):
-    """发布请求（2026-11-10）：发布时可填写版本描述（选填）。"""
+    """发布请求（2026-11-10）：发布时可填写版本描述与标签（均选填）。"""
 
     release_notes: str | None = Field(default=None, max_length=1000)
+    # 发布时打标签：整组覆盖（不是追加）。不传 = 保留原标签，传 [] = 清空。
+    tags: list[str] | None = Field(default=None, max_length=MAX_TAGS)
 
 
 class AtpAssetVersionSummary(BaseModel):
@@ -139,6 +148,8 @@ class AtpAssetVersionSummary(BaseModel):
     is_published: bool = False
     published_date: datetime | None = None
     release_notes: str | None = None
+    # 标签（2026-11-10）：版本历史里逐版展示，便于区分「同一维度组合的不同迭代」
+    tags: list[str] = Field(default_factory=list)
     test_status: AtpAssetTestStatus | None = None
     test_message: str | None = None
     model_format: str = "legacy"
@@ -185,6 +196,8 @@ class AtpAssetUpdateRequest(BaseModel):
     shield_wire: str | None = Field(default=None, max_length=16)
     # 版本描述（2026-11-10）：不发布也可编辑
     release_notes: str | None = Field(default=None, max_length=1000)
+    # 标签（2026-11-10）：整组覆盖；不传 = 不动，传 [] = 清空
+    tags: list[str] | None = Field(default=None, max_length=MAX_TAGS)
     test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)

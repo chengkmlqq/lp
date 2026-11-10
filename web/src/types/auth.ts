@@ -1218,6 +1218,11 @@ export type AtpAssetSummary = {
   /** 版本描述（2026-11-10）：发布时弹窗填写，说明本版本改动 */
   release_notes?: string | null;
   /**
+   * 标签（2026-11-10）：发布时给该版本打的自由标签，可多个（后端限制 8 个、单个 32 字）。
+   * 展示在模型卡片左下角——原来那个位置是「新版/旧版」形态说明。
+   */
+  tags?: string[];
+  /**
    * 测试结论（2026-11-07）：实跑仿真后的三档判定，与 analysis_status（解析期）无关。
    * - `passed` 通过：跑通且数值合理
    * - `failed` 未通过：跑不起来（断链/缺变量/无结果）
@@ -1304,6 +1309,8 @@ export type AtpAssetVersionSummary = {
   is_published: boolean;
   published_date: string | null;
   release_notes: string | null;
+  /** 标签（2026-11-10）：版本历史里逐版展示 */
+  tags?: string[];
   test_status?: AtpAssetTestStatus | null;
   test_message?: string | null;
   model_format?: string;

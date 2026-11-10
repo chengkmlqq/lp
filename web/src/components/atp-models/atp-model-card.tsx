@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Modal, Progress, Space, Tooltip } from "antd";
+import { Button, Dropdown, Modal, Progress, Space, Tag, Tooltip } from "antd";
 import { Card } from "@/components/ui-antd";
 import {
   ClusterOutlined,
@@ -23,6 +23,13 @@ import { resolveFormatMeta } from "./atp-model-format-tag";
 
 /** 右下角最多平铺几个操作按钮，其余收进「更多」 */
 const MAX_VISIBLE_ACTIONS = 2;
+
+/**
+ * 左下角最多平铺几个标签（2026-11-10）。
+ * 卡片宽约 300px，标签单条 40~80px，超过 3 条必然挤压操作按钮；溢出的收成「+N」，
+ * 悬停看全部——标签是扫读用的，不是清单展示位。
+ */
+const MAX_VISIBLE_TAGS = 3;
 
 interface AtpModelCardProps {
   asset: AtpAssetSummary;
@@ -89,6 +96,12 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
  *   预检提示数——信息不丢，噪音去掉；
  * - 卡片改纯白底 + 细边框，靠留白与对齐撑精致度，不靠装饰。
  *
+ * 2026-11-10 调整：页脚左下角那行「新版/旧版」取消，位置让给**发布时打的标签**
+ * （可多个，3 个以内平铺、溢出收成「+N」）。理由：形态是上传期的技术属性，每张卡
+ * 都挂一行「旧版」等于没有信息量；标签才是人工分拣（基准/现场实测/待对拍…）要看的。
+ * 形态只剩「需要人工注意」的几种（检测中/检测失败/待检测/内嵌/无线路）继续占位，
+ * 完整形态标记仍在表格列与详情页。
+ *
  * 2026-11-07 二次调整（页面反馈「有点素」）：在不回到「什么都强调」的前提下补两处结构色——
  * ① 标题左侧一枚图标块（antd 原生 ClusterOutlined，统一用主题色，不按电压分档换色）；
  * ② 属性下方一条三格数据条（测试次数 / 最近结果 / 版本），浅底小块把使用情况压成可扫读的读数，
@@ -153,6 +166,14 @@ export function AtpModelCard({
     formatWarnCount > 0
       ? `${t(formatMeta.hint)}（${t("另有")} ${formatWarnCount} ${t("条预检提示，详情页可查看")}）`
       : t(formatMeta.hint);
+
+  // 页脚左下角（2026-11-10）：原本这里是「新版/旧版」形态说明，现改为展示发布时打的标签。
+  // 形态只有「需要人工注意」时才继续占位（tone=other：检测中/检测失败/待检测/内嵌/无线路），
+  // 常规形态（legacy=旧版 / insert=新版）不再上卡片——详情页与表格列都有完整标记。
+  const tags = asset.tags ?? [];
+  const visibleTags = tags.slice(0, MAX_VISIBLE_TAGS);
+  const hiddenTags = tags.slice(MAX_VISIBLE_TAGS);
+  const showFormatNote = formatMeta.tone === "other";
 
   const specs = [
     { key: "voltage", label: t("电压等级"), value: voltageText },
@@ -300,24 +321,47 @@ export function AtpModelCard({
           <Progress percent={asset.progress ?? 0} size="small" className="admin-atp-models-card-progress" />
         ) : null}
 
-        {/* 页脚：左侧形态说明与异常状态（安静灰字），右侧操作 */}
+        {/* 页脚：左侧标签 + 异常状态（安静灰字），右侧操作 */}
         <div className="admin-atp-models-card-foot">
           <div className="admin-atp-models-card-foot-meta">
-            <Tooltip title={formatHint}>
-              <span
-                className="admin-atp-models-format-note"
-                data-tone={formatMeta.tone}
-                onClick={(event) => event.stopPropagation()}
-              >
-                {t(formatMeta.short)}
-                {formatWarnCount > 0 ? (
-                  <span className="admin-atp-models-format-note-warn">
-                    <WarningOutlined />
-                    {formatWarnCount}
-                  </span>
-                ) : null}
-              </span>
-            </Tooltip>
+            {/* 左下角展示发布时打的标签（2026-11-10 起，取代原来的「新版/旧版」形态说明） */}
+            {visibleTags.map((tag) => (
+              <Tag key={tag} className="admin-atp-models-card-tag" title={tag}>
+                {tag}
+              </Tag>
+            ))}
+            {hiddenTags.length > 0 ? (
+              <Tooltip title={hiddenTags.join(" · ")}>
+                <Tag className="admin-atp-models-card-tag is-more">+{hiddenTags.length}</Tag>
+              </Tooltip>
+            ) : null}
+            {/* 形态说明只在「需要人工注意」时占位：检测中/检测失败/待检测/内嵌/无线路。
+                常规形态（新版/旧版）不再上卡片——形态本身在详情页与表格列都有完整标记。 */}
+            {showFormatNote ? (
+              <Tooltip title={formatHint}>
+                <span
+                  className="admin-atp-models-format-note"
+                  data-tone={formatMeta.tone}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {t(formatMeta.short)}
+                  {formatWarnCount > 0 ? (
+                    <span className="admin-atp-models-format-note-warn">
+                      <WarningOutlined />
+                      {formatWarnCount}
+                    </span>
+                  ) : null}
+                </span>
+              </Tooltip>
+            ) : formatWarnCount > 0 ? (
+              /* 常规形态下仍要保住「预检有几条提示」这个信号，只保留数字，悬停看明细 */
+              <Tooltip title={formatHint}>
+                <span className="admin-atp-models-format-note-warn" onClick={(event) => event.stopPropagation()}>
+                  <WarningOutlined />
+                  {formatWarnCount}
+                </span>
+              </Tooltip>
+            ) : null}
             {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
           </div>
           <Space size={2} className="shrink-0">
