@@ -86,15 +86,20 @@ class User(Base):
         back_populates="users",
         lazy="selectin",
     )
+    # 2026-11-10 性能修复：sessions / audit_logs 曾是 lazy="selectin"，导致**任何**
+    # 一次 SELECT users 都会顺带把该用户的全部登录会话与全部审计日志拉出来
+    # （admin 实测 1088 会话 + 4999 日志，单次 select 800~2000ms；鉴权链路每个请求
+    # 还会重复 2~3 次，是「任意接口都要 2 秒」的主因）。业务代码没有通过 user 对象
+    # 访问这两个集合，改回惰性加载（访问时才查），必要时可显式 selectinload。
     sessions: Mapped[list[AuthSession]] = relationship(
         "AuthSession",
         back_populates="user",
-        lazy="selectin",
+        lazy="select",
         passive_deletes=True,
     )
     audit_logs: Mapped[list[AuditLog]] = relationship(
         "AuditLog",
         back_populates="user",
-        lazy="selectin",
+        lazy="select",
         passive_deletes=True,
     )

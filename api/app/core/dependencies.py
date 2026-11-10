@@ -123,9 +123,17 @@ def _menu_paths_allow_access(db: Session, menu_paths: tuple[str, ...]) -> bool:
 
 
 def get_current_user(
+    request: Request,
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ) -> CurrentUser:
+    # 2026-11-10 性能修复：同一请求内 FastAPI 对不同 security scopes 的依赖会各自
+    # 解析一次，导致鉴权链路（用户 + 角色 + 权限 + 菜单）被重复执行 2~3 次，每次都
+    # 要跨公网访问阿里云 RDS。这里按请求缓存，确保只解析一次。
+    cached = getattr(request.state, "current_user", None)
+    if cached is not None:
+        return cached
+
     payload = decode_access_token(token)
     user_id = str(payload["sub"])
     user = _load_user_with_rbac(db, user_id)
@@ -142,11 +150,13 @@ def get_current_user(
         )
 
     authz = get_user_authorization(db, user.id)
-    return CurrentUser(
+    current = CurrentUser(
         user=user,
         role_codes=authz.role_codes,
         permission_codes=authz.permission_codes,
     )
+    request.state.current_user = current
+    return current
 
 
 # ── 2026-11-09 权限策略调整 ─────────────────────────────────────────────
