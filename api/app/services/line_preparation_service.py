@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from ..models.line import Line
@@ -23,12 +23,14 @@ def summarize_line_preparations(
     lines: list[Line],
     *,
     tower_count_map: dict[str, int] | None = None,
+    counts: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, dict[str, Any]]:
     line_ids = [line.id for line in lines]
     if not line_ids:
         return {}
 
-    counts = _load_preparation_count_maps(db, line_ids=line_ids, tower_count_map=tower_count_map)
+    if counts is None:
+        counts = _load_preparation_count_maps(db, line_ids=line_ids, tower_count_map=tower_count_map)
     summaries: dict[str, dict[str, Any]] = {}
     for line in lines:
         tower_total = counts["tower"].get(line.id, 0)
@@ -144,73 +146,85 @@ def _build_component_summary(
     }
 
 
+def load_line_preparation_counts(db: Session, line_ids: list[str]) -> dict[str, dict[str, int]]:
+    """供列表接口一次性预取四个准备度计数（塔数可同时复用给 tower_count）。"""
+    return _count_tower_preparations(db, line_ids)
+
+
 def _load_preparation_count_maps(
     db: Session,
     *,
     line_ids: list[str],
     tower_count_map: dict[str, int] | None,
 ) -> dict[str, dict[str, int]]:
-    tower_counts = tower_count_map or _count_towers(db, line_ids)
-    density_counts = _count_tower_field(
-        db,
-        line_ids,
-        field_name="lightning_density",
-    )
-    slope_counts = _count_towers_with_slopes(db, line_ids)
-    current_counts = _count_profiles_with_currents(db, line_ids)
+    counts = _count_tower_preparations(db, line_ids)
     return {
-        "tower": tower_counts,
-        "lightning_current": current_counts,
-        "lightning_density": density_counts,
-        "ground_slope": slope_counts,
+        # 线路列表已批量统计过塔数时直接复用，避免同一份 COUNT 再跑一次
+        "tower": tower_count_map or counts["tower"],
+        "lightning_current": counts["lightning_current"],
+        "lightning_density": counts["lightning_density"],
+        "ground_slope": counts["ground_slope"],
     }
 
 
-def _count_towers(db: Session, line_ids: list[str]) -> dict[str, int]:
+def _count_tower_preparations(db: Session, line_ids: list[str]) -> dict[str, dict[str, int]]:
+    """一次分组查询取回塔数 / 地闪密度 / 地面倾角 / 雷电流四个准备度计数。
+
+    ⚠️ 性能（2026-11-10）：原先塔数、地闪密度、倾角、雷电流各发一条 GROUP BY，
+    在跨公网 MySQL 上每条都要吃一次 RTT（约 30–45ms）。四条合并为一条条件聚合后
+    线路列表少约 100ms。LineTower ↔ TowerProfile 是 1:1（uq_tower_profile_tower_id），
+    外连接不会放大行数，因此 COUNT(*) 仍等于塔数。
+    """
+    if not line_ids:
+        return {"tower": {}, "lightning_density": {}, "ground_slope": {}, "lightning_current": {}}
+
+    has_density = func.sum(case((LineTower.lightning_density.is_not(None), 1), else_=0))
+    has_slopes = func.sum(
+        case(
+            (and_(LineTower.slope_1.is_not(None), LineTower.slope_2.is_not(None)), 1),
+            else_=0,
+        )
+    )
+    has_currents = func.sum(
+        case(
+            (
+                and_(
+                    TowerProfile.current_a.is_not(None),
+                    TowerProfile.current_b.is_not(None),
+                ),
+                1,
+            ),
+            else_=0,
+        )
+    )
+
     rows = db.execute(
-        select(LineTower.line_id, func.count())
+        select(
+            LineTower.line_id,
+            func.count(LineTower.id),
+            has_density,
+            has_slopes,
+            has_currents,
+        )
+        .select_from(LineTower)
+        .outerjoin(TowerProfile, TowerProfile.tower_id == LineTower.id)
         .where(LineTower.line_id.in_(line_ids))
         .group_by(LineTower.line_id)
     ).all()
-    return {str(line_id): int(count or 0) for line_id, count in rows}
 
-
-def _count_tower_field(db: Session, line_ids: list[str], *, field_name: str) -> dict[str, int]:
-    field = getattr(LineTower, field_name)
-    rows = db.execute(
-        select(LineTower.line_id, func.count())
-        .where(LineTower.line_id.in_(line_ids), field.is_not(None))
-        .group_by(LineTower.line_id)
-    ).all()
-    return {str(line_id): int(count or 0) for line_id, count in rows}
-
-
-def _count_towers_with_slopes(db: Session, line_ids: list[str]) -> dict[str, int]:
-    rows = db.execute(
-        select(LineTower.line_id, func.count())
-        .where(
-            LineTower.line_id.in_(line_ids),
-            LineTower.slope_1.is_not(None),
-            LineTower.slope_2.is_not(None),
-        )
-        .group_by(LineTower.line_id)
-    ).all()
-    return {str(line_id): int(count or 0) for line_id, count in rows}
-
-
-def _count_profiles_with_currents(db: Session, line_ids: list[str]) -> dict[str, int]:
-    rows = db.execute(
-        select(LineTower.line_id, func.count())
-        .select_from(LineTower)
-        .join(TowerProfile, TowerProfile.tower_id == LineTower.id)
-        .where(
-            LineTower.line_id.in_(line_ids),
-            TowerProfile.current_a.is_not(None),
-            TowerProfile.current_b.is_not(None),
-        )
-        .group_by(LineTower.line_id)
-    ).all()
-    return {str(line_id): int(count or 0) for line_id, count in rows}
+    maps: dict[str, dict[str, int]] = {
+        "tower": {},
+        "lightning_density": {},
+        "ground_slope": {},
+        "lightning_current": {},
+    }
+    for line_id, tower_total, density_ready, slope_ready, current_ready in rows:
+        key = str(line_id)
+        maps["tower"][key] = int(tower_total or 0)
+        maps["lightning_density"][key] = int(density_ready or 0)
+        maps["ground_slope"][key] = int(slope_ready or 0)
+        maps["lightning_current"][key] = int(current_ready or 0)
+    return maps
 
 
 def _extract_preparation_sources(line_params: dict[str, Any]) -> dict[str, dict[str, Any]]:

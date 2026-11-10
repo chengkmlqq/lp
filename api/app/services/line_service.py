@@ -41,7 +41,11 @@ from ..schemas.line import (
 )
 from .analysis_text_i18n import LINE_TOWER_CSV_HEADERS_EN, translate_analysis_text, translate_csv_cell
 from .fl_test_case_tower import MANAGED_LINE_PREFIX
-from .line_preparation_service import summarize_line_preparation, summarize_line_preparations
+from .line_preparation_service import (
+    load_line_preparation_counts,
+    summarize_line_preparation,
+    summarize_line_preparations,
+)
 from .push_service import publish_topic
 
 LINE_TOPIC = "admin.power-lines"
@@ -253,9 +257,11 @@ def list_lines(
         stmt = stmt.limit(limit).offset(offset)
     items = db.execute(stmt).scalars().all()
     line_ids = [item.id for item in items]
-    tower_count_map = _load_tower_counts(db, line_ids)
+    # 一次分组查询同时拿到塔数与三个准备度计数（原先是 1 + 3 条独立 GROUP BY）
+    preparation_counts = load_line_preparation_counts(db, line_ids)
+    tower_count_map = preparation_counts["tower"]
     estimated_length_map = _load_line_estimated_lengths(db, line_ids)
-    preparation_map = summarize_line_preparations(db, items, tower_count_map=tower_count_map)
+    preparation_map = summarize_line_preparations(db, items, counts=preparation_counts)
 
     return LineListResponse(
         items=[
@@ -1064,16 +1070,6 @@ def export_line_towers_to_csv(db: Session, *, line: Line, lang: str = "zh") -> t
     filename = f"{line.code}_towers_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return filename, output.getvalue().encode("utf-8")
 
-
-def _load_tower_counts(db: Session, line_ids: list[str]) -> dict[str, int]:
-    if not line_ids:
-        return {}
-    rows = db.execute(
-        select(LineTower.line_id, func.count())
-        .where(LineTower.line_id.in_(line_ids))
-        .group_by(LineTower.line_id)
-    ).all()
-    return {str(row[0]): int(row[1] or 0) for row in rows}
 
 
 def _load_line_estimated_lengths(db: Session, line_ids: list[str]) -> dict[str, float]:
