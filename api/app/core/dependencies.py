@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..models.menu import Menu
 from ..models.user import User
 from ..services.legacy_authz_service import get_user_authorization, is_user_enabled
+from . import auth_cache
 from .database import get_db
 from .security import decode_access_token
 
@@ -136,6 +137,24 @@ def get_current_user(
 
     payload = decode_access_token(token)
     user_id = str(payload["sub"])
+
+    # 2026-11-10：鉴权结果（用户快照 + 角色码 + 权限码）走 Redis 短缓存，
+    # 命中时整条链路不碰数据库。详见 app/core/auth_cache.py 的一致性约定。
+    entry = auth_cache.load(user_id)
+    if entry is not None:
+        cached_user = auth_cache.build_user(entry)
+        if not is_user_enabled(cached_user.status):
+            # 账号已停用：清缓存后按正常链路走，交给下方分支抛 403
+            auth_cache.invalidate(user_id)
+        else:
+            current = CurrentUser(
+                user=cached_user,
+                role_codes=auth_cache.role_codes(entry),
+                permission_codes=auth_cache.permission_codes(entry),
+            )
+            request.state.current_user = current
+            return current
+
     user = _load_user_with_rbac(db, user_id)
 
     if not user:
@@ -150,6 +169,7 @@ def get_current_user(
         )
 
     authz = get_user_authorization(db, user.id)
+    auth_cache.store(user, role_codes=authz.role_codes, permission_codes=authz.permission_codes)
     current = CurrentUser(
         user=user,
         role_codes=authz.role_codes,

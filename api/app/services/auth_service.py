@@ -18,6 +18,7 @@ from .legacy_authz_service import (
     is_user_enabled,
 )
 from .user_service import get_user_by_email, get_user_by_id, get_user_by_username
+from ..core.auth_cache import invalidate as invalidate_auth_cache
 from ..core.config import get_settings
 from ..core.security import (
     create_access_token,
@@ -293,6 +294,8 @@ def logout_user_session(db: Session, refresh_token: str | None, *, user_id: str 
         output=json.dumps({"user_id": session.user_id, "session_revoked": True}),
     )
     db.commit()
+    # 退出登录后立刻丢弃鉴权缓存，避免 access token 残留期内继续复用旧快照
+    invalidate_auth_cache(session.user_id)
 
 
 def issue_auth_result_for_user(
@@ -346,6 +349,8 @@ def issue_auth_result_for_user(
 
     user = get_user_by_id_with_rbac(db, user_id)
     authz = get_user_authorization(db, user.id)
+    # 登录/换票时作废旧鉴权缓存：本次解析出的角色/权限即最新，下一次请求按数据库重算
+    invalidate_auth_cache(user.id)
     role_codes = sorted(authz.role_codes)
     permission_codes = sorted(authz.permission_codes)
     access_token, expires_in = create_access_token(

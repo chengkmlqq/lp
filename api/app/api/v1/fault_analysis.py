@@ -59,8 +59,15 @@ router = APIRouter(
 )
 
 
+# 2026-11-10：故障分析页用户级数据隔离关闭，列表/详情/导出对所有登录用户开放
+# （与防雷计算页保持一致）。需要恢复隔离时把该开关改回 True 即可，原始逻辑完整保留。
+FAULT_USER_ISOLATION_ENABLED = False
+
+
 def _fault_visible_owner(current_user: CurrentUser) -> str | None:
     """用户级数据隔离：admin 返回 None(全量可见)；普通用户返回自己 user.id(只可见自己提交的记录)。"""
+    if not FAULT_USER_ISOLATION_ENABLED:
+        return None
     if "admin" in current_user.role_codes:
         return None
     return current_user.user.id
@@ -68,6 +75,8 @@ def _fault_visible_owner(current_user: CurrentUser) -> str | None:
 
 def _assert_fault_visible(item: FaultAnalysis, current_user: CurrentUser) -> None:
     """记录归属校验：admin 或创建人可看；其余 404(不泄露存在性)。"""
+    if not FAULT_USER_ISOLATION_ENABLED:
+        return
     if "admin" in current_user.role_codes:
         return
     if item.create_user and item.create_user == current_user.user.id:

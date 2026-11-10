@@ -28,6 +28,7 @@ from ...services.sms_captcha_service import (
     send_sms_captcha,
     verify_sms_captcha,
 )
+from ...services.legacy_authz_service import UserAuthorization
 from ...services.user_service import serialize_user
 
 settings = get_settings()
@@ -248,4 +249,11 @@ def logout(
 
 @router.get("/me", response_model=UserPublic)
 def me(current_user: CurrentUser = Depends(get_current_user)) -> UserPublic:
-    return serialize_user(current_user.user)
+    # 直接复用鉴权阶段解析好（可能来自 Redis 缓存）的角色/权限码，不再逐次查库
+    return serialize_user(
+        current_user.user,
+        authz=UserAuthorization(
+            role_codes=current_user.role_codes,
+            permission_codes=current_user.permission_codes,
+        ),
+    )

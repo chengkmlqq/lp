@@ -21,6 +21,7 @@ from ..schemas.user import (
     UserRoleUpdateRequest,
     UserUpdateRequest,
 )
+from ..core.auth_cache import invalidate as invalidate_auth_cache
 from ..core.security import hash_password
 from .audit_service import compose_audit_detail, describe_changed_fields, summarize_values, write_audit_log
 from .legacy_authz_service import (
@@ -483,38 +484,25 @@ def set_user_roles(
 
 def _serialize_user_with_authz(user: User, authz: UserAuthorization | None) -> UserPublic:
     """带预解析权限的用户序列化（list_users 批量场景，避免逐用户再次查询）。"""
-    if authz is None:
-        return serialize_user(user)
-    avatar_url = f"/api/v1/users/{user.id}/avatar" if user.avatar_path else None
-    return UserPublic(
-        id=user.id,
-        email=user.email or "",
-        username=user.username,
-        status=normalize_user_status(user.status),
-        role_codes=sorted(authz.role_codes),
-        permission_codes=sorted(authz.permission_codes),
-        created_at=user.created_at or utcnow(),
-        updated_at=user.updated_at,
-        last_login_at=user.last_login_at,
-        avatar_url=avatar_url,
-        phone=user.phone,
-    )
+    return serialize_user(user, authz=authz)
 
 
-def serialize_user(user: User | None) -> UserPublic:
+def serialize_user(user: User | None, *, authz: UserAuthorization | None = None) -> UserPublic:
     if user is None:
         msg = "User is required"
         raise ValueError(msg)
 
-    authz = _resolve_authz_for_user(user)
+    # authz 显式传入时不再查库：鉴权缓存命中后 /auth/me 手里已有角色/权限码，
+    # 而缓存用户是脱离会话的临时实例，_resolve_authz_for_user 只会返回空集合。
+    resolved = authz or _resolve_authz_for_user(user)
     avatar_url = f"/api/v1/users/{user.id}/avatar" if user.avatar_path else None
     return UserPublic(
         id=user.id,
         email=user.email or "",
         username=user.username,
         status=normalize_user_status(user.status),
-        role_codes=sorted(authz.role_codes),
-        permission_codes=sorted(authz.permission_codes),
+        role_codes=sorted(resolved.role_codes),
+        permission_codes=sorted(resolved.permission_codes),
         created_at=user.created_at or utcnow(),
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
@@ -524,6 +512,8 @@ def serialize_user(user: User | None) -> UserPublic:
 
 
 def queue_user_auth_refresh(user: User, *, status_changed: bool = False) -> None:
+    # 角色/状态变化后立刻作废鉴权缓存，避免最长 45s 的旧权限残留
+    invalidate_auth_cache(getattr(user, "id", None))
     authz = _resolve_authz_for_user(user)
     _fire_and_forget(
         ws_connection_manager.refresh_user_authorization(
