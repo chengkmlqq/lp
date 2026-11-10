@@ -1078,3 +1078,117 @@ def test_list_assets_filter_by_publish_state(tmp_path) -> None:
         assert sum(totals.values()) == 7
     finally:
         session.close()
+
+
+def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) -> None:
+    """预检失败的上传不能留下空「变更」版本（否则列表里会多出 0 文件的脏版本）。"""
+    from fastapi import HTTPException
+    from sqlalchemy import func, select
+
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        monkeypatch.setattr(
+            atp_asset_service, "_enqueue_asset_analysis", lambda asset_id, token: "task"
+        )
+        created = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="FORK-FAIL",
+                name="失败回滚",
+                description="测试",
+                voltage_level="110",
+                tower_type="M123",
+                scene_type="fanji",
+                arrester_config="M1",
+            ),
+            actor_user_id="tester",
+        )
+        assert created is not None
+        atp_asset_service.upload_asset_files(
+            session,
+            asset_id=created.id,
+            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            actor_user_id="tester",
+        )
+        atp_asset_service.publish_asset(session, asset_id=created.id, set_active=True, actor_user_id="tester")
+
+        with pytest.raises(HTTPException) as excinfo:
+            atp_asset_service.upload_asset_files(
+                session,
+                asset_id=created.id,
+                # 只有 pch、没有 work.atp 入口 → 校验 400
+                files=[_DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+                actor_user_id="tester",
+                replace=True,
+            )
+        assert excinfo.value.status_code == 400
+
+        # 派生的变更版本已被撤回：资产总数仍为 1，原版本仍是已发布 + 生效
+        total = session.execute(select(func.count()).select_from(AtpAsset)).scalar()
+        assert int(total or 0) == 1
+        old = atp_asset_service.get_asset_by_id(session, created.id)
+        assert old is not None
+        assert old.publish_state == "published"
+        assert old.is_active is True
+        assert atp_asset_service.list_asset_files(session, asset_id=old.id).total > 0
+    finally:
+        session.close()
+
+
+def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) -> None:
+    """预检失败的上传不能留下空「变更」版本（否则列表里会多出 0 文件的脏版本）。"""
+    from fastapi import HTTPException
+    from sqlalchemy import func, select
+
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        monkeypatch.setattr(
+            atp_asset_service, "_enqueue_asset_analysis", lambda asset_id, token: "task"
+        )
+        created = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="FORK-FAIL",
+                name="失败回滚",
+                description="测试",
+                voltage_level="110",
+                tower_type="M123",
+                scene_type="fanji",
+                arrester_config="M1",
+            ),
+            actor_user_id="tester",
+        )
+        assert created is not None
+        atp_asset_service.upload_asset_files(
+            session,
+            asset_id=created.id,
+            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            actor_user_id="tester",
+        )
+        atp_asset_service.publish_asset(session, asset_id=created.id, set_active=True, actor_user_id="tester")
+
+        with pytest.raises(HTTPException) as excinfo:
+            atp_asset_service.upload_asset_files(
+                session,
+                asset_id=created.id,
+                # 只有 pch、没有 work.atp 入口 → 校验 400
+                files=[_DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+                actor_user_id="tester",
+                replace=True,
+            )
+        assert excinfo.value.status_code == 400
+
+        # 派生的变更版本已被撤回：资产总数仍为 1，原版本仍是已发布 + 生效
+        total = session.execute(select(func.count()).select_from(AtpAsset)).scalar()
+        assert int(total or 0) == 1
+        old = atp_asset_service.get_asset_by_id(session, created.id)
+        assert old is not None
+        assert old.publish_state == "published"
+        assert old.is_active is True
+        assert atp_asset_service.list_asset_files(session, asset_id=old.id).total > 0
+    finally:
+        session.close()

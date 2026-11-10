@@ -2644,8 +2644,12 @@ def upload_asset_files(
     # 变更版本派生（2026-11-10）：已发布且目录里有真实文件时，再次上传文件不能原地覆盖
     # —— 那会把正在被仿真使用的已发布内容直接换掉。改为派生一条 publish_state=changed
     # 的新版本承载新文件，旧版本原封不动继续可用，等人工验证后重新发布。
+    # forked_asset 留引用：若本次上传随后在预检阶段失败，要把这条空版本撤回，
+    # 避免用户上传失败却多出一个 0 文件的「变更」版本。
+    forked_asset: AtpAsset | None = None
     if _derive_publish_state(asset) == PUBLISH_STATE_PUBLISHED and _storage_has_files(driver, storage_root_path):
-        asset = _fork_published_asset(db, asset, actor_user_id=actor_user_id)
+        forked_asset = _fork_published_asset(db, asset, actor_user_id=actor_user_id)
+        asset = forked_asset
         asset_id = asset.id
         storage_root_path = asset.storage_root_path or _build_asset_storage_root(asset.code)
         mount_code = asset.storage_mount_code or "main"
@@ -2806,6 +2810,18 @@ def upload_asset_files(
             else:
                 source.seek(0)
                 driver.write_stream(target_path, source, content_type=content_type, size=member_size)
+    except Exception:
+        # 上传失败（预检 400 / 写盘异常）：撤回刚派生的空「变更」版本，
+        # 避免用户上传失败却留下一条 0 文件的脏版本。
+        if forked_asset is not None:
+            try:
+                db.rollback()
+                db.delete(forked_asset)
+                db.commit()
+                logger.info("[ATP] 上传失败，已撤回派生的变更版本 %s", forked_asset.code)
+            except Exception:  # noqa: BLE001 - 清理失败不掩盖原始异常
+                db.rollback()
+        raise
     finally:
         for archive in archives:
             try:
