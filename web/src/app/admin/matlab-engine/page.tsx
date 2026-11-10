@@ -1196,7 +1196,7 @@ export default function AdminMatlabEnginePage() {
                           )
                         ) : (
                           /* 已有卡片：查询/刷新期间不清空，仅叠加 loading 遮罩，接口返回后再更新数据 */
-                          <Spin spinning={versionsQuery.isFetching}>
+                          <Spin spinning={versionsQuery.isFetching} className="admin-card-view-spin">
                             <div className="admin-matlab-card-view-content">
                               <Row gutter={[12, 12]}>
                                 {pageVersions.map((item) => (

@@ -531,7 +531,7 @@ export default function AdminSyslogPage() {
                       </div>
                     ) : (
                       // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
-                      <Spin spinning={logsQuery.isFetching}>
+                      <Spin spinning={logsQuery.isFetching} className="admin-card-view-spin">
                         <div className="admin-syslog-card-view-content">
                           <Row gutter={[12, 12]}>
                             {logs.map((log) => (

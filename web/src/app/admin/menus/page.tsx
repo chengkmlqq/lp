@@ -1077,7 +1077,7 @@ export default function AdminMenusPage() {
                 ) : (
                   <div className="admin-menus-card-view-content">
                     {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
-                    <Spin spinning={menusQuery.isFetching}>
+                    <Spin spinning={menusQuery.isFetching} className="admin-card-view-spin">
                       <Row gutter={[12, 12]}>
                         {filteredMenus.map((menuItem) => (
                           <Col key={menuItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>

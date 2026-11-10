@@ -33,7 +33,7 @@ export function AnalysisCardList({ analyses, selectedId, loading, onView, onDele
   }
 
   return (
-    <Spin spinning={loading}>
+    <Spin spinning={loading} className="admin-card-view-spin">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {analyses.map((analysis) => (
           <AnalysisCard

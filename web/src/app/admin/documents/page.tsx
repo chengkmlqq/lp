@@ -993,7 +993,7 @@ export default function AdminDocumentsPage() {
                   </div>
                 ) : (
                   /* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */
-                  <Spin spinning={documentsFetching}>
+                  <Spin spinning={documentsFetching} className="admin-card-view-spin">
                     <div className="admin-documents-card-view-content">
                       <Row gutter={[12, 12]}>
                         {documents.map((doc) => (

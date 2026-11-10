@@ -545,7 +545,7 @@ export default function AdminLightningRetrofitPage() {
         ) : (
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div className="admin-power-lines-card-scroll">
-              <Spin spinning={jobsQuery.isFetching}>
+              <Spin spinning={jobsQuery.isFetching} className="admin-card-view-spin">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {jobs.map((job) => (
                     <Card

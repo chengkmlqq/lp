@@ -946,7 +946,7 @@ export default function AdminSystemMessagesPage() {
                       </div>
                     ) : (
                       // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
-                      <Spin spinning={listQuery.isFetching}>
+                      <Spin spinning={listQuery.isFetching} className="admin-card-view-spin">
                         <div className="admin-system-messages-card-view-content">
                           <Row gutter={[12, 12]}>
                             {messages

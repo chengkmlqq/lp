@@ -4296,6 +4296,29 @@ body {
   /* 遮罩本身接收点击，加载期间不误触下方卡片（对齐 antd Spin 的行为） */
 }
 
+/* 卡片视图查询 loading 统一修复（2026-11-10，覆盖其余全部卡片/列表双视图页）：
+   antd v6 嵌套 Spin 的 .ant-spin-section 是 position:absolute + top:50%，包含块是
+   .ant-spin 自身（高度 = 卡片内容总高度）→ 卡片越多 spinner 越往下漂，滚动后甚至
+   移出可视区。防雷计算页此前用「页面层绝对定位遮罩」单独修过一次；这里给其余卡片
+   视图一个统一修法：把 indicator 改成 sticky，锚定最近的滚动可视区，卡片数量与
+   滚动位置都不再影响它，同时保留 antd 自带的置灰与防误触。
+   - 4 个类选择器保证压过 antd 运行时注入的 .ant-spin.css-hash > .ant-spin-section(0-3-0)；
+   - height:0 + justify-content:center 让指示器以「零高度柔性盒」居中，不挤动卡片网格；
+   - left:auto + margin-left:50% 覆盖 antd 的 left:50%，避免 sticky 水平偏移。
+   用法：卡片视图的嵌套 Spin 加 className="admin-card-view-spin"；表格/弹窗内的 Spin
+   不加，保持 antd 原生行为。经真实浏览器验证：卡片 1/8/24/60 条、滚动前后均居中。 */
+.admin-card-view-spin.ant-spin-spinning.ant-spin > .ant-spin-section {
+  position: sticky;
+  top: 50%;
+  left: auto;
+  z-index: 5;
+  width: max-content;
+  height: 0;
+  margin-left: 50%;
+  justify-content: center;
+  transform: translate(-50%, 0);
+}
+
 /* LP-374: 任务详情 Tab 内容容器：详情面板 + 分级结果/塔详情 Tabs 纵向排列并撑满高度 */
 .admin-fl-analysis-job-pane {
   display: flex;

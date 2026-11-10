@@ -1114,7 +1114,7 @@ export default function ElevationRecordsPage() {
                       <>
                         <div className="admin-elevation-card-view-content">
                           {/* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
-                          <Spin spinning={recordsFetching}>
+                          <Spin spinning={recordsFetching} className="admin-card-view-spin">
                             <div className="grid min-h-0 flex-1 content-start gap-3 md:grid-cols-2 xl:grid-cols-4">
                               {records.map((recordItem) => (
                                 renderRecordCard(recordItem)

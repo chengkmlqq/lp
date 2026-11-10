@@ -1532,7 +1532,7 @@ export default function AtpModelsPage() {
                           <>
                             <div className="admin-atp-models-card-scroll">
                               {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
-                              <Spin spinning={assetsQuery.isFetching}>
+                              <Spin spinning={assetsQuery.isFetching} className="admin-card-view-spin">
                                 <AtpModelCardList
                                   assets={assetItems}
                                   canManage={canManage}

@@ -1006,7 +1006,7 @@ export default function AdminRolesPage() {
                     ) : (
                       <div className="admin-roles-card-view-content">
                         {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
-                        <Spin spinning={rolesQuery.isFetching}>
+                        <Spin spinning={rolesQuery.isFetching} className="admin-card-view-spin">
                           <Row gutter={[12, 12]}>
                             {roles.map((role) => (
                               <Col key={role.id} xs={24} sm={24} md={12} lg={8} xl={6}>

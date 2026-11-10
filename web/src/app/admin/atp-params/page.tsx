@@ -784,7 +784,7 @@ export default function AtpParamsPage() {
                     ]}
                   />
                 </div>
-                <Spin spinning={loading}>
+                <Spin spinning={loading} className="admin-card-view-spin">
         {list.length === 0 && !loading ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无参数（可先执行「系统种子」或新建）")} style={{ padding: 40 }} />
         ) : viewMode === "card" ? (
