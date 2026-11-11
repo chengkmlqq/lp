@@ -187,7 +187,9 @@ def test_list_objects_paginates_all_keys(monkeypatch):
     monkeypatch.setattr(
         minio_storage,
         "get_settings",
-        lambda: SimpleNamespace(minio_bucket="bkt", minio_enabled=True),
+        # object_storage_backend="s3" 让本用例走对象存储分支；缺该字段会回退 local，
+        # 进而去碰 resolved_object_storage_root（SimpleNamespace 没有），用例必挂。
+        lambda: SimpleNamespace(minio_bucket="bkt", minio_enabled=True, object_storage_backend="s3"),
     )
 
     assert minio_storage.list_objects("a/") == ["a/1.txt", "a/2.txt", "a/3.txt"]

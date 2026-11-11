@@ -47,12 +47,27 @@ class Settings(BaseSettings):
     object_storage_backend: Literal["local", "s3"] = "local"
     # 本地对象存储根目录。留空则用 <file_vfs_root 同级>/objects。
     object_storage_root: str = ""
+    # ⚠️ 以下 MINIO_* 是历史遗留：曾用于阿里云 OSS（line-protection bucket），
+    # 账号被 UserDisable 后仅作 files 模块 files.s3.default 的种子配置保留。
+    # 业务对象存储（minio_storage 模块）请改用下面的 OBJECT_STORE_*，别再动这组。
     minio_enabled: bool = True
     minio_endpoint: str = "http://minio:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "fquiz-files"
     minio_region: str = "us-east-1"
+
+    # 业务对象存储 S3 后端（minio_storage 模块：雷电图、任务日志、故障分析归档、
+    # MATLAB 引擎包）。2026-11-11：从本地磁盘（object_storage_backend=local）切到
+    # 33.2 本机 MinIO 容器 lp-minio（bucket lp-files）。留空则回退上面的 MINIO_*。
+    object_store_enabled: bool = True
+    object_store_endpoint: str = ""
+    object_store_access_key: str = ""
+    object_store_secret_key: str = ""
+    object_store_bucket: str = ""
+    object_store_region: str = "us-east-1"
+    # MinIO 用 path 风格（virtual 需 DNS 通配）；阿里云 OSS 必须 virtual。
+    object_store_addressing_style: Literal["path", "virtual"] = "path"
 
     jwt_secret_key: str = "change-this-in-production"
     jwt_algorithm: str = "HS256"

@@ -65,6 +65,34 @@ def _use_local_backend() -> bool:
     return (getattr(get_settings(), "object_storage_backend", "local") or "local") != "s3"
 
 
+def store_conf() -> dict[str, Any]:
+    """S3 后端连接配置（业务对象存储专用，与遗留 MINIO_* 解耦）。
+
+    2026-11-11：新增 OBJECT_STORE_* 一组配置，指向 33.2 本机 MinIO（lp-minio /
+    bucket lp-files）。未配置时回退 MINIO_*（历史 OSS 配置），保证旧部署仍可启动。
+    """
+    s = get_settings()
+
+    def _pick(new: Any, legacy: Any, default: str = "") -> str:
+        return str(new or "").strip() or str(legacy or "").strip() or default
+
+    return {
+        "enabled": bool(getattr(s, "object_store_enabled", True)),
+        "endpoint": _pick(getattr(s, "object_store_endpoint", ""), getattr(s, "minio_endpoint", ""),
+                          "http://minio:9000"),
+        "access_key": _pick(getattr(s, "object_store_access_key", ""), getattr(s, "minio_access_key", "")),
+        "secret_key": _pick(getattr(s, "object_store_secret_key", ""), getattr(s, "minio_secret_key", "")),
+        "region": _pick(getattr(s, "object_store_region", ""), getattr(s, "minio_region", ""), "us-east-1"),
+        "bucket": _pick(getattr(s, "object_store_bucket", ""), getattr(s, "minio_bucket", "")),
+        # 兜底 "virtual"（历史 OSS 行为）；真实 Settings 默认 "path"（MinIO）。
+        "addressing_style": str(getattr(s, "object_store_addressing_style", "") or "virtual"),
+    }
+
+
+def store_bucket() -> str:
+    return str(store_conf()["bucket"])
+
+
 def _local_root() -> Path:
     return Path(get_settings().resolved_object_storage_root)
 
@@ -117,7 +145,7 @@ def _local_put_fileobj(key: str, stream: Any, size: int | None) -> int:
 
 
 def _local_copy(src_key: str, dst_key: str, *, source_bucket: str | None = None) -> None:
-    if source_bucket not in (None, get_settings().minio_bucket):
+    if source_bucket not in (None, store_bucket()):
         raise MinioStorageError("local 后端不支持跨存储桶拷贝")
     src = _local_exists(src_key)
     dst = _local_object_path(dst_key)
@@ -202,25 +230,26 @@ def _local_cleanup_expired_temp(
 
 # boto3 client 线程安全，可全局复用。此前每次调用都重建客户端（含 TLS 握手），
 # 一次删除最多 5 个对象串行 5 次握手，跨公网访问 OSS 时延迟成倍放大。
-_client_cache: dict[tuple[str, str, str, str, str], Any] = {}
+_client_cache: dict[tuple[str, ...], Any] = {}
 _client_cache_lock = threading.Lock()
 
 
 def _build_client() -> Any:
-    """构造一个指向 MinIO 的 boto3 S3 客户端（与 task_log_service 同套路）。
+    """构造一个指向 S3 兼容对象存储的 boto3 客户端（当前为 33.2 本机 MinIO）。
 
     同一配置（endpoint/凭据/region/bucket）下复用已建客户端，避免重复握手。
     """
-    settings = get_settings()
-    if not settings.minio_enabled:
-        raise MinioStorageError("MinIO storage is not enabled")
+    conf = store_conf()
+    if not conf["enabled"]:
+        raise MinioStorageError("Object storage is not enabled")
 
     cache_key = (
-        settings.minio_endpoint,
-        settings.minio_access_key,
-        settings.minio_secret_key,
-        settings.minio_region,
-        settings.minio_bucket,
+        conf["endpoint"],
+        conf["access_key"],
+        conf["secret_key"],
+        conf["region"],
+        conf["bucket"],
+        conf["addressing_style"],
     )
     with _client_cache_lock:
         cached = _client_cache.get(cache_key)
@@ -231,27 +260,26 @@ def _build_client() -> Any:
         import boto3
         from botocore.config import Config
     except ImportError as exc:  # pragma: no cover
-        raise MinioStorageError("boto3 library is required for MinIO storage") from exc
+        raise MinioStorageError("boto3 library is required for object storage") from exc
 
     client_config = Config(
         connect_timeout=3.0,
         read_timeout=30.0,
         retries={"max_attempts": 2},
-        # 兼容阿里云 OSS S3 兼容接口：
-        # - virtual hosted style（OSS 拒绝 path style 的对象级操作）
-        # - when_required 校验：规避 botocore 默认 STREAMING-UNSIGNED-PAYLOAD-TRAILER 流式上传
-        s3={"addressing_style": "virtual"},
+        # MinIO 用 path 风格（virtual 会把 bucket 拼进域名，minio:9000 无法解析）；
+        # 阿里云 OSS 则必须 virtual 风格——由 OBJECT_STORE_ADDRESSING_STYLE 控制。
+        s3={"addressing_style": str(conf["addressing_style"])},
         request_checksum_calculation="when_required",
         response_checksum_validation="when_required",
     )
     session = boto3.session.Session(
-        aws_access_key_id=settings.minio_access_key,
-        aws_secret_access_key=settings.minio_secret_key,
+        aws_access_key_id=str(conf["access_key"]),
+        aws_secret_access_key=str(conf["secret_key"]),
     )
     client = session.client(
         "s3",
-        endpoint_url=settings.minio_endpoint,
-        region_name=settings.minio_region,
+        endpoint_url=str(conf["endpoint"]),
+        region_name=str(conf["region"]),
         config=client_config,
     )
     with _client_cache_lock:
@@ -267,7 +295,7 @@ def put_object(key: str, data: bytes, content_type: str | None = None) -> str:
     try:
         client = _build_client()
         client.put_object(
-            Bucket=get_settings().minio_bucket,
+            Bucket=store_bucket(),
             Key=key,
             Body=data,
             ContentType=content_type or "application/octet-stream",
@@ -292,10 +320,9 @@ def storage_identity() -> tuple[str, str]:
 
     local 后端返回 ("local", "")，与任何 S3 挂载恒不相等，安全降级为应用层拷贝。
     """
-    settings = get_settings()
     if _use_local_backend():
         return "local", ""
-    return normalize_endpoint(settings.minio_endpoint), settings.minio_bucket
+    return normalize_endpoint(str(store_conf()["endpoint"])), store_bucket()
 
 
 def _resolve_stream_size(stream: Any, size: int | None) -> tuple[Any, int]:
@@ -359,7 +386,7 @@ def put_fileobj(
         client = _build_client()
         return upload_stream(
             client,
-            get_settings().minio_bucket,
+            store_bucket(),
             key,
             stream,
             content_type=content_type,
@@ -387,7 +414,7 @@ def head_object_size(key: str) -> int:
             raise MinioStorageError(f"Failed to head object {key}: {exc}") from exc
     try:
         client = _build_client()
-        response = client.head_object(Bucket=get_settings().minio_bucket, Key=key)
+        response = client.head_object(Bucket=store_bucket(), Key=key)
         return int(response.get("ContentLength") or 0)
     except MinioStorageError:
         raise
@@ -413,7 +440,7 @@ def open_object_stream(key: str) -> tuple[Any, int]:
             raise MinioStorageError(f"Failed to open object {key}: {exc}") from exc
     try:
         client = _build_client()
-        response = client.get_object(Bucket=get_settings().minio_bucket, Key=key)
+        response = client.get_object(Bucket=store_bucket(), Key=key)
     except MinioStorageError:
         raise
     except Exception as exc:
@@ -439,7 +466,7 @@ def copy_object(src_key: str, dst_key: str, *, source_bucket: str | None = None)
         return
     try:
         client = _build_client()
-        bucket = get_settings().minio_bucket
+        bucket = store_bucket()
         client.copy_object(
             Bucket=bucket,
             Key=dst_key,
@@ -462,12 +489,11 @@ def list_objects(prefix: str) -> list[str]:
             return _local_list(prefix)
         except Exception as exc:
             raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
-    settings = get_settings()
     try:
         client = _build_client()
         paginator = client.get_paginator("list_objects_v2")
         keys: list[str] = []
-        for page in paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix):
+        for page in paginator.paginate(Bucket=store_bucket(), Prefix=prefix):
             for item in page.get("Contents", []):
                 key = item.get("Key", "")
                 if key:
@@ -503,12 +529,11 @@ def list_object_mtimes(prefix: str) -> list[tuple[str, datetime]]:
             raise
         except Exception as exc:
             raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
-    settings = get_settings()
     try:
         client = _build_client()
         paginator = client.get_paginator("list_objects_v2")
         items: list[tuple[str, datetime]] = []
-        for page in paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix):
+        for page in paginator.paginate(Bucket=store_bucket(), Prefix=prefix):
             for item in page.get("Contents", []):
                 key = item.get("Key", "")
                 last_modified = item.get("LastModified")
@@ -533,10 +558,9 @@ def get_object(key: str) -> bytes:
             raise
         except Exception as exc:
             raise MinioStorageError(f"Failed to retrieve object {key}: {exc}") from exc
-    settings = get_settings()
     try:
         client = _build_client()
-        response = client.get_object(Bucket=settings.minio_bucket, Key=key)
+        response = client.get_object(Bucket=store_bucket(), Key=key)
         body = response.get("Body")
         if body is None:
             raise MinioStorageError("Object body is empty")
@@ -554,12 +578,11 @@ def presigned_url(key: str, expires: int = 3600) -> str:
     """生成带有效期的预签名 URL（仅 s3 后端支持）。"""
     if _use_local_backend():
         raise MinioStorageError("local 对象存储不支持预签名 URL，请通过应用接口读取对象")
-    settings = get_settings()
     try:
         client = _build_client()
         return client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": settings.minio_bucket, "Key": key},
+            Params={"Bucket": store_bucket(), "Key": key},
             ExpiresIn=max(int(expires), 60),
         )
     except MinioStorageError:
@@ -576,10 +599,9 @@ def delete_object(key: str) -> None:
         except Exception as exc:
             raise MinioStorageError(f"Failed to delete object {key}: {exc}") from exc
         return
-    settings = get_settings()
     try:
         client = _build_client()
-        client.delete_object(Bucket=settings.minio_bucket, Key=key)
+        client.delete_object(Bucket=store_bucket(), Key=key)
     except MinioStorageError:
         raise
     except Exception as exc:
@@ -593,16 +615,15 @@ def delete_prefix(prefix: str) -> int:
             return _local_delete_prefix(prefix)
         except Exception as exc:
             raise MinioStorageError(f"Failed to delete objects under {prefix}: {exc}") from exc
-    settings = get_settings()
     try:
         client = _build_client()
         paginator = client.get_paginator("list_objects_v2")
         deleted_count = 0
-        for page in paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix):
+        for page in paginator.paginate(Bucket=store_bucket(), Prefix=prefix):
             objects = [{"Key": item.get("Key", "")} for item in page.get("Contents", []) if item.get("Key")]
             if not objects:
                 continue
-            client.delete_objects(Bucket=settings.minio_bucket, Delete={"Objects": objects, "Quiet": True})
+            client.delete_objects(Bucket=store_bucket(), Delete={"Objects": objects, "Quiet": True})
             deleted_count += len(objects)
         return deleted_count
     except MinioStorageError:
@@ -706,10 +727,8 @@ def cleanup_expired_temp_files(
     - ``dry_run=True`` 时仅统计不删除
     - ``now`` 仅用于测试注入时间点，默认取当前 UTC
     """
-    settings = get_settings()
-
-    if not settings.minio_enabled:
-        raise MinioStorageError("MinIO storage is not enabled")
+    if not store_conf()["enabled"]:
+        raise MinioStorageError("Object storage is not enabled")
 
     if ttl_hours <= 0:
         return 0  # 0=永久保留，不清理
@@ -726,34 +745,12 @@ def cleanup_expired_temp_files(
     cutoff = now - timedelta(hours=ttl_hours)
 
     try:
-        import boto3
-        from botocore.config import Config
-    except ImportError as exc:
-        raise MinioStorageError("boto3 library is required for MinIO storage") from exc
-
-    try:
-        client_config = Config(
-            connect_timeout=3.0,
-            read_timeout=10.0,
-            retries={"max_attempts": 2},
-            s3={"addressing_style": "virtual"},
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-        )
-        session = boto3.session.Session(
-            aws_access_key_id=settings.minio_access_key,
-            aws_secret_access_key=settings.minio_secret_key,
-        )
-        client = session.client(
-            "s3",
-            endpoint_url=settings.minio_endpoint,
-            region_name=settings.minio_region,
-            config=client_config,
-        )
+        client = _build_client()
+        bucket = store_bucket()
 
         deleted_count = 0
         paginator = client.get_paginator("list_objects_v2")
-        pages = paginator.paginate(Bucket=settings.minio_bucket, Prefix=TEMP_PREFIX)
+        pages = paginator.paginate(Bucket=store_bucket(), Prefix=TEMP_PREFIX)
 
         for page in pages:
             for item in page.get("Contents", []):
@@ -766,7 +763,7 @@ def cleanup_expired_temp_files(
                 if last_modified >= cutoff:
                     continue
                 if not dry_run:
-                    client.delete_object(Bucket=settings.minio_bucket, Key=key)
+                    client.delete_object(Bucket=store_bucket(), Key=key)
                 deleted_count += 1
 
         return deleted_count
