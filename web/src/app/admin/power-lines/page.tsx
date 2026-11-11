@@ -171,11 +171,9 @@ export default function AdminPowerLinesPage() {
   // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage") || canLineRead;
   const canTowerManage = hasPermission("tower.manage");
-  const canTowerCreate = hasPermission("tower.create") || canTowerManage;
-  const canTowerUpdate = hasPermission("tower.update") || canTowerManage;
-  const canTowerDelete = hasPermission("tower.delete") || canTowerManage;
-  const canTowerImport = hasPermission("tower.import") || hasPermission("line.import") || canTowerManage || canLineManage;
-  const canTowerExport = hasPermission("tower.export") || hasPermission("line.export") || canTowerRead || canLineRead;
+  // 说明：杆塔的新增/编辑/删除/导入/导出按钮都在详情视图/杆塔页内渲染，
+  // 可见性在那里按各自接口的权限口径计算，本页不再重复定义（原 TODO 遗留的
+  // 五个 canTower* 变量无人使用，已删除）。
   const canRead = canLineRead || canTowerRead;
 
   const updateTableScrollHeight = useCallback(() => {

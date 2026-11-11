@@ -2093,6 +2093,8 @@ export const EN_DICT: Record<string, string> = {
   "缺少 line/tower 相关读取权限": "Missing line/tower read permissions",
   "缺少 system_param.manage 权限": "Missing system_param.manage permission",
   "缺少 tower.manage 权限": "Missing tower.manage permission",
+  "缺少杆塔导入权限（tower.import / line.import / line.manage）":
+    "Missing tower import permission (tower.import / line.import / line.manage)",
   "缺少执行节点参数。": "Missing execution node parameters.",
   "缺少权限": "Missing permission",
   "缺少测试权限（需要 atp.run / atp.manage）": "Missing test permission (requires atp.run / atp.manage)",
