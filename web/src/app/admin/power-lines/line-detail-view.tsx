@@ -66,17 +66,9 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     hasPermission("tower.manage") ||
     hasPermission("line.read") ||
     hasPermission("line.manage");
-  const canTowerManage = hasPermission("tower.manage");
-  // 杆塔导入：后端 POST /lines/{id}/towers/import 接受
-  // tower.import | tower.manage | line.import | line.manage。
-  // 按钮可见性必须同口径——只认 tower.manage 会让只被授予 line.* 的角色
-  // （角色分配已改为「勾页面即授予该页全部操作权限」，tower.* 不再单独授予）
-  // 明明有接口权限却看不到「导入」按钮。
-  const canTowerImport =
-    hasPermission("tower.import") ||
-    canTowerManage ||
-    hasPermission("line.import") ||
-    hasPermission("line.manage");
+  // 杆塔写操作（导入/编辑/删除）不按权限码判断：页面本身由菜单 role_menus 控制可见性，
+  // 能进到线路管理就具备操作资格。历史原因：角色分配只发菜单级（勾页面即授予该模块全部码），
+  // tower.* 除 admin 外无从授予，按码判断会让按钮对普通角色永久消失；接口层也已不校验权限码。
 
   const [lineError, setLineError] = useState("");
   const [lineDetail, setLineDetail] = useState<{ code: string; name: string } | null>(null);
@@ -339,9 +331,6 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       if (!editingTower) {
         throw new Error(t("未选择待编辑杆塔"));
       }
-      if (!canTowerManage) {
-        throw new Error(t("缺少 tower.manage 权限"));
-      }
       const payload: Record<string, unknown> = {};
       if (towerForm.tower_no !== undefined) payload.tower_no = towerForm.tower_no;
       if (towerForm.tower_model !== undefined) payload.tower_model = towerForm.tower_model || null;
@@ -380,9 +369,6 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   const deleteTowerMutation = useMutation({
     mutationFn: async (item: LineTowerSummary) => {
-      if (!canTowerManage) {
-        throw new Error(t("缺少 tower.manage 权限"));
-      }
       const response = await fetchWithAuth(`/api/v1/lines/towers/${item.id}`, {
         method: "DELETE",
       });
@@ -467,9 +453,6 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!canTowerImport) {
-        throw new Error(t("缺少杆塔导入权限（tower.import / line.import / line.manage）"));
-      }
       if (!tempFileId) {
         throw new Error(t("文件尚未上传完成，请等待上传后再确认导入"));
       }
@@ -569,14 +552,12 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               {
                 key: "edit",
                 label: t("编辑"),
-                visible: canTowerManage,
                 onClick: () => openEditTowerModal(row),
               },
               {
                 key: "delete",
                 label: t("删除"),
                 danger: true,
-                visible: canTowerManage,
                 onClick: () => {
                   Modal.confirm({
                     title: t("确认删除该杆塔？"),
@@ -643,13 +624,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               {t("查询")}
             </Button>
           </Form.Item>
-          {canTowerImport && (
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button onClick={openImportModal}>
-                {t("导入")}
-              </Button>
-            </Form.Item>
-          )}
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button onClick={openImportModal}>
+              {t("导入")}
+            </Button>
+          </Form.Item>
           {canTowerRead && (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>

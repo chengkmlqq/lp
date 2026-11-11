@@ -170,10 +170,9 @@ export default function AdminPowerLinesPage() {
   const canMap = hasPermission("line.map") || hasPermission("line.read") || canLineManage;
   // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage") || canLineRead;
-  const canTowerManage = hasPermission("tower.manage");
-  // 说明：杆塔的新增/编辑/删除/导入/导出按钮都在详情视图/杆塔页内渲染，
-  // 可见性在那里按各自接口的权限口径计算，本页不再重复定义（原 TODO 遗留的
-  // 五个 canTower* 变量无人使用，已删除）。
+  // 说明：杆塔的新增/编辑/删除/导入/导出按钮都在详情视图/杆塔页内渲染。
+  // 写操作口径统一为「能进页面即可操作」（页面可见性由菜单 role_menus 控制，
+  // 接口层也不再校验权限码），本页不再重复定义 canTower* 写变量。
   const canRead = canLineRead || canTowerRead;
 
   const updateTableScrollHeight = useCallback(() => {

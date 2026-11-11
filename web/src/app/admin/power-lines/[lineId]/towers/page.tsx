@@ -76,15 +76,8 @@ export default function AdminPowerLineTowersPage() {
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage") || canLineRead;
-  const canTowerManage = hasPermission("tower.manage");
-  // 导入权限按接口口径：POST /lines/{id}/towers/import 接受
-  // tower.import | tower.manage | line.import | line.manage。
-  // 只认 tower.manage 会让只被授予 line.* 的角色看不到「导入」按钮。
-  const canTowerImport =
-    hasPermission("tower.import") ||
-    canTowerManage ||
-    hasPermission("line.import") ||
-    hasPermission("line.manage");
+  // 杆塔导入不按权限码判断：页面可见性由菜单 role_menus 控制，能进本页即可操作。
+  // （角色只发菜单级，tower.* 除 admin 外无法授予，按码判断会让按钮永久不显示。）
 
   const [lineDetail, setLineDetail] = useState<{ code: string; name: string } | null>(null);
   const [lineLoading, setLineLoading] = useState(true);
@@ -286,9 +279,6 @@ export default function AdminPowerLineTowersPage() {
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!canTowerImport) {
-        throw new Error(t("缺少杆塔导入权限（tower.import / line.import / line.manage）"));
-      }
       if (!tempFileId) {
         throw new Error(t("文件尚未上传完成，请等待上传后再确认导入"));
       }
@@ -454,11 +444,9 @@ export default function AdminPowerLineTowersPage() {
           </Form.Item>
           <Form.Item style={{ marginBottom: 0, marginRight: 0 }}>
             <Space size={8}>
-              {canTowerImport && (
-                <Button onClick={openImportModal}>
-                  {t("导入")}
-                </Button>
-              )}
+              <Button onClick={openImportModal}>
+                {t("导入")}
+              </Button>
               {canTowerRead && (
                 <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
                   {t("导出")}
