@@ -210,7 +210,11 @@ def analyze_distributed_lines(
         if pre_len_token is not None:
             len_token = pre_len_token
         else:
-            rest = body[v_pos:]
+            # ⚠️ 2026-11-11 66-maotou 实测教训：长度字段与波速之间常有空格
+            # （"-1XX0121XX0173  200. 2.5E8    .5 1 0"，0.5m→行程 2ns）。
+            # 不 lstrip 时 re.match 撞上空格必失败，该行被静默跳过 →
+            # t_min 虚高 → dT 不收窄 → 引擎 KILL=29 拒跑。
+            rest = body[v_pos:].lstrip()
             len_m = re.match(r"([A-Za-z_][A-Za-z_0-9]{1,9}|%s)" % _FLOAT, rest)
             if not len_m:
                 skipped.append(f"行{idx + 1} {node_a}-{node_b}：波速后无法解析长度字段")
