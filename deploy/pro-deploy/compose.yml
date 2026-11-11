@@ -185,6 +185,9 @@ services:
     image: ${MATLAB_WORKER_IMAGE}
     # Linux 方案：镜像内置 Linux 版 MATLAB Runtime，判别引擎（RunWaveAnalysisModule，
     # Linux mcc 编译）挂载于 /app/matlab-wave，直接执行、无需 Wine。
+    # ⚠️ 生产实际是分离部署：worker 在另一台机器、经 SSH 隧道接回本机的
+    #    PostgreSQL / Redis / MinIO，见 deploy/matlab-worker-remote/。
+    #    本机同时再起一个 matlab-diagnostics 消费者会让引擎同步打到错误的机器上。
     depends_on:
       - api
       - redis
@@ -204,12 +207,17 @@ services:
       DB_PORT: 5432
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
-      MINIO_ENABLED: "true"
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_BUCKET: ${MINIO_BUCKET}
-      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      # 业务对象存储：引擎包（matlab-engine/）就从这里下载。
+      # 注意不是上面那组 MINIO_*（那是阿里云 OSS / files 模块的种子配置，
+      # bucket 是 line-protection，拿来同步引擎必然 404）。
+      OBJECT_STORAGE_BACKEND: s3
+      OBJECT_STORE_ENABLED: "true"
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      OBJECT_STORE_SECRET_KEY: ${MINIO_SECRET_KEY}
+      OBJECT_STORE_BUCKET: ${LP_MINIO_BUCKET:-lp-files}
+      OBJECT_STORE_REGION: ${MINIO_REGION:-us-east-1}
+      OBJECT_STORE_ADDRESSING_STYLE: path
       # LP-316：判别任务专用队列（matlab-diagnostics），仅本镜像消费。
       # 判别系统编译产物目录：外部卷挂载到 /app/matlab-wave（Linux mcc 编译的
       # RunWaveAnalysisModule），产物改动无需重建镜像，替换部署机卷内文件即可。

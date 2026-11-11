@@ -185,6 +185,8 @@ jobs:
             api/Dockerfile.matlab \
             api/app/services/fault_diagnosis*.py \
             api/app/services/fl_analysis*.py \
+            api/app/services/minio_storage.py \
+            api/app/core/config.py \
             api/app/tasks/sync_matlab_engine_task.py \
             api/app/tasks/fault_diagnosis_tasks.py; then
             echo "skip=true" >> "$GITHUB_OUTPUT"

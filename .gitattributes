@@ -1,0 +1,4 @@
+# 部署到 Linux 的文件必须是 LF：这些文件会被直接拷到服务器/worker 机器执行
+# （systemd unit、shell、nginx/ compose 配置），CRLF 会让 systemd 报
+# "Invalid argument"、shell 报 $'\r': command not found。
+deploy/** text eol=lf

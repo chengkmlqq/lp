@@ -1,0 +1,85 @@
+# MATLAB 判别 Worker —— 分离部署版（worker 机器与 33.2 不同机）
+#
+# 拓扑：
+#   worker 机器 ──ssh 隧道──> 33.2
+#    127.0.0.1:19000 -> 33.2:127.0.0.1:9000    (MinIO API)
+#    127.0.0.1:15432 -> 33.2:127.0.0.1:15432   (lp-remote-hub -> lp-pg:5432)
+#    127.0.0.1:16379 -> 33.2:127.0.0.1:16379   (lp-remote-hub -> lp-redis:6379)
+#
+# 容器用 host 网络：bridge 网络里的 127.0.0.1 是容器自己，连不到宿主机上的
+# SSH 隧道；host 网络下 127.0.0.1 就是宿主机回环，隧道端口可直接用。
+# worker 不需要对外提供服务，用 host 网络没有暴露面。
+#
+# 用法：
+#   cp .env.example .env && vi .env          # 填镜像地址与密钥
+#   docker compose pull && docker compose up -d
+#   docker compose run --rm matlab-worker python /app/check_worker_env.py
+
+name: lp-matlab-worker
+
+services:
+  matlab-worker:
+    image: ${MATLAB_WORKER_IMAGE}
+    container_name: lp-matlab-worker
+    # 只消费判别队列；33.2 上不要同时跑 matlab-diagnostics 消费者，
+    # 否则引擎同步任务会随机落到没挂引擎卷的那台机器上。
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - matlab-diagnostics
+      - --hostname=matlab-worker@${WORKER_HOSTNAME:-remote}
+      - --loglevel=info
+      - --concurrency=${MATLAB_WORKER_CONCURRENCY:-1}
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+
+      # ── 数据库（走隧道）。不设 DATABASE_URL，交给应用按 DB_* 组装，
+      #    密码里的特殊字符会被 quote_plus 正确转义。
+      DB_DIALECT: postgresql
+      DB_HOST: 127.0.0.1
+      DB_PORT: ${TUNNEL_PG_PORT:-15432}
+      DB_NAME: ${DB_NAME:-lp}
+      DB_SCHEMA: public
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      USER_USERNAME_COLUMN: username
+      USER_PASSWORD_COLUMN: password_hash
+      USER_STATUS_COLUMN: status
+
+      # ── Celery broker / 结果后端（走隧道）
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@127.0.0.1:${TUNNEL_REDIS_PORT:-16379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@127.0.0.1:${TUNNEL_REDIS_PORT:-16379}/1
+      CELERY_TIMEZONE: Asia/Shanghai
+
+      # ── 业务对象存储（走隧道）。path 风格不能省：virtual 会把 bucket 拼进域名。
+      OBJECT_STORAGE_BACKEND: s3
+      OBJECT_STORE_ENABLED: "true"
+      OBJECT_STORE_ENDPOINT: http://127.0.0.1:${TUNNEL_MINIO_PORT:-19000}
+      OBJECT_STORE_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      OBJECT_STORE_SECRET_KEY: ${MINIO_SECRET_KEY}
+      OBJECT_STORE_BUCKET: ${MINIO_BUCKET:-lp-files}
+      OBJECT_STORE_REGION: ${MINIO_REGION:-us-east-1}
+      OBJECT_STORE_ADDRESSING_STYLE: path
+
+      # ── 判别引擎：引擎同步任务解压到这里，判别服务在这里找可执行文件。
+      #    必须与引擎模块配置里的「Worker 部署路径」一致（该字段为空时用本值）。
+      FAULT_DIAG_MATLAB_COMPILED_DIR: /app/matlab-wave
+
+      FILE_VFS_ROOT: /app/data/vfs
+      DEBUG_MODE: "false"
+    volumes:
+      - ./data/app:/app/data
+      - ./data/matlab-wave:/app/matlab-wave
+      - ./check_worker_env.py:/app/check_worker_env.py:ro
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"

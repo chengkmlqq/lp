@@ -1,0 +1,30 @@
+[Unit]
+Description=LP SSH tunnel to 33.2 (MinIO / PostgreSQL / Redis for remote MATLAB worker)
+Documentation=file:/opt/lp-worker/README.md
+After=network-online.target
+Wants=network-online.target
+# 隧道断了 worker 就是「假存活」（celery 连不上 broker 会一直重试），重启策略放到 Restart=
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/lp-worker/tunnel.env
+ExecStart=/usr/bin/ssh -N -T \
+    -o ExitOnForwardFailure=yes \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=3 \
+    -o TCPKeepAlive=yes \
+    -o StrictHostKeyChecking=accept-new \
+    -p ${SSH_PORT} \
+    -i ${SSH_KEY} \
+    -L 127.0.0.1:${TUNNEL_MINIO_PORT}:127.0.0.1:9000 \
+    -L 127.0.0.1:${TUNNEL_PG_PORT}:127.0.0.1:15432 \
+    -L 127.0.0.1:${TUNNEL_REDIS_PORT}:127.0.0.1:16379 \
+    ${SSH_USER}@${SSH_HOST}
+Restart=always
+RestartSec=5
+# ssh 不写日志时排查困难，保留最近输出
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

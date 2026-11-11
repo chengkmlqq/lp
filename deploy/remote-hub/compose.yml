@@ -1,0 +1,44 @@
+# 远程 Worker 接入枢纽（lp-remote-hub）
+#
+# 背景：matlab-worker 分离部署在另一台机器，通过 SSH 隧道接回 33.2。
+#   - MinIO 已经发布在 127.0.0.1:9000，隧道直连即可；
+#   - PostgreSQL / Redis 只挂在 docker 网络里（没有 host 端口），
+#     宿主机上的 sshd 又解析不了容器名 lp-pg / lp-redis（docker 内置 DNS
+#     127.0.0.11 只在容器内有效），所以无法直接 -L 转发。
+#
+# 本服务用现成的 nginx 镜像（含 --with-stream）把这两条 TCP 通道以固定名字
+# 代理到宿主机回环，容器重启换 IP 也不会失效：
+#   127.0.0.1:15432 -> lp-pg:5432
+#   127.0.0.1:16379 -> lp-redis:6379
+#
+# 单独成项目（不改主 compose、不动任何现有容器）：
+#   docker compose -p lp-remote-hub -f /opt/lp/remote-hub/compose.yml up -d
+#   docker compose -p lp-remote-hub -f /opt/lp/remote-hub/compose.yml ps
+#
+# 只绑 127.0.0.1，公网不可达；只有本机 SSH 隧道能用。
+
+name: lp-remote-hub
+
+services:
+  hub:
+    image: nginx:1.27-alpine
+    container_name: lp-remote-hub
+    command: ["nginx", "-g", "daemon off;"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:15432:15432"
+      - "127.0.0.1:16379:16379"
+    networks:
+      - lpnet
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "2"
+
+networks:
+  lpnet:
+    external: true
+    name: lp_lpnet
