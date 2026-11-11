@@ -213,7 +213,7 @@ export function JobCardList({ jobs, onDeleteJob, onCancelJob, canReadLogs, onOpe
 
               {/* 操作区：默认展示 2 个直接按钮，多了才收进 ⋯ 三点下拉 */}
               <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-                <div className="min-w-0 flex items-center gap-2">
+                <div className="min-w-0 flex-1 flex items-center gap-2">
                   {/* 进度展示与列表视图统一：运行中展示进度条 + 百分比文字
                       （Progress 自带百分比文本 showInfo 默认开），非运行态兜底展示
                       状态标签（颜色阈值 statusColor / 文案 formatJobStatus 与列表一致）。
