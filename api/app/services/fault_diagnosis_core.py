@@ -2052,6 +2052,10 @@ def _parse_datetime_value(value: Any) -> datetime | None:
     if not _has_value(value):
         return None
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            # 全库时间语义为 UTC：DB 读回的 datetime 是 aware，而录波/雷电解析层
+            # 可能直接给出 naive datetime，统一按 UTC 标注避免相减抛 TypeError。
+            return value.replace(tzinfo=timezone.utc)
         return value
     if isinstance(value, date):
         return datetime.combine(value, datetime.min.time()).replace(tzinfo=timezone.utc)
