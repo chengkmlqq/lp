@@ -13,6 +13,7 @@ ExecStart=/usr/bin/ssh -N -T \
     -o ServerAliveInterval=15 \
     -o ServerAliveCountMax=3 \
     -o TCPKeepAlive=yes \
+    -o Compression=no \
     -o StrictHostKeyChecking=accept-new \
     -p ${SSH_PORT} \
     -i ${SSH_KEY} \
