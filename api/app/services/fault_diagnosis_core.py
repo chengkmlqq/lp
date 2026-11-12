@@ -31,9 +31,15 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+try:  # 包内导入（服务层）
+    from .reviewed_pipeline import voltage_from_input, withstand_policy
+except ImportError:  # 以脚本方式直接运行本文件时无父包
+    from reviewed_pipeline import voltage_from_input, withstand_policy
+
 
 FAULT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "station": ("station", "录波记录厂站", "厂站名称"),
+    "voltage_level_kv": ("voltage_level_kv", "电压等级", "电压等级(kV)", "电压等级（kV）"),
     "fault_time": ("fault_time", "故障时刻", "故障时间", "故障开始时间"),
     "line_name": ("line_name", "故障线路名称", "故障线路", "线路名称"),
     "fault_phase": ("fault_phase", "故障相", "故障相别"),
@@ -2285,6 +2291,41 @@ def build_diagnosis(
         model_result=wave_model_result,
         review_context=wave_review_context,
     )
+    # v1.0.7 耐雷硬边界判据（LP-5）：按电压等级选取反击耐雷下限，并判定本次是否命中。
+    # 交付版由 aggregate() 产出 CaseLightningWithstand* 字段后在 fault_diagnosis.py 映射为
+    # decision_trace.*；LP 无离线 aggregate 步骤，在此等价计算后直接写入 decision_trace，
+    # 供报告 pipeline.withstand_sentence / case_process_fields 走真实分支。
+    located = str(lightning.get("query_result", "")).strip().upper() in {
+        "是",
+        "有",
+        "存在",
+        "Y",
+        "YES",
+        "TRUE",
+        "1",
+    }
+    current_ka = (
+        abs(_to_float(lightning["current_ka"], "雷电流幅值"))
+        if _has_value(lightning.get("current_ka"))
+        else None
+    )
+    # 用原始字段（含人工覆盖值）取电压，保留“显式留空 = 缺失”的语义，避免借用示例台账电压。
+    voltage_source = {**dict(fault_raw), **dict(overrides if isinstance(overrides, Mapping) else {})}
+    policy = withstand_policy(voltage_from_input(voltage_source, ledger_rows), ledger_result)
+    lower_ka = policy.get("backflash_ka")
+    hit = bool(located and current_ka is not None and lower_ka is not None and current_ka >= lower_ka)
+    wave_model = wave_analysis.get("model_result") or {}
+    wave_analysis["pipeline_version"] = "1.0.7"
+    wave_analysis["decision_trace"] = {
+        "ln_vote": wave_model.get("ln_prediction"),
+        "first_layer": "Lightning" if located else wave_model.get("ln_prediction"),
+        "fr_vote": wave_model.get("fr_prediction"),
+        "withstand_lower_ka": lower_ka,
+        "withstand_hit": int(hit),
+        "withstand_source": policy.get("source", "未提供"),
+        "shielding_withstand_ka": policy.get("shielding_ka"),
+        "reason": wave_model.get("correction_reason"),
+    }
     cause_fusion = fuse_cause_analyses(
         lightning_cause,
         wave_analysis,

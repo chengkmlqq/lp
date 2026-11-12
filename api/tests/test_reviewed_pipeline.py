@@ -11,6 +11,8 @@ from app.services.reviewed_pipeline import (
     LABEL_SHIELDING,
     LABEL_UNKNOWN,
     review_case,
+    voltage_from_input,
+    withstand_policy,
 )
 
 
@@ -154,3 +156,53 @@ def test_provisional_weight_discount():
         _point(label=LABEL_SHIELDING),
     ])
     assert r["final_label"] == LABEL_SHIELDING
+
+
+# ---- 按电压等级选取的耐雷下限（交付版 withstand_policy 等价移植） ----
+
+def test_withstand_policy_uses_convention_thresholds_for_35_and_110():
+    assert withstand_policy(110) == {
+        "backflash_ka": 41.0,
+        "shielding_ka": 7.0,
+        "source": "110kV约定阈值",
+    }
+    assert withstand_policy(35) == {
+        "backflash_ka": 20.0,
+        "shielding_ka": 3.5,
+        "source": "35kV约定阈值",
+    }
+
+
+def test_withstand_policy_reads_matched_ledger_for_220_and_500():
+    ledger = {
+        "matched": True,
+        "record": {"backflashover_withstand_ka": 95.0, "shielding_failure_withstand_ka": 18.0},
+    }
+    for voltage in (220, 500):
+        policy = withstand_policy(voltage, ledger)
+        assert policy["backflash_ka"] == 95.0
+        assert policy["shielding_ka"] == 18.0
+        assert policy["source"] == "匹配故障杆塔的原台账"
+
+
+def test_withstand_policy_degrades_without_matched_ledger():
+    policy = withstand_policy(220, {"matched": False, "record": {"backflashover_withstand_ka": 95.0}})
+    assert policy["backflash_ka"] is None
+    assert policy["source"] == "原台账未匹配故障杆塔，耐雷水平缺失"
+
+
+def test_withstand_policy_missing_voltage_returns_none():
+    policy = withstand_policy(None, {"matched": True, "record": {"backflashover_withstand_ka": 95.0}})
+    assert policy["backflash_ka"] is None
+    assert policy["shielding_ka"] is None
+    assert policy["source"] == "电压等级未提供，未指定耐雷水平"
+
+
+def test_voltage_from_input_handles_units_and_blank_values():
+    assert voltage_from_input({"voltage_level_kv": "110kV"}, []) == 110.0
+    assert voltage_from_input({"电压等级": "500kV"}, []) == 500.0
+    # 台账行作为兜底（故障信息完全没有电压字段时）
+    assert voltage_from_input({}, [{"电压等级": "220kV"}]) == 220.0
+    # 故障信息中显式留空视为缺失，不得借用台账电压
+    assert voltage_from_input({"电压等级": " "}, [{"电压等级": "220kV"}]) is None
+    assert voltage_from_input({"电压等级": "未提供"}, [{"电压等级": "220kV"}]) is None

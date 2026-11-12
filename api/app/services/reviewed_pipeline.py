@@ -20,8 +20,20 @@
 # 与交付源码的逐项阈值核对需在拿到交付 review_pipeline.py 后补充（见本 issue 验收标准）。
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+import re
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
+
+
+def number(value: Any) -> float | None:
+    """把输入转成有限浮点数；空值/非数值/无穷返回 None（与交付版同名函数一致）。"""
+    try:
+        result = float(value)
+        return result if math.isfinite(result) else None
+    except (TypeError, ValueError):
+        return None
+
 
 # 最终 Label 取值
 LABEL_NON_LIGHTNING = "N"  # 非雷击故障
@@ -144,8 +156,52 @@ def _tally_labels(signals: Sequence[PointSignal]) -> dict[str, int]:
     return counts
 
 
-def withstand_policy(signals: Sequence[PointSignal]) -> dict[str, Any] | None:
-    """耐雷硬边界：任一测点雷电流达到耐雷阈值即强制为雷击，且不被后续弱证据覆盖。
+def withstand_policy(voltage: Any, ledger_result: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """按电压等级选取反击/绕击耐雷下限（移植交付版 reviewed_pipeline.withstand_policy）。
+
+    - 35 / 110 kV：使用约定阈值（反击 20/41 kA，绕击 3.5/7 kA）；
+    - 220 / 500 kV：取匹配故障杆塔台账的原始耐雷水平，未匹配时返回 None 并说明原因，
+      不借用示例台账；
+    - 电压等级缺失：返回 None 并说明未指定耐雷水平。
+    """
+    voltage = number(voltage)
+    if voltage in (35, 110):
+        return {
+            "backflash_ka": {35: 20.0, 110: 41.0}[voltage],
+            "shielding_ka": {35: 3.5, 110: 7.0}[voltage],
+            "source": f"{voltage:g}kV约定阈值",
+        }
+    ledger_result = ledger_result or {}
+    record = ledger_result.get("record", {}) if ledger_result.get("matched") else {}
+    if voltage in (220, 500):
+        return {
+            "backflash_ka": number(record.get("backflashover_withstand_ka")),
+            "shielding_ka": number(record.get("shielding_failure_withstand_ka")),
+            "source": "匹配故障杆塔的原台账" if record else "原台账未匹配故障杆塔，耐雷水平缺失",
+        }
+    return {"backflash_ka": None, "shielding_ka": None, "source": "电压等级未提供，未指定耐雷水平"}
+
+
+def voltage_from_input(fault_raw: Mapping[str, Any], ledger_rows: Sequence[Mapping[str, Any]]) -> float | None:
+    """从故障信息或台账行提取电压等级（移植交付版 voltage_from_input）。
+
+    故障信息中显式留空的电压等级视为“缺失”，不借用台账（可能是示例台账）的电压；
+    完全没有该字段时才回退到台账行。
+    """
+    for key in ("voltage_level_kv", "电压等级", "电压等级(kV)", "电压等级（kV）"):
+        if key in fault_raw and str(fault_raw[key] or "").strip() in {"", "未提供", "未知"}:
+            return None
+    for raw in (fault_raw, *ledger_rows):
+        for key in ("voltage_level_kv", "电压等级", "电压等级(kV)", "电压等级（kV）"):
+            value = raw.get(key)
+            match = re.search(r"(35|110|220|500)(?:\.0)?(?:\s*kV)?", str(value or ""), re.I)
+            if match:
+                return float(match.group(1))
+    return None
+
+
+def withstand_freeze_policy(signals: Sequence[PointSignal]) -> dict[str, Any] | None:
+    """耐雷硬边界（案例级冻结）：任一测点雷电流达到耐雷阈值即强制为雷击，且不被后续弱证据覆盖。
 
     返回冻结裁决（含来源点），未触发则返回 None。
     """
@@ -308,7 +364,7 @@ def review_case(points: Sequence[Mapping[str, Any]], *, tolerate_missing: bool =
     frozen: list[str] = []
 
     # 1) 耐雷硬边界（冻结优先级最高）
-    withstand = withstand_policy(signals)
+    withstand = withstand_freeze_policy(signals)
     if withstand is not None:
         overrides.append(withstand)
         frozen.append(FREEZE_WITHSTAND)

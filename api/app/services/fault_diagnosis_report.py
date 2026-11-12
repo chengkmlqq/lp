@@ -1598,7 +1598,19 @@ def case_process_fields(result: Mapping[str, Any]) -> dict[str, str]:
     boundary = "无"
     if boundary_used:
         comparison = "达到" if boundary_hit else "未达到"
-        boundary = f"雷电流幅值{format_number(abs(current))} kA，{comparison}反击耐雷水平{format_number(lower)} kA，" + ("判别为反击。" if boundary_hit else "未触发反击硬边界。")
+        source = trace.get("withstand_source") or "未提供"
+        boundary = (
+            f"雷电流幅值{format_number(abs(current))} kA，{comparison}反击耐雷水平"
+            f"{format_number(lower)} kA（来源：{source}），"
+            + ("判别为反击。" if boundary_hit else "未触发反击硬边界。")
+        )
+    elif reached_boundary and lower is None:
+        # 电压等级缺失或 220/500 kV 未匹配杆塔台账：明确说明未执行的原因，不借用示例台账。
+        boundary = f"本次未执行反击耐雷硬边界：{trace.get('withstand_source') or '耐雷水平参数未提供'}。"
+    elif reached_boundary and not located:
+        boundary = "本次无同期雷电定位记录，未执行反击耐雷硬边界。"
+    elif reached_boundary and current is None:
+        boundary = "本次缺少雷电流幅值，未执行反击耐雷硬边界。"
     pair = "无"
     checked = numeric(trace.get("subtype_checked"))
     if checked is None:
