@@ -219,6 +219,40 @@ def read_task_log_messages(task_id: str, last_id: str = "0", block_ms: int = 100
     return messages
 
 
+def read_full_task_log_from_stream(task_id: str) -> str | None:
+    """
+    从 Redis Stream 一次性读取全部日志行（XRANGE，不依赖 MinIO）。
+
+    用途：任务结束瞬间，SSE 收尾包若改读 MinIO（upload_task_log 在 on_task_postrun
+    里异步上传，且 DB 的 log_path 在上传之后才写回），会出现"终态已到、MinIO 还没传完"
+    的竞态 → get_task_log 抛 TaskLogNotFoundError → 终态收尾包 log_content 为空 →
+    前端整块替换把运行期已流式推送的日志清空（即"先打印一部分，最后把之前的覆盖掉"）。
+
+    而 Redis Stream 在 TaskLogCapture.stop() 里 flush_incremental() 同步写完、再写
+    __end__，SSE 读到 __end__ 时流内日志已完整，故终态收尾包直接读流即可，无竞态、
+    无需回源 MinIO。流内最多保留 append_task_log_lines 的 maxlen（默认 5000）行，
+    对诊断类任务足够；更大的历史日志仍走 MinIO 持久化路径（finished 分支）。
+    Returns: 拼接后的全量文本；流不存在/为空/Redis 不可用时返回 None。
+    """
+    client = _get_redis_client()
+    key = task_log_redis_key(task_id)
+    try:
+        entries = client.xrange(key)
+    except Exception:  # noqa: BLE001 —— Redis 不可用降级为 None（调用方据此只推 done）
+        return None
+    if not entries:
+        return None
+    lines: list[str] = []
+    for _entry_id, fields in entries:
+        line = fields.get(b"line")
+        if line is None:
+            continue
+        lines.append(line.decode() if isinstance(line, bytes) else line)
+    if not lines:
+        return None
+    return "\n".join(lines)
+
+
 def list_task_logs(task_id: str) -> list[str]:
     """
     List all available logs for a task across all dates.

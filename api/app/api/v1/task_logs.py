@@ -24,6 +24,7 @@ from ...services.task_log_service import (
     get_task_state_and_log_path,
     list_task_logs,
     read_task_log_messages,
+    read_full_task_log_from_stream,
     upload_task_log,
 )
 from ...services.user_service import get_user_by_id
@@ -198,11 +199,13 @@ async def stream_log(
             # 检查一次最终状态：若刚结束则补推全量 + done
             current_state, current_path = get_task_state_and_log_path(task_id)
             if current_state in ("SUCCESS", "FAILURE", "REVOKED", "REJECTED"):
-                try:
-                    log_content, _path = get_task_log(task_id, log_path=current_path)
-                except (TaskLogNotFoundError, TaskLogServiceError):
-                    log_content = ""
-                yield f"data: {json.dumps({'lines': log_content})}\n\n"
+                # 终态收尾包：直接读 Redis Stream（运行期已同步 flush 完整），避免回源
+                # MinIO 时撞上"终态已到、上传未完成"的竞态导致 log_content 为空、前端
+                # 整块替换把已流式推送的日志清空。流为空（极端/已过期）时不发 lines，
+                # 只推 done，保留前端已累计的运行期日志，不反向清空。
+                log_content = read_full_task_log_from_stream(task_id)
+                if log_content:
+                    yield f"data: {json.dumps({'lines': log_content})}\n\n"
                 yield "event: done\ndata: {}\n\n"
                 return
             if not delivered:
