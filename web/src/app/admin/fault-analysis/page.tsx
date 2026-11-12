@@ -492,9 +492,17 @@ export default function AdminFaultAnalysisPage() {
 
   // 新建成功：刷新列表并关闭新建弹窗（LP-546：新建改为分步弹窗）。
   const handleCreateSuccess = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
-    // 显式重查一次（返回卡片/列表页时展示最新数据），并回到第一页让新记录可见。
-    await queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"], type: "active" });
+    // 只重查列表本身（queryKey 长度 3），避免波及其它已打开的详情 Tab
+    // （key 为 ["/api/v1/fault-analysis", id]，长度 2）；invalidateQueries 对 active
+    // 查询即会触发一次重查，无需再额外 refetchQueries（旧实现会连续请求两次）。
+    await queryClient.invalidateQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey)
+        && query.queryKey.length === 3
+        && query.queryKey[0] === "/api/v1/fault-analysis",
+      refetchType: "active",
+    });
+    // 回到第一页让新记录可见。
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCreateModalOpen(false);
     messageApi.success(t("故障分析创建成功"));

@@ -7,8 +7,14 @@ from ..core.celery_app import celery_app
 FAULT_ANALYSIS_TOPIC = "admin.fault-analysis"
 
 
-def _publish_fault_analysis_event(event_name: str, payload: dict[str, Any]) -> None:
-    """向 admin.fault-analysis 主题推送判别进度事件（经 Redis 桥）。"""
+def _publish_fault_analysis_event(event_name: str, payload: dict[str, Any], *, refetch: bool = False) -> None:
+    """向 admin.fault-analysis 主题推送判别进度事件（经 Redis 桥）。
+
+    refetch 仅在低频终态事件（completed/failed）置 True：让列表在任务结束时整表重查
+    一次、拿到最终字段。高频的 diagnosis_progress 不触发整表重查（前端订阅处已按事件
+    增量更新进度）；否则判别每推进一步都会让列表及所有已打开的详情 Tab 重复请求，
+    页面表现为“连续刷新”。
+    """
     try:
         from ..services.ws_event_bridge import publish_ws_event_from_worker
 
@@ -16,7 +22,7 @@ def _publish_fault_analysis_event(event_name: str, payload: dict[str, Any]) -> N
             FAULT_ANALYSIS_TOPIC,
             name=event_name,
             payload=payload,
-            requires_refetch=["/api/v1/fault-analysis"],
+            requires_refetch=["/api/v1/fault-analysis"] if refetch else None,
             dedupe_key=f"{event_name}:{payload.get('analysis_id', 'unknown')}",
         )
     except Exception:
@@ -102,7 +108,7 @@ def run_fault_diagnosis_task(self, analysis_id: str) -> dict[str, str]:
         _update_progress(analysis_id, 100, "completed")
         _publish_fault_analysis_event("analysis.diagnosis_completed", {
             "analysis_id": analysis_id,
-        })
+        }, refetch=True)
 
         log_parts.append(f"[{task_id}] Fault diagnosis for analysis {analysis_id} completed")
         log_content = "\n".join(log_parts)
@@ -119,7 +125,7 @@ def run_fault_diagnosis_task(self, analysis_id: str) -> dict[str, str]:
         _publish_fault_analysis_event("analysis.diagnosis_failed", {
             "analysis_id": analysis_id,
             "error": str(exc),
-        })
+        }, refetch=True)
 
         log_parts.append(f"[{task_id}] Fault diagnosis for analysis {analysis_id} FAILED: {exc}")
         log_parts.append(traceback.format_exc())
