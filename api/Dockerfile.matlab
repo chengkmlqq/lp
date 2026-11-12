@@ -12,6 +12,10 @@ ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
 ARG REGISTRY_NAMESPACE=ck-registry
 FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:r2023a
 
+# 统一时区为中国时区（UTC+8）：任务日志时间戳来自 logging 本地时钟，避免比实际晚 8 小时。
+# 基础镜像（fquiz-base）已装 tzdata 并设 TZ，此处显式声明以确保 matlab-worker 镜像一致生效。
+ENV TZ=Asia/Shanghai
+
 # Linux 编译的判别引擎：外部卷挂载到 /app/matlab-wave（含 RunWaveAnalysisModule）
 RUN mkdir -p /app/matlab-wave
 

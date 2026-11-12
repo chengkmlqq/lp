@@ -18,6 +18,10 @@ ENV PIP_RETRIES=${PIP_RETRIES}
 # 中文文件名/内容全程 UTF-8（LP-316 判别系统输入输出均为中文）
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
+# 统一时区为中国时区（UTC+8）：任务日志里的时间戳来自 logging 格式化器的本地时钟，
+# 默认容器为 UTC 会导致故障判别等日志时间比实际晚 8 小时。时区随基础镜像固化，
+# 所有派生的 api/worker/matlab-worker 镜像一并生效，不受后续"拉取更新"影响。
+ENV TZ=Asia/Shanghai
 
 # 一级基础镜像：仅包含不随业务代码变化的系统库 + Python 依赖。
 # 不含 wine（wine 单独放在二级 wine-base 镜像，仅 amd64 可用）。
@@ -34,6 +38,7 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
         fonts-noto-cjk \
         g++ \
         gcc \
+        tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./

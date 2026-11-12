@@ -42,6 +42,8 @@ services:
       INITIAL_ADMIN_EMAIL: admin@example.com
       INITIAL_ADMIN_USERNAME: admin
       INITIAL_ADMIN_PASSWORD: change-me-strong-password
+      # 统一时区为中国时区（UTC+8）：任务日志时间戳来自容器本地时钟，避免比实际晚 8 小时
+      TZ: Asia/Shanghai
     ports:
       - "8000:8000"
     volumes:
@@ -83,6 +85,8 @@ services:
       WINE_DEFAULT_TIMEOUT_SECONDS: 300
       WINE_MAX_TIMEOUT_SECONDS: 1800
       FILE_VFS_ROOT: /app/data/vfs
+      # 统一时区为中国时区（UTC+8）：任务日志时间戳来自容器本地时钟，避免比实际晚 8 小时
+      TZ: Asia/Shanghai
     volumes:
       - ./data/app:/app/data
     restart: unless-stopped
@@ -132,6 +136,8 @@ services:
       CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
       CELERY_TIMEZONE: Asia/Shanghai
+      # 统一时区为中国时区（UTC+8）：任务日志时间戳来自容器本地时钟，避免比实际晚 8 小时
+      TZ: Asia/Shanghai
     volumes:
       - ./data/app:/app/data
     restart: unless-stopped
@@ -156,6 +162,8 @@ services:
       CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
       CELERY_TIMEZONE: Asia/Shanghai
       FLOWER_BASIC_AUTH: admin:admin
+      # 统一时区为中国时区（UTC+8）：任务日志时间戳来自容器本地时钟，避免比实际晚 8 小时
+      TZ: Asia/Shanghai
     ports:
       - "5555:5555"
     restart: unless-stopped
@@ -169,6 +177,8 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
       NEXT_PUBLIC_APP_BASE_PATH: ""
       NODE_ENV: production
+      # 统一时区为中国时区（UTC+8）
+      TZ: Asia/Shanghai
     restart: unless-stopped
     networks:
       - deploy_default
