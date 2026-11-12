@@ -90,7 +90,7 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
  * 30 张卡排在一起时整页都是噪点，扫读无从下手。
  *
  * 新版按「一个锚点 + 安静的信息层」重排：
- * - 标题区只留模型名 + 编号，编号用小一号灰字，去掉装饰图标；发布状态收敛为一枚
+ * - 标题区只留一个模型名（name 缺省时回落 code），不再单独渲染编号行；发布状态收敛为一枚
  *   语义 chip（已发布=绿、未发布=灰），不再用红点；
  * - 四个维度改成两列「标签灰 / 值深」的属性网格，字段不再带图标，靠对齐形成节奏；
  * - 形态（新版/旧版/检测中…）从水印斜章收成页脚一行灰字，悬停看完整链路说明与
@@ -103,10 +103,13 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
  * 形态只剩「需要人工注意」的几种（检测中/检测失败/待检测/内嵌/无线路）继续占位，
  * 完整形态标记仍在表格列与详情页。
  *
- * 2026-11-07 二次调整（页面反馈「有点素」）：在不回到「什么都强调」的前提下补两处结构色——
- * ① 标题左侧一枚图标块（antd 原生 ClusterOutlined，统一用主题色，不按电压分档换色）；
- * ② 属性下方一条三格数据条（测试次数 / 最近结果 / 版本），浅底小块把使用情况压成可扫读的读数，
- *    最近结果用成功绿、失败红，其余保持灰。
+ * 2026-11-07 二次调整（页面反馈「有点素」）：标题左侧补一枚图标块（antd 原生
+ * ClusterOutlined，统一用主题色，不按电压分档换色）作为视觉锚点。
+ *
+ * 2026-11-12 精简（信息过载反馈）：撤掉属性网格下方那条三格数据条（测试次数 / 最近结果 /
+ * 版本）——读数三秒扫一眼用不上，却让每张卡多一行噪点。版本号不丢，挪到页脚左侧灰字区；
+ * 名称下方那行浅色编码一并去掉，一张卡只留一个名字。整卡少一行后重新平衡标题 / 网格 /
+ * 页脚的留白，沿用纯白底 + 细边框、靠对齐撑节奏的做法，不补新装饰。
  */
 export function AtpModelCard({
   asset,
@@ -186,24 +189,6 @@ export function AtpModelCard({
     { key: "arrester", label: t("避雷器"), value: arresterText },
   ];
 
-  const runStatus =
-    asset.last_run_status === "success"
-      ? { text: t("成功"), className: "is-success" }
-      : asset.last_run_status === "failed"
-        ? { text: t("失败"), className: "is-danger" }
-        : asset.last_run_status === "running"
-          ? { text: t("运行中"), className: "is-running" }
-          : asset.last_run_status === "pending"
-            ? { text: t("排队中"), className: "is-running" }
-            : { text: t("未运行"), className: "is-muted" };
-
-  // 数据条：把「用得多不多、最近跑得怎么样」这类三秒钟就能读完的信息压成三格
-  const stats = [
-    { key: "runs", label: t("测试次数"), value: String(asset.run_count ?? 0), className: "" },
-    { key: "last", label: t("最近结果"), value: runStatus.text, className: runStatus.className },
-    { key: "version", label: t("版本"), value: asset.version || "-", className: "" },
-  ];
-
   // 动作清单：顺序即优先级，前 MAX_VISIBLE_ACTIONS 个平铺在右下角，其余进「更多」。
   // 「详情」点卡片本身即可进入，故排在两位常用操作之后。
   const actions: CardAction[] = [];
@@ -280,7 +265,7 @@ export function AtpModelCard({
       styles={{ body: { padding: 0 } }}
     >
       <div className="admin-atp-models-card-inner">
-        {/* 标题区：电压分档色块（锚点）+ 模型名 + 编号，右侧只放一枚发布状态 chip */}
+        {/* 标题区：图标块（锚点）+ 单一模型名，右侧只放一枚发布状态 chip */}
         <div className="admin-atp-models-card-head">
           <span className="admin-atp-models-card-tile" aria-hidden>
             <ClusterOutlined />
@@ -289,11 +274,6 @@ export function AtpModelCard({
             <div className="admin-atp-models-card-name" title={asset.name || asset.code}>
               {asset.name || asset.code}
             </div>
-            {asset.name && asset.code ? (
-              <div className="admin-atp-models-card-code" title={asset.code}>
-                {asset.code}
-              </div>
-            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <Tooltip title={publishMeta.hint}>
@@ -315,26 +295,18 @@ export function AtpModelCard({
           ))}
         </dl>
 
-        {/* 数据条：三格浅色小块，扫读节奏与首页统计卡一致 */}
-        <div className="admin-atp-models-card-stats">
-          {stats.map((stat) => (
-            <div key={stat.key} className="admin-atp-models-stat">
-              <span className="admin-atp-models-stat-label">{stat.label}</span>
-              <span className={`admin-atp-models-stat-value${stat.className ? ` ${stat.className}` : ""}`} title={stat.value}>
-                {stat.value}
-              </span>
-            </div>
-          ))}
-        </div>
-
         {/* 处理进度：只在运行中任务上出现，其余时候不占位置 */}
         {asset.status === "processing" ? (
           <Progress percent={asset.progress ?? 0} size="small" className="admin-atp-models-card-progress" />
         ) : null}
 
-        {/* 页脚：左侧标签 + 异常状态（安静灰字），右侧操作 */}
+        {/* 页脚：左侧版本号 + 标签 + 异常状态（安静灰字），右侧操作 */}
         <div className="admin-atp-models-card-foot">
           <div className="admin-atp-models-card-foot-meta">
+            {/* 版本号：三格数据条撤下后挪到这里，与详情页一致的安静灰字，不抢视线也不换行 */}
+            <span className="admin-atp-models-card-version" title={`${t("版本")} ${asset.version || "-"}`}>
+              {t("版本")} {asset.version || "-"}
+            </span>
             {/* 左下角展示发布时打的标签（2026-11-10 起，取代原来的「新版/旧版」形态说明） */}
             {visibleTags.map((tag) => (
               <Tag key={tag} className="admin-atp-models-card-tag" title={tag}>

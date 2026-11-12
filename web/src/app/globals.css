@@ -2744,12 +2744,12 @@ body {
   min-height: 0;
 }
 
-/* 标题区：模型名 + 编号（左，可省略），发布状态 chip（右） */
+/* 标题区：单一模型名（左），发布状态 chip（右） */
 .admin-atp-models-card-head {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px 10px;
+  padding: 14px 14px 12px;
 }
 
 /* 标题图标块：antd 原生图标 + 统一主题色浅底，不再按电压分档换色 */
@@ -2772,14 +2772,14 @@ body {
   flex: 1 1 auto;
 }
 
-/* 属性网格：两列「标签灰 / 值深」，无图标，靠对齐形成扫读节奏 */
+/* 属性网格：两列「标签灰 / 值深」，无图标，靠对齐形成扫读节奏。
+   三格数据条撤下后去掉这条分隔线，改由下方留白把网格与页脚自然分开。 */
 .admin-atp-models-card-specs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 12px;
   margin: 0;
-  padding: 0 14px 12px;
-  border-bottom: 1px solid var(--fquiz-theme-border);
+  padding: 0 14px 14px;
 }
 
 .admin-atp-models-card-spec {
@@ -2811,69 +2811,14 @@ body {
   margin: 8px 0 0;
 }
 
-/* 数据条：三格浅色小块（测试次数 / 最近结果 / 版本），数字是视觉重点 */
-.admin-atp-models-card-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px 14px 12px;
-}
-
-.admin-atp-models-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 5%, transparent);
-}
-
-.admin-atp-models-stat-label {
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--fquiz-theme-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.admin-atp-models-stat-value {
-  font-size: 14px;
-  line-height: 18px;
-  font-weight: 500;
-  color: var(--fquiz-theme-text-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.admin-atp-models-stat-value.is-success {
-  color: #15803d;
-}
-
-.admin-atp-models-stat-value.is-danger {
-  color: #b91c1c;
-}
-
-.admin-atp-models-stat-value.is-running {
-  color: #0369a1;
-}
-
-.admin-atp-models-stat-value.is-muted {
-  color: var(--fquiz-theme-text-muted);
-  font-weight: 400;
-}
-
-/* 页脚：形态说明与异常状态在左（安静灰字），操作按钮在右 */
+/* 页脚：版本号 / 标签 / 形态与异常状态在左（安静灰字），操作按钮在右 */
 .admin-atp-models-card-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-top: auto;
-  padding: 6px 8px 6px 14px;
+  padding: 10px 8px 10px 14px;
 }
 
 .admin-atp-models-card-foot-meta {
@@ -2882,6 +2827,18 @@ body {
   gap: 6px;
   min-width: 0;
   overflow: hidden;
+}
+
+/* 版本号：三格数据条撤下后挪到页脚左侧，安静灰字。不收缩、不换行，
+   放在 foot-meta 首位保证窄卡片下仍可见；父级 overflow:hidden 只裁右侧溢出，
+   不会挤压到右侧 shrink-0 的操作按钮。 */
+.admin-atp-models-card-version {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* 形态说明：原来的水印斜章收成一行灰字，悬停看完整链路说明与预检提示数 */
@@ -3084,22 +3041,12 @@ body {
   border: 1px solid #bbf7d0;
 }
 
-/* 卡片标题：模型名是唯一锚点，编号退成小一号灰字做身份区分 */
+/* 卡片标题：模型名是唯一锚点（name 缺省回落 code），不再单独渲染编号行 */
 .admin-atp-models-card-name {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
   color: var(--fquiz-theme-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.admin-atp-models-card-code {
-  margin-top: 1px;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--fquiz-theme-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
