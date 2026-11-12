@@ -32,9 +32,21 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 try:  # 包内导入（服务层）
-    from .reviewed_pipeline import voltage_from_input, withstand_policy
+    from .reviewed_pipeline import (
+        FEATURES,
+        aggregate,
+        case_summary,
+        voltage_from_input,
+        withstand_policy,
+    )
 except ImportError:  # 以脚本方式直接运行本文件时无父包
-    from reviewed_pipeline import voltage_from_input, withstand_policy
+    from reviewed_pipeline import (
+        FEATURES,
+        aggregate,
+        case_summary,
+        voltage_from_input,
+        withstand_policy,
+    )
 
 
 FAULT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -188,6 +200,11 @@ class ResistanceResult:
 
 def _has_value(value: Any) -> bool:
     return value is not None and str(value).strip() not in {"", "None", "nan", "NaN"}
+
+
+def _trace_value(value: Any) -> Any:
+    """aggregate() 用空字符串表示“无值”，写入 decision_trace 时统一成 None。"""
+    return None if isinstance(value, str) and value.strip() == "" else value
 
 
 def canonicalize_fault_fields(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -1637,7 +1654,14 @@ def analyze_traveling_waves(
             "subtype_source": model_result.get("ModuleSubtypeSource"),
         }
         correction_requested = bool(model_result.get("CorrectionRequested", 0)) or module_mode
-        if review_confirmed:
+        if correction_status == "Reviewed107":
+            evidence.append(
+                f"案例级聚合（Reviewed107）在冻结模型表决 {initial_label} 基础上给出 "
+                f"{final_label}/{model_final_subtype}，作为最终行波结论"
+                if model_final_subtype
+                else f"案例级聚合（Reviewed107）在冻结模型表决 {initial_label} 基础上给出 {final_label}，作为最终行波结论"
+            )
+        elif review_confirmed:
             evidence.append(
                 f"MATLAB初判 {initial_label} 与录波{review_basis}复核一致，"
                 f"最终采用初判 {initial_label}"
@@ -1670,7 +1694,14 @@ def analyze_traveling_waves(
     final_subtype = model_final_subtype
     subtype_description = _wave_subtype_label(final_subtype)
     correction_requested = bool(model_result.get("CorrectionRequested", 0)) or module_mode
-    if review_confirmed:
+    if correction_status == "Reviewed107":
+        # 案例级聚合（reviewed_pipeline.aggregate）已给出最终 Label/亚型，不再叠加单点复核措辞。
+        subtype_text = f"/{final_subtype}" if final_subtype else ""
+        final_detail = (
+            subtype_description if final_label == "R" else label_map.get(final_label, (classification, mechanism))[0]
+        )
+        report_conclusion = f"案例级聚合（Reviewed107）判别为{final_detail}（{final_label}{subtype_text}）"
+    elif review_confirmed:
         subtype_text = (
             f"/{final_subtype}"
             if final_subtype and final_subtype not in {"NotEvaluated", "NotApplicable"}
@@ -2284,17 +2315,9 @@ def build_diagnosis(
         ledger_result,
         validation=validation,
     )
-    wave_analysis = analyze_traveling_waves(
-        traveling_wave_records or [],
-        fault,
-        settings=settings,
-        model_result=wave_model_result,
-        review_context=wave_review_context,
-    )
-    # v1.0.7 耐雷硬边界判据（LP-5）：按电压等级选取反击耐雷下限，并判定本次是否命中。
-    # 交付版由 aggregate() 产出 CaseLightningWithstand* 字段后在 fault_diagnosis.py 映射为
-    # decision_trace.*；LP 无离线 aggregate 步骤，在此等价计算后直接写入 decision_trace，
-    # 供报告 pipeline.withstand_sentence / case_process_fields 走真实分支。
+    # v1.0.7 案例级聚合（LP-6）：先按交付版 aggregate() 把各测点模型字段汇总出最终
+    # Label / 亚型，再进入单点分析。这样「判别过程」各行与最终结论同源：
+    #   LN/F/R 表决 → FBF 例外 → 耐雷硬边界 → 多相反击得分 → 冻结 F/R 表决。
     located = str(lightning.get("query_result", "")).strip().upper() in {
         "是",
         "有",
@@ -2304,28 +2327,92 @@ def build_diagnosis(
         "TRUE",
         "1",
     }
-    current_ka = (
-        abs(_to_float(lightning["current_ka"], "雷电流幅值"))
-        if _has_value(lightning.get("current_ka"))
-        else None
-    )
     # 用原始字段（含人工覆盖值）取电压，保留“显式留空 = 缺失”的语义，避免借用示例台账电压。
     voltage_source = {**dict(fault_raw), **dict(overrides if isinstance(overrides, Mapping) else {})}
-    policy = withstand_policy(voltage_from_input(voltage_source, ledger_rows), ledger_result)
-    lower_ka = policy.get("backflash_ka")
-    hit = bool(located and current_ka is not None and lower_ka is not None and current_ka >= lower_ka)
+    voltage_kv = voltage_from_input(voltage_source, ledger_rows)
+    policy = withstand_policy(voltage_kv, ledger_result)
+    recorded_fault_phase = "".join(
+        dict.fromkeys(letter for letter in str(fault.get("fault_phase") or "").upper() if letter in "ABC")
+    )
+    wave_phases = {
+        str(record.get("phase") or "").upper() for record in (traveling_wave_records or [])
+    }
+    aggregated_model: dict[str, Any] | None = None
+    # 只有真正拿到行波模型的 LN/FR 表决结果才做案例级聚合，避免对老引擎/无模型输入硬造 1.0.7 结论。
+    if wave_model_result and "LNPrediction" in wave_model_result and "FRPrediction" in wave_model_result:
+        aggregated_model = aggregate(
+            [
+                {
+                    "fields": dict(wave_model_result),
+                    "complete_three_phase_data": {"A", "B", "C"}.issubset(wave_phases),
+                }
+            ],
+            lightning,
+            voltage_kv,
+            recorded_fault_phase,
+            withstand=policy,
+        )
+
+    wave_analysis = analyze_traveling_waves(
+        traveling_wave_records or [],
+        fault,
+        settings=settings,
+        model_result=aggregated_model or wave_model_result,
+        review_context=wave_review_context,
+    )
     wave_model = wave_analysis.get("model_result") or {}
     wave_analysis["pipeline_version"] = "1.0.7"
-    wave_analysis["decision_trace"] = {
-        "ln_vote": wave_model.get("ln_prediction"),
-        "first_layer": "Lightning" if located else wave_model.get("ln_prediction"),
-        "fr_vote": wave_model.get("fr_prediction"),
-        "withstand_lower_ka": lower_ka,
-        "withstand_hit": int(hit),
-        "withstand_source": policy.get("source", "未提供"),
-        "shielding_withstand_ka": policy.get("shielding_ka"),
-        "reason": wave_model.get("correction_reason"),
-    }
+    if aggregated_model is not None and wave_model:
+        # 交付版在 aggregate 之后强制归类完成：报告各行的“已判定”状态以聚合结论为准。
+        wave_analysis["status"] = "analyzed"
+        wave_analysis["provisional"] = False
+        wave_analysis["case_aggregated"] = True
+        wave_analysis["decision_trace"] = {
+            key: _trace_value(aggregated_model.get(source))
+            for key, source in {
+                "ln_vote": "CaseLNVote",
+                "first_layer": "CaseFirstLayer",
+                "fr_vote": "CaseFRVote",
+                "fbf_evidence": "CaseFBF",
+                "fsf_evidence": "CaseFSF",
+                "subtype_checked": "CaseSubtypeChecked",
+                "multiphase_f_score": "CaseMultiphaseFScore",
+                "withstand_lower_ka": "CaseLightningWithstandLowerKA",
+                "withstand_hit": "CaseLightningWithstandHit",
+                "withstand_source": "CaseWithstandSource",
+                "shielding_withstand_ka": "CaseShieldingWithstandKA",
+                "fault_phase_count": "CaseRecordedFaultPhaseCount",
+                "reason": "ModuleCorrectionReason",
+            }.items()
+        }
+        wave_analysis["decision_trace"]["multiphase_features"] = {
+            name: _trace_value(aggregated_model.get("CaseMultiFeature_" + name))
+            for name in FEATURES
+        }
+    else:
+        # 无行波模型时只保留耐雷硬边界等可确定项，FBF/多相证据明确标为缺失。
+        lower_ka = policy.get("backflash_ka")
+        current_ka = (
+            abs(_to_float(lightning["current_ka"], "雷电流幅值"))
+            if _has_value(lightning.get("current_ka"))
+            else None
+        )
+        hit = bool(located and current_ka is not None and lower_ka is not None and current_ka >= lower_ka)
+        wave_analysis["decision_trace"] = {
+            "ln_vote": wave_model.get("ln_prediction"),
+            "first_layer": "Lightning" if located else wave_model.get("ln_prediction"),
+            "fr_vote": wave_model.get("fr_prediction"),
+            "fbf_evidence": 0,
+            "fsf_evidence": 0,
+            "subtype_checked": 0,
+            "multiphase_f_score": None,
+            "withstand_lower_ka": lower_ka,
+            "withstand_hit": int(hit),
+            "withstand_source": policy.get("source", "未提供"),
+            "shielding_withstand_ka": policy.get("shielding_ka"),
+            "fault_phase_count": len(recorded_fault_phase),
+            "reason": wave_model.get("correction_reason"),
+        }
     cause_fusion = fuse_cause_analyses(
         lightning_cause,
         wave_analysis,
@@ -2374,6 +2461,10 @@ def build_diagnosis(
         "fault_location": location_analysis,
         "lightning_cause_analysis": lightning_cause,
         "traveling_wave_analysis": wave_analysis,
+        # 案例级聚合结论（Reviewed107）：与 decision_trace、最终 Label 同源，只读展示用。
+        "case_review": case_summary(aggregated_model)
+        if aggregated_model is not None and wave_model
+        else None,
         "cause_fusion": cause_fusion,
         "input_validation": validation,
         "overall_recommendation": overall_recommendation,

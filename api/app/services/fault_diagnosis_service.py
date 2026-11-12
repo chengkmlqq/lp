@@ -28,7 +28,6 @@ from .fault_diagnosis_core import (
     load_wave_model_result,
     render_markdown_summary,
 )
-from .reviewed_pipeline import review_case
 from .fault_input_discovery import normalize_input_files
 from .minio_storage import (
     FAULT_ANALYSIS_PREFIX,
@@ -1168,17 +1167,6 @@ def build_result_json(
     }
 
 
-def attach_case_review(diag: dict[str, Any]) -> dict[str, Any]:
-    """接入案例级聚合（reviewed_pipeline.review_case）。
-
-    当前 LP 单测点编排只产出一次 build_diagnosis；这里把该单点作为 1 个测点组成案例，
-    输出 case_review（Reviewed107 冻结后的最终 Label + 亚型 + 判定理由）。当编排层后续传入
-    多测点/多组 build_diagnosis 结果时，只需把多个 diag 一并交给 review_case 即可实现多测点表决。
-    """
-    diag["case_review"] = review_case([diag])
-    return diag
-
-
 def map_result_to_record(
     diag: Mapping[str, Any],
     item: FaultAnalysis,
@@ -1323,7 +1311,6 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
             wave_model_result=wave_model_result,
             source_paths=source_paths,
         )
-        attach_case_review(diag)
         mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
         result_json = dict(mapped["result_json"])
         result_json["upload_files"] = dict(original_upload_files)
@@ -1477,7 +1464,6 @@ def run_fault_diagnosis_with_progress(
             wave_model_result=wave_model_result,
             source_paths=source_paths,
         )
-        attach_case_review(diag)
         if progress_callback:
             progress_callback(80, "processing")
         if step_callback:
@@ -1601,7 +1587,6 @@ def create_diagnosis_job_from_inputs(
         )
     except Exception as exc:
         raise InputError(f"判别管线初始化失败：{exc}") from exc
-    attach_case_review(diag)
     return build_result_json(
         diag,
         risk_level=_derive_risk_level(diag)[0],

@@ -1,161 +1,159 @@
-# NOTE(LP-4): reviewed_pipeline 案例级聚合单元测试。
+# NOTE(LP-6): 案例级聚合与判别级联测试。
 #
-# 交付版 reviewed_pipeline.py 未随任务附带，本测试覆盖 LP 等价重建的聚合规则：
-# LN/F/R 表决、雷电记录修正、FBF 例外、耐雷硬边界（withstand_policy）、多相复核、
-# 绕击子型（FSF/SF）、Reviewed107 冻结、缺数据分支。
+# 覆盖交付版 v1.0.7 `reviewed_pipeline.aggregate()` 的判定级联（第一层 located 排除 N、
+# FBF 例外、耐雷硬边界、多相反击得分、冻结 F/R 表决、FBF/FSF/SF 三子型），以及三个
+# 纠错案例（FBF-ZDB / 15F-HMJ / F-HMJ / 49F-CB）从聚合到报告字段的端到端一致性。
 from __future__ import annotations
 
+from typing import Any
+
+from app.services.fault_diagnosis_core import build_diagnosis
+from app.services.fault_diagnosis_report import fused_fault_conclusion, report_field_values
 from app.services.reviewed_pipeline import (
+    FEATURES,
     LABEL_BACKFLASH,
     LABEL_NON_LIGHTNING,
     LABEL_SHIELDING,
-    LABEL_UNKNOWN,
-    review_case,
+    aggregate,
     voltage_from_input,
     withstand_policy,
 )
 
 
-def _point(
+def _fields(**overrides: Any) -> dict[str, Any]:
+    """一组 wave_module_prediction.txt 字段（1.0.7 行波模型输出）。"""
+    base: dict[str, Any] = {
+        "LNPrediction": "Lightning",
+        "LNLightningScore": 0.9,
+        "LNNonLightningScore": 0.1,
+        "FRPrediction": LABEL_SHIELDING,
+        "FRFScore": 0.2,
+        "FRRScore": 0.8,
+        "CorrectionMeetsFBF": 0,
+        "CorrectionMeetsFSF": 0,
+        "SoftwareVersion": "1.0.7",
+    }
+    base.update(overrides)
+    return base
+
+
+def _group(fields: dict[str, Any] | None = None, *, complete: bool = True) -> dict[str, Any]:
+    return {"fields": fields or _fields(), "complete_three_phase_data": complete}
+
+
+def _aggregate(
+    groups: list[dict[str, Any]] | None = None,
     *,
-    label: str = "",
-    subtype: str = "",
-    lightning_mechanism: str = "",
-    lightning_status: str = "",
-    fusion_mechanism: str = "",
-    can_auto_pass: bool = True,
-    recording_phase: str = "A",
-    active_phases: str = "A",
-    provisional: bool = False,
-) -> dict:
-    """构造一个最小化的 build_diagnosis 输出（仅含聚合所需字段）。"""
+    lightning: dict[str, Any] | None = None,
+    voltage: Any = 110,
+    fault_phase: str = "A",
+) -> dict[str, Any]:
+    return aggregate(
+        groups or [_group()],
+        lightning if lightning is not None else {"query_result": "是", "current_ka": 10},
+        voltage,
+        fault_phase,
+        withstand=withstand_policy(voltage),
+    )
+
+
+# ---- 第一层 / FBF / 耐雷硬边界 三条修复分支 ----
+
+
+def test_located_lightning_excludes_non_lightning_branch():
+    """问题 3（49F-CB）：有雷电定位记录时第一层进入雷击分支，不再落到 N。"""
+    result = _aggregate(
+        [_group(_fields(LNPrediction="NonLightning", LNNonLightningScore=0.95, FRPrediction=LABEL_SHIELDING))],
+        lightning={"query_result": "是", "current_ka": 30},
+    )
+    assert result["CaseFirstLayer"] == "Lightning"
+    assert result["ModuleFinalLabel"] == LABEL_SHIELDING
+
+
+def test_no_lightning_record_keeps_non_lightning():
+    result = _aggregate(
+        [_group(_fields(LNPrediction="NonLightning", LNNonLightningScore=0.95))],
+        lightning={"query_result": "否", "current_ka": 30},
+    )
+    assert result["CaseFirstLayer"] == "NonLightning"
+    assert result["ModuleFinalLabel"] == LABEL_NON_LIGHTNING
+
+
+def test_fbf_evidence_and_frozen_shielding_gives_fbf_subtype():
+    """问题 1（FBF-ZDB）：FBF 波形证据 + 冻结 FR 同判 R → R/FBF。"""
+    result = _aggregate([_group(_fields(CorrectionMeetsFBF=1, FRPrediction=LABEL_SHIELDING))])
+    assert result["CaseFBF"] == 1
+    assert result["ModuleFinalLabel"] == LABEL_SHIELDING
+    assert result["ModuleFinalSubtype"] == "FBF"
+    assert "FBF" in result["ModuleCorrectionReason"]
+
+
+def test_withstand_hard_boundary_turns_shielding_into_backflash():
+    """问题 2（15F-HMJ / F-HMJ）：耐雷硬边界命中 → F，不再保留绕击。"""
+    for current in (74.2, 84.7):
+        result = _aggregate(
+            [_group(_fields(FRPrediction=LABEL_SHIELDING))],
+            lightning={"query_result": "是", "current_ka": current},
+            voltage=110,
+        )
+        assert result["CaseLightningWithstandLowerKA"] == 41.0
+        assert result["CaseLightningWithstandHit"] == 1
+        assert result["ModuleFinalLabel"] == LABEL_BACKFLASH
+        assert result["ModuleFinalSubtype"] == ""
+
+
+def test_withstand_below_threshold_keeps_frozen_fr_vote():
+    result = _aggregate(
+        [_group(_fields(FRPrediction=LABEL_SHIELDING))],
+        lightning={"query_result": "是", "current_ka": 20},
+        voltage=110,
+    )
+    assert result["CaseLightningWithstandHit"] == 0
+    assert result["ModuleFinalLabel"] == LABEL_SHIELDING
+    assert result["ModuleFinalSubtype"] == "SF"
+
+
+# ---- 多相反击得分与子型 ----
+
+
+def _feature_fields(above: int) -> dict[str, Any]:
+    """构造 6 项多相特征中前 above 项达标的字段。"""
     return {
-        "traveling_wave_analysis": {
-            "model_result": {"final_label": label, "final_subtype": subtype},
-            "recording_fault_phase": recording_phase,
-            "wave_active_phases": active_phases,
-            "provisional": provisional,
-        },
-        "lightning_cause_analysis": {
-            "mechanism": lightning_mechanism,
-            "status": lightning_status,
-        },
-        "cause_fusion": {"final_mechanism": fusion_mechanism},
-        "overall_recommendation": {"can_auto_pass": can_auto_pass},
+        "MultiFeature_" + name: threshold if index < above else threshold - 1e-6
+        for index, (name, threshold) in enumerate(FEATURES.items())
     }
 
 
-def test_single_point_non_lightning():
-    r = review_case([_point(label=LABEL_NON_LIGHTNING)])
-    assert r["final_label"] == LABEL_NON_LIGHTNING
-    assert r["status"] == "analyzed"
+def test_multiphase_score_confirms_backflash():
+    result = _aggregate(
+        [_group(_fields(FRPrediction=LABEL_SHIELDING, **_feature_fields(5)))],
+        lightning={"query_result": "是", "current_ka": 5},
+        fault_phase="AB",
+    )
+    assert result["CaseMultiphaseFScore"] == 5.0
+    assert result["ModuleFinalLabel"] == LABEL_BACKFLASH
 
 
-def test_single_point_backflash():
-    r = review_case([_point(label=LABEL_BACKFLASH)])
-    assert r["final_label"] == LABEL_BACKFLASH
-    assert r["final_subtype"] == ""
+def test_multiphase_score_confirms_shielding():
+    result = _aggregate(
+        [_group(_fields(FRPrediction=LABEL_BACKFLASH, **_feature_fields(2)))],
+        lightning={"query_result": "是", "current_ka": 5},
+        fault_phase="AB",
+    )
+    assert result["CaseMultiphaseFScore"] == 2.0
+    assert result["ModuleFinalLabel"] == LABEL_SHIELDING
+    assert result["ModuleFinalSubtype"] == "SF"
 
 
-def test_single_point_shielding_sf():
-    r = review_case([_point(label=LABEL_SHIELDING, subtype="SF")])
-    assert r["final_label"] == LABEL_SHIELDING
-    assert r["final_subtype"] == "SF"
+def test_fsf_evidence_sets_fsf_subtype():
+    result = _aggregate([_group(_fields(CorrectionMeetsFSF=1))])
+    assert result["ModuleFinalLabel"] == LABEL_SHIELDING
+    assert result["ModuleFinalSubtype"] == "FSF"
 
 
-def test_single_point_shielding_fsf():
-    r = review_case([_point(label=LABEL_SHIELDING, subtype="FSF")])
-    assert r["final_label"] == LABEL_SHIELDING
-    assert r["final_subtype"] == "FSF"
-
-
-def test_multi_point_majority_backflash():
-    # 2 个 F + 1 个 N → F
-    r = review_case([_point(label=LABEL_BACKFLASH), _point(label=LABEL_BACKFLASH), _point(label=LABEL_NON_LIGHTNING)])
-    assert r["final_label"] == LABEL_BACKFLASH
-
-
-def test_multi_point_majority_shielding():
-    r = review_case([
-        _point(label=LABEL_SHIELDING, subtype="SF"),
-        _point(label=LABEL_SHIELDING, subtype="SF"),
-        _point(label=LABEL_NON_LIGHTNING),
-    ])
-    assert r["final_label"] == LABEL_SHIELDING
-
-
-def test_vote_tie_is_needs_review():
-    # 雷击与非雷击权重相等 → 平局，不强行结论
-    r = review_case([_point(label=LABEL_SHIELDING, subtype="SF"), _point(label=LABEL_NON_LIGHTNING)])
-    assert r["final_label"] == LABEL_UNKNOWN
-    assert r["status"] == "needs_review"
-
-
-def test_lightning_record_correction():
-    # 无同期落雷记录（not_applicable）但行波/融合指示雷击 → 修正为雷击参与表决
-    r = review_case([_point(label=LABEL_SHIELDING, lightning_status="not_applicable", fusion_mechanism="绕击")])
-    assert r["final_label"] == LABEL_SHIELDING
-    assert any("雷电记录修正" in w for w in r["warnings"])
-    assert r["votes"]["lightning_record_corrected_indices"] == [0]
-
-
-def test_withstand_hard_boundary_backflash():
-    # 雷电流达到反击耐雷阈值（反击候选）→ 耐雷硬边界强制 F，冻结
-    r = review_case([_point(label=LABEL_NON_LIGHTNING, lightning_mechanism="反击候选", lightning_status="analyzed")])
-    assert r["final_label"] == LABEL_BACKFLASH
-    assert "withstand_hard_boundary" in r["frozen"]
-    assert any(o["source"] == "withstand_hard_boundary" for o in r["overrides"])
-
-
-def test_withstand_hard_boundary_shielding():
-    r = review_case([_point(label=LABEL_NON_LIGHTNING, lightning_mechanism="绕击候选", lightning_status="analyzed")])
-    assert r["final_label"] == LABEL_SHIELDING
-
-
-def test_withstand_overrides_vote():
-    # 多数测点判非雷击，但一个测点触发耐雷硬边界 → 最终为雷击（冻结不被推翻）
-    r = review_case([
-        _point(label=LABEL_NON_LIGHTNING),
-        _point(label=LABEL_NON_LIGHTNING),
-        _point(label=LABEL_NON_LIGHTNING, lightning_mechanism="反击候选", lightning_status="analyzed"),
-    ])
-    assert r["final_label"] == LABEL_BACKFLASH
-
-
-def test_multi_phase_conflict():
-    r = review_case([_point(label=LABEL_SHIELDING, recording_phase="A"), _point(label=LABEL_SHIELDING, recording_phase="B")])
-    assert r["multi_phase_review"]["conflict"] is True
-    assert r["status"] == "needs_review"
-
-
-def test_missing_data_branch():
-    r = review_case([_point(label="", lightning_status="unavailable")])
-    assert r["final_label"] == LABEL_UNKNOWN
-    assert r["status"] == "unavailable"
-
-
-def test_empty_points():
-    r = review_case([])
-    assert r["point_count"] == 0
-    assert r["status"] == "unavailable"
-
-
-def test_fbf_exception_flips_to_shielding():
-    # 表决为 F，但存在 FSF（两相导线绕击）证据占优 → FBF 例外翻转为 R
-    r = review_case([_point(label=LABEL_BACKFLASH), _point(label=LABEL_BACKFLASH, subtype="FSF")])
-    assert r["final_label"] == LABEL_SHIELDING
-    assert any(o["source"] == "fbf_exception" for o in r["overrides"])
-
-
-def test_provisional_weight_discount():
-    # 一个非 provisional 雷击点胜过两个 provisional 非雷击点
-    r = review_case([
-        _point(label=LABEL_SHIELDING, provisional=True),
-        _point(label=LABEL_NON_LIGHTNING, provisional=True),
-        _point(label=LABEL_NON_LIGHTNING, provisional=True),
-        _point(label=LABEL_SHIELDING),
-    ])
-    assert r["final_label"] == LABEL_SHIELDING
+def test_subtype_checked_requires_complete_three_phase_data():
+    result = _aggregate([_group(_fields(), complete=False)], fault_phase="A")
+    assert result["CaseSubtypeChecked"] == 0
 
 
 # ---- 按电压等级选取的耐雷下限（交付版 withstand_policy 等价移植） ----
@@ -206,3 +204,132 @@ def test_voltage_from_input_handles_units_and_blank_values():
     # 故障信息中显式留空视为缺失，不得借用台账电压
     assert voltage_from_input({"电压等级": " "}, [{"电压等级": "220kV"}]) is None
     assert voltage_from_input({"电压等级": "未提供"}, [{"电压等级": "220kV"}]) is None
+
+
+# ---- 端到端：聚合 → decision_trace → 报告「判别过程」与最终结论 ----
+
+
+def _wave_record(phase: str) -> dict[str, Any]:
+    samples = [0.0] * 40 + [1.0, 3.0, 8.0, 2.0] + [0.2] * 156
+    return {
+        "file_name": f"{phase}.txt",
+        "phase": phase,
+        "samples": samples,
+        "sample_rate_hz": 1_000_000.0,
+        "head_time": "2026-01-01 10:00:00",
+    }
+
+
+def _diagnose(
+    *,
+    fields: dict[str, Any],
+    fault_phase: str,
+    current_ka: float,
+    query_result: str = "是",
+    voltage: Any = 110,
+) -> dict[str, Any]:
+    fault = {
+        "line_name": "测试线",
+        "fault_phase": fault_phase,
+        "fault_time": "2026-01-01 10:00:00",
+        "phase_voltage": 63.5,
+        "phase_current": 1.2,
+        "zero_sequence_current": 0.3,
+        "duration_ms": 60,
+        "voltage_level_kv": voltage,
+    }
+    lightning = {
+        "line_name": "测试线",
+        "query_result": query_result,
+        "current_ka": current_ka,
+        "nearest_tower": "N12",
+        "location_time": "2026-01-01 10:00:00",
+    }
+    ledger_rows = [
+        {
+            "线路名称": "测试线",
+            "塔号": "N12",
+            "电压等级": f"{voltage}kV",
+            "反击耐雷水平kA": 90.0,
+            "绕击耐雷水平kA": 20.0,
+        }
+    ]
+    records = [_wave_record(phase) for phase in "ABC"]
+    return build_diagnosis(
+        fault,
+        {},
+        ledger_rows,
+        lightning_raw=lightning,
+        traveling_wave_records=records,
+        wave_model_result=fields,
+    )
+
+
+def _trace(diag: dict[str, Any]) -> dict[str, Any]:
+    wave = diag["traveling_wave_analysis"]
+    assert wave["pipeline_version"] == "1.0.7"
+    return wave["decision_trace"]
+
+
+def test_case_fbf_zdb_end_to_end():
+    """纠错案例 1：FBF-ZDB → 判别过程显示符合 FBF 特征，最终结论为 FBF。"""
+    diag = _diagnose(
+        fields=_fields(FRPrediction=LABEL_SHIELDING, CorrectionMeetsFBF=1),
+        fault_phase="A",
+        current_ka=20,
+    )
+    trace = _trace(diag)
+    assert trace["fbf_evidence"] == 1
+    assert trace["first_layer"] == "Lightning"
+    assert trace["withstand_hit"] == 0
+
+    model = diag["traveling_wave_analysis"]["model_result"]
+    assert model["final_label"] == LABEL_SHIELDING
+    assert model["final_subtype"] == "FBF"
+
+    values = report_field_values(diag)
+    assert "符合避雷线与导线型绕击特征" in values["pipeline.shielding_pair_sentence"]
+    assert "避雷线与导线型绕击" in values["pipeline.final_sentence"]
+    assert "避雷线与导线型绕击" in fused_fault_conclusion(diag)
+
+
+def test_case_withstand_hit_end_to_end():
+    """纠错案例 2：15F-HMJ / F-HMJ 耐雷硬边界命中 → 最终结论为反击。"""
+    for current in (74.2, 84.7):
+        diag = _diagnose(
+            fields=_fields(FRPrediction=LABEL_SHIELDING),
+            fault_phase="AB",
+            current_ka=current,
+        )
+        trace = _trace(diag)
+        assert trace["withstand_hit"] == 1
+        assert trace["withstand_lower_ka"] == 41.0
+
+        model = diag["traveling_wave_analysis"]["model_result"]
+        assert model["final_label"] == LABEL_BACKFLASH
+
+        values = report_field_values(diag)
+        assert "达到反击耐雷水平" in values["pipeline.withstand_sentence"]
+        assert "反击" in values["pipeline.final_sentence"]
+        assert "绕击" not in values["pipeline.final_sentence"]
+        assert "反击" in fused_fault_conclusion(diag)
+
+
+def test_case_lightning_location_end_to_end():
+    """纠错案例 3：49F-CB 雷电定位记录判定雷击 → 最终结论不再是“非雷击”。"""
+    diag = _diagnose(
+        fields=_fields(LNPrediction="NonLightning", LNNonLightningScore=0.95, FRPrediction=LABEL_SHIELDING),
+        fault_phase="AB",
+        current_ka=30,
+    )
+    trace = _trace(diag)
+    assert trace["first_layer"] == "Lightning"
+    assert trace["ln_vote"] == "NonLightning"
+
+    model = diag["traveling_wave_analysis"]["model_result"]
+    assert model["final_label"] != LABEL_NON_LIGHTNING
+
+    values = report_field_values(diag)
+    assert "雷电定位记录" in values["pipeline.lightning_gate_sentence"]
+    assert "非雷击" not in values["pipeline.final_sentence"]
+    assert "非雷击" not in fused_fault_conclusion(diag)

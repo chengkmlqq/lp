@@ -213,6 +213,9 @@ def wave_fault_conclusion(result: Mapping[str, Any]) -> str:
 def ordinary_shielding_multi_phase_conflict(result: Mapping[str, Any]) -> bool:
     """普通绕击只用于单相故障；录波为多相时，融合类型应提升为多相导线型绕击。"""
     wave = result.get("traveling_wave_analysis", {})
+    if wave.get("case_aggregated"):
+        # LP-6：案例级聚合（Reviewed107）已给出最终亚型，报告阶段不得把 SF 悄悄改成 FSF。
+        return False
     model = wave.get("model_result", {})
     label = str(model.get("final_label") or wave.get("classification") or "").upper()
     subtype = str(model.get("final_subtype") or "").upper()
@@ -236,6 +239,14 @@ def fused_fault_conclusion(result: Mapping[str, Any]) -> str:
     fusion = result.get("cause_fusion", {})
     wave = result.get("traveling_wave_analysis", {})
     model = wave.get("model_result", {})
+    if wave.get("case_aggregated") and model.get("final_label"):
+        # LP-6：案例级聚合已是最终结论，直接采用其 Label + 亚型，报告不再另行改判。
+        return lightning_fault_text(
+            model.get("final_label"),
+            model.get("final_subtype"),
+            corrected_fault_phase(result),
+            detailed_subtype=True,
+        )
     mechanism = fusion.get("final_mechanism") or model.get("final_label")
     subtype = fused_fault_subtype(result)
     # 交付版可能接收不同版本的MATLAB字段。融合对象没有写机制时，依次从
