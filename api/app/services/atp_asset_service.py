@@ -97,21 +97,21 @@ VALID_RUN_STATUS = {"pending", "running", "success", "failed"}
 LOG_MAX_CHARS = 200_000
 ATP_ASSET_FILES_ROOT = "/atp-assets"
 
-# ATP 模型包上传白名单：.atp（仿真入口）/ .dat（几何源）/ .pch（7.2+ 几何载体）。
-# 2026-11-02 放宽（D:\ATP 全量 1101 模型实测结论）：
-#   - 老版 ATPDraw（7.2 前，work.atp 形态 `$INCLUDE ... .lib`）4944 行 $INCLUDE 全部指向
-#     4 个标准名 .lib / .pch。.lib 由 regenerate_line_models 每轮从 .dat 重算
-#     （LCC → .pch → pch_to_lib），.pch 本身是中间产物 → 老版包里的 .pch 一律不收
-#     （入库即丢，见 upload_asset_files 的 legacy 裁剪）。
-#   - 新版 ATPDraw（7.2+，work.atp 形态 `$INSERT <name><序号>.pch`）**必须**带上全部 pch：
-#     pch 由 ATPDraw 内置 LCC 生成、LP 无法命令行复现，且节点名的唯一载体就是 pch 脚卡。
-#     全库 483 个此类模型里 204 个跑不起来的首要原因就是 pch 缺失/被覆盖（见 E010）。
-# .lib/.lis/.pl4/.log 仍为运行产物，由 geometry/simulate 现场生成，不允许上传
-# （2026-09-26 实测：geometry 每轮按当轮参数重算覆盖 .lib，上传的 .lib 无兜底价值）。
-# .acp（ATPDraw 工程文件）2026-11-10 起允许上传：仅作为配套工程存档，方便回溯
-# 模型在 ATPDraw 里的原始组态；不参与形态判定、LCC 重算与仿真。
+# ATP 模型包上传白名单（2026-11-12 起）：平台只接收「旧版模型」（legacy，
+# $INCLUDE + .lib，ATPDraw 6.x/7.0/7.1）。新版（$INSERT + 序号 .pch，ATPDraw 7.2+）
+# 模型在上传口按形态直接 400 拒收（见 _inspect_atp_package_or_400），.pch 也不再列入允许清单。
+#   - .atp（仿真入口）/ .dat（几何源）/ .acp（ATPDraw 工程存档，不参与计算）允许上传。
+#   - .pch 是新版几何的唯一载体，新版模型已不再放行；但旧版包常因 LCC 链路
+#     （dat → LCC → pch → lib）夹带 .pch 中间产物。为兼容存量习惯，包内出现 .pch
+#     不整体拒收，而是在入库阶段静默丢弃（见 _IGNORED_ATP_MODEL_EXTENSIONS 与
+#     upload_asset_files 的 .pch 裁剪）。
+# .lib/.lis/.pl4/.log 仍为运行产物，由 geometry/simulate 现场生成，不允许上传。
+# .acp 仅作 ATPDraw 工程配套存档，不参与形态判定、LCC 重算与仿真。
 # ⚠️ 若未来接入带 egm 引擎的资产包（egm 子目录 + .exe），需在此放开对应扩展名。
-_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat", ".pch", ".acp")
+_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat", ".acp")
+# 包内可容忍但一律静默丢弃、不入库的扩展名：旧版模型包常夹带 LCC 中间产物 .pch。
+# 不在 _ALLOWED_ATP_MODEL_EXTENSIONS（不收），但也不因它出现就整体拒收上传。
+_IGNORED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".pch",)
 # 老版模型的四个标准几何源名（仅作文档/日志引用；完整性校验已移到
 # atp_model_format.inspect_package 的 E002，因为只有先判定形态才知道该不该要求 .dat）
 _DAT_MODEL_NAMES: tuple[str, ...] = ("long", "short", "dahao", "xiaohao")
@@ -453,14 +453,17 @@ def _normalize_archive_member_path(value: str) -> str | None:
 def _validate_atp_model_members(relative_paths: list[str]) -> None:
     """校验上传的 ATP 模型文件清单（zip 成员或散文件，只读不写）。
 
-    规则（2026-11-08 收紧，2026-11-10 放开 .acp，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
-    1. 白名单：只允许 .atp / .dat / .pch / .acp；发现其他扩展名 → 400 并列出
+    规则（2026-11-12 起白名单收敛为 .atp / .dat / .acp，只接收旧版模型）：
+    1. 白名单：只允许 .atp / .dat / .acp；发现其他扩展名 → 400 并列出
        · .lib 是 LCC 派生件（由 .dat 重算），单独给提示而不是笼统报「非法文件」
+       · .pch 是旧版包常夹带的 LCC 中间产物，不整体拒收、静默忽略（见
+         _IGNORED_ATP_MODEL_EXTENSIONS），入库阶段统一丢弃
        · .acp 是 ATPDraw 工程文件，允许上传但只作存档（不参与形态判定与仿真）
        · .lis / .pl4 / .dbg 属于运行输出，一律不收
     2. 入口：必须存在 work.atp，或恰好一个 .atp
     3. 几何完整性 / 形态判定 / 参数段可解析性 → 由 atp_model_format.inspect_package
-       按形态分级判定（老版要四个 .dat，新版要 pch 齐全），不在此处硬卡
+       按形态分级判定（旧版要四个 .dat），不在此处硬卡；新版（$INSERT）模型在
+       _inspect_atp_package_or_400 里先判形态直接 400 拒收
 
     校验失败时调用方保证零写入（本函数只读清单）。
     """
@@ -477,18 +480,22 @@ def _validate_atp_model_members(relative_paths: list[str]) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"不要上传 .lib（LCC 派生文件，平台会按 .dat 重新生成）：{shown}{suffix}。"
-                "旧版模型只需 work.atp + long/short/dahao/xiaohao.dat；"
-                "新版（$INSERT）模型另需它引用的 .pch"
+                "平台只接收旧版模型：work.atp + long/short/dahao/xiaohao.dat"
             ),
         )
-    illegal = sorted(path for path in relative_paths if not path.lower().endswith(_ALLOWED_ATP_MODEL_EXTENSIONS))
+    # .pch 可容忍但会被静默丢弃，不算非法文件（兼容旧版包里夹带的 LCC 中间产物）。
+    ignored = _IGNORED_ATP_MODEL_EXTENSIONS
+    illegal = sorted(
+        path for path in relative_paths
+        if not path.lower().endswith(_ALLOWED_ATP_MODEL_EXTENSIONS + ignored)
+    )
     if illegal:
         shown = ", ".join(illegal[:8])
         suffix = f" 等 {len(illegal)} 个" if len(illegal) > 8 else ""
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"ATP 模型只接受 .atp / .dat / .pch / .acp 文件，发现非法文件：{shown}{suffix}。"
+                f"ATP 模型只接受 .atp / .dat / .acp 文件（平台只接收旧版模型），发现非法文件：{shown}{suffix}。"
                 ".lis/.pl4/.dbg 是运行输出，均不参与计算，请勿上传"
             ),
         )
@@ -511,9 +518,9 @@ def _validate_atp_model_members(relative_paths: list[str]) -> None:
 # 因此**不能**用指纹大小写做判据，必须按引用形态判。判定与逐项校验统一在
 # `services/atp_model_format.py`（纯函数、可单测），本处只负责「转 HTTP 错误 + 落库」。
 #
-# 2026-11-02 策略变更：7.2+ 的 `$INSERT` 形态**不再拒收**，改为「校验通过就接收」——
-# 只要 pch 齐全、参数段能解析，规范化后引擎实测可跑通（110/ganzi M123：rc=0、pl4 369665 字节）。
-# 拒收只保留给真无法修复的形态（Enbed / 混合 / 依赖缺失）。
+# 2026-11-12 策略再变更：上传入口只接收旧版（legacy）模型，7.2+ 的 `$INSERT` 形态
+# 在上传口按形态判定直接 400 拒收（见 _inspect_atp_package_or_400）。存量 insert
+# 资产的仿真/几何链路、inspect_package 的判定能力保持不变，只是不再新增此类资产。
 
 
 def _find_entry_atp_content(members: list[tuple[str, bytes]]) -> tuple[str, bytes] | None:
@@ -610,12 +617,29 @@ def _strip_retired_format_check_issues(check: Any) -> Any:
     return cleaned
 
 
+# 新版（$INSERT）模型上传口的统一拒收文案（与新规则一致，不出现「请补充 pch」类建议）。
+_INSERT_MODEL_REJECT_DETAIL = (
+    "平台目前只接收旧版模型（$INCLUDE + .lib，ATPDraw 6.x/7.0/7.1），"
+    "不再接收新版（$INSERT + 序号 .pch，ATPDraw 7.2+）模型"
+)
+
+
 def _inspect_atp_package_or_400(members: dict[str, bytes]) -> PackageInspection:
     """上传包整体预检：形态判定 + 依赖闭合 + 参数段可解析性。
 
     error 级问题抛 400（调用方保证零写入），warning 级随报告返回供落库展示。
+    2026-11-12 起上传入口只接收旧版模型：先判形态，若 work.atp 含 $INSERT
+    （inspect_package 判为 FORMAT_INSERT）直接 400 拒收，避免落到 E010「把 pch
+    一起打进包」这类与新规则矛盾、且新版已不再接收的修复建议。判定能力
+    inspect_package 本身保持不变（存量 insert 资产复检仍走它），只是上传口不再放行。
     """
     report = inspect_package(members)
+    # 先判形态再校验 pch 依赖：新版（$INSERT）模型一律拒收，且给出与新规则一致的文案。
+    if report.model_format == FORMAT_INSERT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_INSERT_MODEL_REJECT_DETAIL,
+        )
     if report.has_error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -773,10 +797,12 @@ def _write_archive_to_storage(
                 if relative_path is None:
                     continue
                 members.append((relative_path, member))
+            # 2026-11-12：包内夹带的 .pch（旧版 LCC 中间产物 / 新版几何载体）一律
+            # 静默丢弃，不写入资产目录；新版（$INSERT）模型已在预检阶段按形态拒收。
+            members = [m for m in members if not m[0].lower().endswith(_IGNORED_ATP_MODEL_EXTENSIONS)]
             _validate_atp_model_members([path for path, _ in members])
-            # 内容级预检（形态判定 + pch 闭合 + 参数段可解析性）已由
-            # upload_asset_archive 在写盘前完成，此处只做清单校验，
-            # 避免同一份 zip 解析两遍（pch 合计几十 KB，但没必要重复读）。
+            # 内容级预检（形态判定 + 参数段可解析性）已由 upload_asset_archive
+            # 在写盘前完成，此处只做清单校验，避免同一份 zip 解析两遍。
             # 第二遍：写入
             for relative_path, member in members:
                 target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
@@ -2029,7 +2055,7 @@ def upload_asset_archive(
     storage_root_path = asset.storage_root_path or _build_asset_storage_root(asset.code)
     mount = _resolve_mount(db, storage_mount_code)
     driver = _build_driver_or_400(mount)
-    # 写盘前先做内容级预检：形态判定 + pch 闭合 + 参数段可解析性。
+    # 写盘前先做内容级预检：形态判定（新版 $INSERT 直接拒收）+ 参数段可解析性。
     # 失败时零写入（连 staging 目录都不建），避免留下半包。
     # 空结果 = zip 损坏或包内没有模型文件 → 交给下面的写盘阶段报 BadZipFile / 空包。
     members_for_check = _zip_members_for_check(archive_content)
@@ -2780,20 +2806,21 @@ def upload_asset_files(
         rewritten_members = _preprocess_legacy_members(checked)
         format_report = _inspect_atp_package_or_400(checked)
 
-        # 2026-11-08：旧版（$INCLUDE .lib）形态的 .pch 是纯中间产物。若留在资产里，
-        # 每轮 _materialize_asset_files 都会把它带进运行目录 —— LCC 一旦没跑成功
-        # （KILL=84 坐标重合、缺几何跳过重算等），ATP 就直接把这份旧 pch 当本轮产物用，
-        # 结果看起来"成功"但几何是上一次的。入库即丢弃，链路固定为 dat→LCC→pch→lib，
-        # 缺件时在 LCC 阶段报错，而不是静默算出一个假数。
+        # 2026-11-12：上传入口只接收旧版模型，.pch 一律不再入库。旧版（$INCLUDE .lib）
+        # 包里夹带的 .pch 是 LCC 中间产物：若留在资产里，每轮 _materialize_asset_files
+        # 都会把它带进运行目录 —— LCC 一旦没跑成功（KILL=84 坐标重合、缺几何跳过重算等），
+        # ATP 就直接把这份旧 pch 当本轮产物用，结果看起来"成功"但几何是上一次的。
+        # 入库即丢弃，链路固定为 dat→LCC→pch→lib，缺件时在 LCC 阶段报错，而不是静默
+        # 算出一个假数。新版（$INSERT）模型已在 _inspect_atp_package_or_400 按形态拒收，
+        # 不会走到这里。
         dropped_pch = []
-        if format_report.model_format == FORMAT_LEGACY:
-            kept_entries: list[tuple[str, tuple[str, Any, Any], int | None, str | None]] = []
-            for entry in entries:
-                if entry[0].lower().endswith(".pch"):
-                    dropped_pch.append(entry[0])
-                else:
-                    kept_entries.append(entry)
-            entries = kept_entries
+        kept_entries: list[tuple[str, tuple[str, Any, Any], int | None, str | None]] = []
+        for entry in entries:
+            if entry[0].lower().endswith(_IGNORED_ATP_MODEL_EXTENSIONS):
+                dropped_pch.append(entry[0])
+            else:
+                kept_entries.append(entry)
+        entries = kept_entries
 
         for relative_path, (kind, source, member), member_size, content_type in entries:
             target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
@@ -2840,7 +2867,7 @@ def upload_asset_files(
     asset.storage_root_path = storage_root_path
     if dropped_pch:
         logger.info(
-            "[ATP] 资产 %s 为旧版形态，已丢弃 %d 个 .pch（改由 .dat 经 LCC 重算）：%s",
+            "[ATP] 资产 %s 已丢弃 %d 个 .pch（上传入口只接收旧版模型，.pch 不入库）：%s",
             asset.code, len(dropped_pch), ", ".join(dropped_pch[:8]),
         )
     # 形态标记 + 预检报告（warning 清单）随本次上传落库

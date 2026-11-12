@@ -534,6 +534,21 @@ BLANK
 """
 _INSERT_FORM_PCH = b"-1X0133AXXSS2A\n-1X0133BXXSS2B\n"
 
+# 2026-11-12 起上传入口只接收旧版（$INCLUDE + .lib）模型；下面这些「上传触发」用例
+# 用旧版包做 fixture，避免误用已不再放行的 $INSERT 新版模型。
+_LEGACY_FORM_ATP = b"BEGIN NEW DATA CASE\r\n$INCLUDE, D:\\ATP\\110\\fanji\\M123\\short.lib, X0202A, X0202B, X0202C $$\r\n"
+
+
+def _legacy_upload_files() -> list[_DummyUploadFile]:
+    """旧版模型包：work.atp + 四个标准 .dat（当前唯一接收的上传形态）。"""
+    return [
+        _DummyUploadFile("work.atp", _LEGACY_FORM_ATP),
+        _DummyUploadFile("long.dat", b"1"),
+        _DummyUploadFile("short.dat", b"1"),
+        _DummyUploadFile("dahao.dat", b"1"),
+        _DummyUploadFile("xiaohao.dat", b"1"),
+    ]
+
 
 def test_recheck_asset_format_overrides_legacy_default(tmp_path) -> None:
     testing_session = _build_sessionmaker()
@@ -814,14 +829,15 @@ def test_upload_asset_files_triggers_async_analysis(monkeypatch, tmp_path) -> No
         summary = atp_asset_service.upload_asset_files(
             session,
             asset_id=asset.id,
-            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            files=_legacy_upload_files(),
             actor_user_id="tester",
         )
 
         assert calls == [asset.id]
         assert summary.analysis_status == "pending"
         # 上传口仍然同步落形态（内容已在内存，毫秒级），异步任务负责复检 + 槽位
-        assert summary.model_format == "insert"
+        # 2026-11-12：上传口只接收旧版模型，fixture 已改为 legacy 包
+        assert summary.model_format == "legacy"
     finally:
         session.close()
 
@@ -949,7 +965,7 @@ def test_upload_to_published_asset_forks_changed_version(monkeypatch, tmp_path) 
         first = atp_asset_service.upload_asset_files(
             session,
             asset_id=created.id,
-            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            files=_legacy_upload_files(),
             actor_user_id="tester",
         )
         assert first.id == created.id
@@ -966,7 +982,7 @@ def test_upload_to_published_asset_forks_changed_version(monkeypatch, tmp_path) 
         forked = atp_asset_service.upload_asset_files(
             session,
             asset_id=created.id,
-            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            files=_legacy_upload_files(),
             actor_user_id="tester",
             replace=True,
         )
@@ -994,7 +1010,7 @@ def test_upload_to_published_asset_forks_changed_version(monkeypatch, tmp_path) 
         again = atp_asset_service.upload_asset_files(
             session,
             asset_id=forked.id,
-            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            files=_legacy_upload_files(),
             actor_user_id="tester",
             replace=True,
         )
@@ -1109,7 +1125,7 @@ def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) 
         atp_asset_service.upload_asset_files(
             session,
             asset_id=created.id,
-            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            files=_legacy_upload_files(),
             actor_user_id="tester",
         )
         atp_asset_service.publish_asset(session, asset_id=created.id, set_active=True, actor_user_id="tester")
@@ -1166,7 +1182,7 @@ def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) 
         atp_asset_service.upload_asset_files(
             session,
             asset_id=created.id,
-            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            files=_legacy_upload_files(),
             actor_user_id="tester",
         )
         atp_asset_service.publish_asset(session, asset_id=created.id, set_active=True, actor_user_id="tester")

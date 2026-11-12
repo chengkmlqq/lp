@@ -686,8 +686,8 @@ def inspect_package(
         result.add(
             "E014", "error",
             "work.atp 由 ATPDraw 7.x 生成，但既无 $INSERT 也无 $INCLUDE .lib（几何已内嵌烧死）",
-            "用 ATPDraw 以 DBM/INCLUDE 方式重新导出（6.x/7.0/7.1），"
-            "或用 7.2+ 的 $INSERT 方式导出（几何随 pch 上传）",
+            "用 ATPDraw 以 DBM/INCLUDE 方式重新导出为旧版形态（6.x/7.0/7.1）；"
+            "平台上传入口已不再接收 7.2+ 的 $INSERT 新版模型",
             entry_key,
         )
 
@@ -698,8 +698,9 @@ def inspect_package(
             result.add(
                 "E010", "error",
                 f"$INSERT 引用的 {len(missing)} 个 pch 未随包上传：{', '.join(missing[:8])}",
+                "（仅存量新版资产复检会走到这里；上传入口已不再接收 $INSERT 新版模型）"
                 "ATPDraw 把 pch 写到全局共享目录（ATPDraw.ini 的 [Directories] ATP=），"
-                "需从该目录把这些 pch 一起打进模型包；缺 pch 时引擎返回 rc=0 但不出波形，"
+                "缺 pch 时引擎返回 rc=0 但不出波形，"
                 "只在 .lis 里留 'Failure to connect disk file in CIMAGE'",
                 entry_key,
             )

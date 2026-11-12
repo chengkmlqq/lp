@@ -1672,7 +1672,7 @@ export default function AtpModelsPage() {
               <Space size={6}>
                 <span>{t("上传模型文件")}</span>
                 <Tooltip
-                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch / .acp 文件。旧版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。.acp 仅作 ATPDraw 工程存档，不参与计算。")}
+                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .acp 文件。平台目前只接收旧版模型（$INCLUDE + .lib，ATPDraw 6.x/7.0/7.1），请上传 work.atp + long/short/dahao/xiaohao 四个 .dat；.acp 仅作 ATPDraw 工程存档，不参与计算。新版（$INSERT，ATPDraw 7.2+）模型不再接收。")}
                 >
                   <QuestionCircleOutlined className="text-[var(--ant-color-text-tertiary)]" />
                 </Tooltip>
@@ -1687,14 +1687,13 @@ export default function AtpModelsPage() {
                 showUploadList={false}
                 className="admin-atp-model-upload-dragger"
                 beforeUpload={(file) => {
-                  // 2026-11-03：白名单是 .atp / .dat / .pch —— 7.2+ 的 $INSERT 模型几何
-                  // 全在序号 pch 里，漏掉 pch 会让新版模型必然缺依赖（后端 E010 拒收）。
-                  // 2026-11-10：.acp 放开，作为 ATPDraw 工程配套存档一并上传。
+                  // 2026-11-12：上传入口只接收旧版模型，白名单收敛为 .atp / .dat / .acp。
+                  // 平台不再接收新版（$INSERT + 序号 .pch，ATPDraw 7.2+）模型，.pch 不再进入上传清单
+                  // （旧版包里夹带的 .pch 由后端静默丢弃）；.acp 仅作 ATPDraw 工程配套存档。
                   const lowerName = (file.name || "").toLowerCase();
                   if (
                     lowerName.endsWith(".atp") ||
                     lowerName.endsWith(".dat") ||
-                    lowerName.endsWith(".pch") ||
                     lowerName.endsWith(".acp")
                   ) {
                     setFileList((prev) => [...prev, file]);
@@ -1714,7 +1713,7 @@ export default function AtpModelsPage() {
                       {t("点击或拖拽模型文件夹到此区域上传")}
                     </p>
                     <p className="mb-0 mt-1 text-xs text-[var(--ant-color-text-tertiary)]">
-                      {t("仅接收 .atp / .dat / .pch / .acp")}
+                      {t("仅接收 .atp / .dat / .acp（仅旧版模型）")}
                     </p>
                   </div>
                 ) : (

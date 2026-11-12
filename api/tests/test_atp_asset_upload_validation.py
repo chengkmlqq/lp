@@ -1,10 +1,11 @@
 """ATP 模型上传校验测试。
 
-覆盖（2026-11-02 政策：从「见 $INSERT 就拒」改为「校验通过就收」）：
-1. _validate_atp_model_members：白名单扩展名（.atp/.dat/.pch）/ .atp 入口
-2. _inspect_atp_package_or_400：形态判定 + 依赖闭合 + 参数段可解析性（E001~E014 拒收）
-3. upload_asset_files（zip 与散文件）：非法包 400 且**零写入**（校验失败不留脏数据）
-4. upload_asset_archive（staging + 原子替换路径）同样受白名单约束
+覆盖（2026-11-12 政策：上传入口只接收旧版模型，$INSERT 新版一律 400 拒收）：
+1. _validate_atp_model_members：白名单收敛为 .atp/.dat/.acp；.pch 可容忍但静默丢弃；.atp 入口
+2. _inspect_atp_package_or_400：先判形态，FORMAT_INSERT（含 $INSERT）直接 400，
+   文案为「只接收旧版模型」且不含 E010「请补充 pch」类修复建议；旧版 E002 / Enbed E014 仍分级判定
+3. upload_asset_files（zip 与散文件）：insert 模型 400 且零写入；旧版包混带 .pch 仍能上传且 pch 不落库
+4. upload_asset_archive（staging + 原子替换路径）同样只接收旧版模型
 """
 
 from __future__ import annotations
@@ -142,12 +143,31 @@ def test_validate_accepts_acp_project_file() -> None:
 
 
 def test_validate_rejects_illegal_extension() -> None:
+    """白名单收敛为 .atp / .dat / .acp：真正非法扩展名 → 400，提示不再出现 .pch。"""
+    paths = ["work.atp", "long.dat", "short.dat", "dahao.dat", "xiaohao.dat", "short.exe"]
+    with pytest.raises(HTTPException) as exc:
+        atp_asset_service._validate_atp_model_members(paths)
+    assert exc.value.status_code == 400
+    assert "short.exe" in exc.value.detail
+    assert ".atp / .dat / .acp" in exc.value.detail
+    assert ".pch" not in exc.value.detail
+
+
+def test_validate_rejects_lib_without_new_model_hint() -> None:
+    """.lib 派生件仍单独提示，但文案不再出现「新版（$INSERT）另需 .pch」的引导。"""
     paths = ["work.atp", "long.dat", "short.dat", "dahao.dat", "xiaohao.dat", "short.lib"]
     with pytest.raises(HTTPException) as exc:
         atp_asset_service._validate_atp_model_members(paths)
     assert exc.value.status_code == 400
     assert "short.lib" in exc.value.detail
-    assert ".pch" in exc.value.detail
+    assert ".pch" not in exc.value.detail
+    assert "$INSERT" not in exc.value.detail
+
+
+def test_allowed_extensions_are_legacy_only() -> None:
+    """上传白名单只含 .atp / .dat / .acp，不再包含 .pch。"""
+    assert atp_asset_service._ALLOWED_ATP_MODEL_EXTENSIONS == (".atp", ".dat", ".acp")
+    assert ".pch" not in atp_asset_service._ALLOWED_ATP_MODEL_EXTENSIONS
 
 
 def test_validate_rejects_no_atp_entry() -> None:
@@ -173,8 +193,7 @@ def test_validate_accepts_single_atp_without_work_atp() -> None:
 def test_validate_defers_dat_requirement_to_package_inspection() -> None:
     """缺 .dat 不再由「清单校验」拒，而由预检按形态判（见 E002 用例）。
 
-    2026-11-02 前这条是 400；改政策后 .pch 形态本来就没有 .dat，
-    清单层无权硬卡，必须在判定形态之后才决定要不要四个 .dat。
+    清单层无权硬卡 .dat，必须在判定形态之后才决定要不要四个 .dat。
     """
     atp_asset_service._validate_atp_model_members(["work.atp", "long.dat", "short.dat", "dahao.dat"])
 
@@ -475,7 +494,8 @@ def test_upload_files_loose_lib_rejected(tmp_path) -> None:
 def test_upload_archive_rejects_lib_pack(tmp_path) -> None:
     """归档路径同样受白名单约束：.lib 是运行产物，不允许上传。
 
-    2026-11-02 起 .pch 反过来是**允许**的（新版几何载体），所以这里用 .lib 触发拒收。
+    2026-11-12 起 .pch 也不再进入白名单（包内夹带的旧版 LCC 中间产物静默丢弃），
+    这里仍用 .lib 触发拒收。
     """
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
@@ -584,33 +604,39 @@ def _inspect(entries: dict[str, bytes]):
     return atp_asset_service._inspect_atp_package_or_400(entries)
 
 
-def test_insert_form_accepted_when_pch_present() -> None:
-    """7.2+ 的 $INSERT 形态：pch 齐全就接收（2026-11-02 政策变更，此前一律 400）。"""
-    report = _inspect({"work.atp": _NEW_ATPDRAW_ATP, "short1.pch": _VALID_PCH})
-    assert report.model_format == "insert"
-    assert report.insert_refs == ["short1.pch"]
-    assert not report.has_error
+def _assert_insert_reject_detail(detail: str) -> None:
+    """新版（$INSERT）模型拒收文案：只接收旧版模型，且不出现 E010「请补充 pch」类建议。"""
+    assert "只接收旧版模型" in detail
+    assert "不再接收新版" in detail
+    assert "E010" not in detail
+    assert "E011" not in detail
+    assert "E012" not in detail
+    assert "打进模型包" not in detail
+    assert "ATPDraw.ini" not in detail
 
 
-def test_insert_form_rejected_when_pch_missing() -> None:
-    """pch 未随包上传 → E010。
+def test_insert_form_rejected_even_when_pch_present() -> None:
+    """2026-11-12：7.2+ 的 $INSERT 形态即使 pch 齐全也拒收（只接收旧版模型）。"""
+    with pytest.raises(HTTPException) as exc:
+        _inspect({"work.atp": _NEW_ATPDRAW_ATP, "short1.pch": _VALID_PCH})
+    assert exc.value.status_code == 400
+    _assert_insert_reject_detail(exc.value.detail)
 
-    这类包引擎仍返回 rc=0、pl4 为 0 字节，只在 .lis 里留
-    `Failure to connect disk file in CIMAGE`，所以必须在上传口拦。
-    """
+
+def test_insert_form_rejected_when_pch_missing_without_e010() -> None:
+    """pch 缺失也不再落到 E010「请把 pch 打进包」，而是先判形态直接拒收。"""
     with pytest.raises(HTTPException) as exc:
         _inspect({"work.atp": _NEW_ATPDRAW_ATP})
     assert exc.value.status_code == 400
-    assert "E010" in exc.value.detail
-    assert "short1.pch" in exc.value.detail
+    _assert_insert_reject_detail(exc.value.detail)
 
 
-def test_insert_form_rejects_truncated_pch() -> None:
-    """pch 没有分支头脚卡 → E011（半截文件，节点名缺失）。"""
+def test_insert_form_rejects_truncated_pch_with_clear_message() -> None:
+    """pch 是半截文件也一并按新版模型拒收，不出现 E011 修复建议。"""
     with pytest.raises(HTTPException) as exc:
         _inspect({"work.atp": _NEW_ATPDRAW_ATP, "short1.pch": b" 0.1 0.2\r\n"})
     assert exc.value.status_code == 400
-    assert "E011" in exc.value.detail
+    _assert_insert_reject_detail(exc.value.detail)
 
 
 def test_entry_content_accepts_old_atpdraw_fingerprint() -> None:
@@ -632,6 +658,8 @@ def test_entry_content_rejects_embed_form() -> None:
         _inspect({"work.atp": _EMBED_ATPDRAW_ATP})
     assert exc.value.status_code == 400
     assert "E014" in exc.value.detail
+    # 修复建议不再引导用 7.2+ 的 $INSERT 方式重新导出（新版已不再接收）
+    assert "或用 7.2+ 的 $INSERT 方式导出" not in exc.value.detail
 
 
 def test_entry_content_accepts_no_fingerprint() -> None:
@@ -640,23 +668,24 @@ def test_entry_content_accepts_no_fingerprint() -> None:
 
 
 def test_entry_content_rejects_mixed_insert_and_include() -> None:
-    """$INSERT 与 $INCLUDE .lib 同时存在 → E012（同一工程两种几何引用只能留一种）。"""
+    """$INSERT 与 $INCLUDE .lib 同时存在：判为新版形态 → 按「只接收旧版模型」拒收。"""
     mixed = _OLD_ATPDRAW_ATP + b"$INSERT, D:\\ATP\\work\\results\\short1.pch\r\n"
     with pytest.raises(HTTPException) as exc:
         _inspect({"work.atp": mixed, "short1.pch": _VALID_PCH})
     assert exc.value.status_code == 400
-    assert "E012" in exc.value.detail
+    _assert_insert_reject_detail(exc.value.detail)
 
 
-def test_validate_accepts_pch_extension() -> None:
-    # 2026-11-02：.pch 是 7.2+ 的几何载体，必须收（旧版此处断言拒收）
+def test_validate_tolerates_pch_extension() -> None:
+    """2026-11-12：.pch 不在白名单，但旧版包夹带时可容忍（不整体拒收），入库统一丢弃。"""
+    assert ".pch" not in atp_asset_service._ALLOWED_ATP_MODEL_EXTENSIONS
     atp_asset_service._validate_atp_model_members(
         ["work.atp", "long.dat", "short.dat", "dahao.dat", "xiaohao.dat", "short1.pch"]
     )
 
 
-def test_upload_files_zip_insert_missing_pch_rejected_zero_write(tmp_path) -> None:
-    """7.2+ 包缺 pch：400（E010）+ 零写入。"""
+def test_upload_files_zip_insert_rejected_zero_write(tmp_path) -> None:
+    """新版（$INSERT）模型上传 → 400「只接收旧版模型」+ 零写入，不出现 E010「请补充 pch」。"""
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
     try:
@@ -673,7 +702,7 @@ def test_upload_files_zip_insert_missing_pch_rejected_zero_write(tmp_path) -> No
                 actor_user_id="tester",
             )
         assert exc.value.status_code == 400
-        assert "E010" in exc.value.detail
+        _assert_insert_reject_detail(exc.value.detail)
         # 零写入：校验失败时存储目录不应残留任何文件
         asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
         written = list(asset_root.rglob("*")) if asset_root.exists() else []
@@ -682,31 +711,78 @@ def test_upload_files_zip_insert_missing_pch_rejected_zero_write(tmp_path) -> No
         session.close()
 
 
-def test_upload_files_zip_insert_complete_pack_accepted(tmp_path) -> None:
-    """7.2+ 完整包（work.atp + 全部 pch）能传上去，并落形态标记 + 预检报告。"""
+def test_upload_files_zip_insert_complete_pack_rejected(tmp_path) -> None:
+    """7.2+ 完整包（work.atp + 全部 pch）也不再接收：400 + 零写入，pch 不落库。"""
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         asset = _create_asset(session)
 
-        atp_asset_service.upload_asset_files(
+        with pytest.raises(HTTPException) as exc:
+            atp_asset_service.upload_asset_files(
+                session,
+                asset_id=asset.id,
+                files=[
+                    _DummyUploadFile(
+                        "model.zip",
+                        _build_zip({"work.atp": _NEW_ATPDRAW_ATP, "short1.pch": _VALID_PCH}),
+                    )
+                ],
+                actor_user_id="tester",
+            )
+        assert exc.value.status_code == 400
+        _assert_insert_reject_detail(exc.value.detail)
+        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
+        written = list(asset_root.rglob("*")) if asset_root.exists() else []
+        assert written == []
+    finally:
+        session.close()
+
+
+def test_upload_files_loose_insert_model_rejected(tmp_path) -> None:
+    """散文件上传：前端已过滤 .pch，但 work.atp 含 $INSERT → 仍按新版模型 400 拒收。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = _create_asset(session)
+        files = [_DummyUploadFile("work.atp", _NEW_ATPDRAW_ATP)] + [
+            _DummyUploadFile(name, b"1") for name in ("long.dat", "short.dat", "dahao.dat", "xiaohao.dat")
+        ]
+
+        with pytest.raises(HTTPException) as exc:
+            atp_asset_service.upload_asset_files(
+                session, asset_id=asset.id, files=files, actor_user_id="tester"
+            )
+        assert exc.value.status_code == 400
+        _assert_insert_reject_detail(exc.value.detail)
+        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
+        written = list(asset_root.rglob("*")) if asset_root.exists() else []
+        assert written == []
+    finally:
+        session.close()
+
+
+def test_upload_archive_legacy_pack_drops_pch(tmp_path) -> None:
+    """归档覆盖路径：旧版包混带 .pch 仍能成功上传，且 .pch 不落库。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = _create_asset(session)
+        entries = _legacy_entries()
+        entries["long.pch"] = b"punch"
+
+        atp_asset_service.upload_asset_archive(
             session,
             asset_id=asset.id,
-            files=[
-                _DummyUploadFile(
-                    "model.zip",
-                    _build_zip({"work.atp": _NEW_ATPDRAW_ATP, "short1.pch": _VALID_PCH}),
-                )
-            ],
+            archive_filename="model.zip",
+            archive_content=_build_zip(entries),
             actor_user_id="tester",
         )
-
-        saved = session.query(AtpAsset).filter(AtpAsset.code == "ATP-ASSET-VALIDATE").first()
-        assert saved is not None
-        assert saved.model_format == "insert"
-        assert saved.format_check_json.get("model_format") == "insert"
         asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-VALIDATE"
-        assert (asset_root / "short1.pch").is_file()
+        assert (asset_root / "work.atp").is_file()
+        assert list(asset_root.glob("*.pch")) == []
     finally:
         session.close()

@@ -999,7 +999,7 @@ export function AtpModelDetailTab({
             fileList={replaceFiles}
             beforeUpload={() => false}
             onChange={({ fileList: next }) => setReplaceFiles(next)}
-            accept=".zip,.atp,.dat,.lib,.pch,.acp"
+            accept=".zip,.atp,.dat,.acp"
           >
             <p className="ant-upload-drag-icon">
               <CloudUploadOutlined />
