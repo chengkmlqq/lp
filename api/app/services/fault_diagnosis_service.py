@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import logging
 import subprocess
@@ -400,6 +401,25 @@ def _collect_inputs(
     return fault_raw, lightning_raw, ledger_rows, traveling_wave_records, warnings
 
 
+class MatlabEngineError(Exception):
+    """MATLAB 行波引擎调用失败。
+
+    引擎已部署但运行/产出异常时抛出，使判别任务以 failed 状态暴露错误，
+    而不是静默降级到内置 Python 启发式规则（analyze_traveling_waves 分支）。
+    """
+
+
+# 交付版示例行波文件的 CurrentDataInput 行结尾常带多余逗号，str2double('') 得到
+# NaN，会触发引擎内部 assert(all(isfinite(x))) 失败（returncode=249）。暂存时清洗掉
+# 行尾的逗号/空白，避免无谓的引擎崩溃。
+_CURDATA_TRAILING_RE = re.compile(r"^(CurrentDataInput\s*=.*?)[\s,]+$", re.IGNORECASE | re.MULTILINE)
+
+
+def _clean_wave_input_text(text: str) -> str:
+    """清洗行波 txt 中 CurrentDataInput 行结尾的多余逗号与空白。"""
+    return _CURDATA_TRAILING_RE.sub(r"\1", text)
+
+
 def _try_matlab_wave_enhancement(
     analysis_id: str,
     analysis_dir: Path,
@@ -409,7 +429,7 @@ def _try_matlab_wave_enhancement(
     traveling_wave_records: Sequence[Mapping[str, Any]],
     manual: Mapping[str, Any],
 ) -> tuple[Path | None, Path | None]:
-    """可插拔行波增强：优先调用 MATLAB Runtime 编译产物，不可用时返回 (None, None)。
+    """可插拔行波增强：调用 MATLAB Runtime 编译产物做行波判别。
 
     编译产物约定（与判别系统交付版 RunWaveAnalysisModule 输入/输出一致）：
     - 位置：settings.fault_diag_matlab_compiled_dir（环境变量 FAULT_DIAG_MATLAB_COMPILED_DIR）
@@ -419,8 +439,13 @@ def _try_matlab_wave_enhancement(
     - 返回值：成功时返回 (prediction_path, output_dir_path)，其中 output_dir_path 即本次
       运行的全部引擎产物目录（module_runs/<run_id>），供调用方整体归档到 MinIO。
 
-    未配置产物、可执行文件缺失或调用失败时一律返回 (None, None)，由调用方降级到
-    内置 Python 可解释特征规则（analyze_traveling_waves 启发式分支）。
+    引擎已部署（compiled_dir 已配置且存在可执行文件）但运行/产出异常时，抛出
+    MatlabEngineError 使判别任务以 failed 状态暴露错误。不再静默降级到内置 Python
+    启发式规则（analyze_traveling_waves 分支）——引擎有问题必须可见。
+
+    以下两种情况属于“无需增强”的正常跳过，返回 (None, None)：
+    - compiled_dir 未配置（引擎未部署/有意禁用）；
+    - 没有行波记录可供增强。
     """
     compiled_dir = (get_settings().fault_diag_matlab_compiled_dir or "").strip()
     if not compiled_dir:
@@ -435,8 +460,10 @@ def _try_matlab_wave_enhancement(
     exe_names = ("waveform_engine_v2.exe", "waveform_engine.exe", "RunWaveAnalysisModule")
     executable = next((Path(compiled_dir) / n for n in exe_names if (Path(compiled_dir) / n).is_file()), None)
     if executable is None:
-        logger.warning("Fault diagnosis MATLAB skipped: no wave module executable in %s", compiled_dir)
-        return None, None
+        raise MatlabEngineError(
+            f"MATLAB 行波引擎已配置目录 {compiled_dir}，但未找到可执行文件"
+            f"（期望其中之一：{exe_names}）。请检查引擎部署。"
+        )
     # Wine 二进制：仅 Windows 产物需要；Linux 产物直接执行。
     wine_binary = (get_settings().wine_binary_path or "wine").strip() or "wine"
 
@@ -451,7 +478,7 @@ def _try_matlab_wave_enhancement(
         )
     except Exception:
         logger.exception("Fault diagnosis MATLAB preliminary analysis failed for %s", analysis_id)
-        return None, None
+        raise MatlabEngineError(f"MATLAB 行波引擎前置分析失败（analysis_id={analysis_id}）") from None
     fault = preliminary["inputs"].get("fault_record", {})
     fault_phase = "".join(
         dict.fromkeys(letter for letter in str(fault.get("fault_phase") or "").upper() if letter in "ABC")
@@ -474,14 +501,24 @@ def _try_matlab_wave_enhancement(
         output_root.mkdir(parents=True, exist_ok=True)
     except OSError:
         logger.exception("Fault diagnosis MATLAB staging directory creation failed for %s", analysis_id)
-        return None, None
+        raise MatlabEngineError(f"MATLAB 行波引擎暂存目录创建失败（analysis_id={analysis_id}）") from None
     for record in traveling_wave_records:
         source = Path(str(record.get("path") or ""))
         if source.is_file():
+            dest = staged_input / source.name
             try:
-                shutil.copy2(source, staged_input / source.name)
-            except OSError:
-                pass
+                # 行波 txt 的 CurrentDataInput 行结尾可能带多余逗号，清洗掉以免引擎
+                # assert(isfinite(x)) 失败；清洗失败时退回原文拷贝，由引擎真实报错暴露。
+                if source.suffix.lower() == ".txt":
+                    raw = source.read_text(encoding="utf-8-sig")
+                    dest.write_text(_clean_wave_input_text(raw), encoding="utf-8")
+                else:
+                    shutil.copy2(source, dest)
+            except (OSError, UnicodeDecodeError):
+                try:
+                    shutil.copy2(source, dest)
+                except OSError:
+                    pass
     if fault_phase:
         (staged_input / f"录波故障相{fault_phase}.txt").write_text(
             f"录波故障相={fault_phase}\n", encoding="utf-8"
@@ -521,10 +558,12 @@ def _try_matlab_wave_enhancement(
             proc.kill()
             proc.wait()
             logger.error("Fault diagnosis MATLAB timed out after 600s for %s", analysis_id)
-            return None, None
+            raise MatlabEngineError(
+                f"MATLAB 行波引擎执行超时（600s，analysis_id={analysis_id}）"
+            ) from None
     except Exception:
         logger.exception("Fault diagnosis MATLAB process failed for %s", analysis_id)
-        return None, None
+        raise MatlabEngineError(f"MATLAB 行波引擎进程异常（analysis_id={analysis_id}）") from None
 
     latest_file = output_root / "最新结果路径.txt"
     if returncode != 0 or not latest_file.is_file():
@@ -534,12 +573,17 @@ def _try_matlab_wave_enhancement(
             returncode,
             latest_file.is_file(),
         )
-        return None, None
+        raise MatlabEngineError(
+            f"MATLAB 行波引擎未产出结果（analysis_id={analysis_id}，returncode={returncode}，"
+            f"latest_file={latest_file.is_file()}）。请查看任务日志中的 [MATLAB] 输出定位引擎内部错误。"
+        )
     latest_output = Path(latest_file.read_text(encoding="utf-8-sig").strip())
     prediction = latest_output / "wave_module_prediction.txt"
     if not prediction.is_file():
         logger.warning("Fault diagnosis MATLAB prediction file missing for %s: %s", analysis_id, prediction)
-        return None, None
+        raise MatlabEngineError(
+            f"MATLAB 行波引擎预测文件缺失（analysis_id={analysis_id}，期望 {prediction}）"
+        )
     logger.info("Fault diagnosis MATLAB completed for %s: prediction=%s", analysis_id, prediction)
     return prediction, latest_output
 
