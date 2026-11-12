@@ -7,7 +7,6 @@ import {
   DeleteOutlined,
   DisconnectOutlined,
   EditOutlined,
-  ExperimentOutlined,
   EyeOutlined,
   MoreOutlined,
   SendOutlined,
@@ -35,12 +34,10 @@ const MAX_VISIBLE_TAGS = 3;
 interface AtpModelCardProps {
   asset: AtpAssetSummary;
   canManage: boolean;
-  canTest: boolean;
   deleteLoading: boolean;
   onView: (asset: AtpAssetSummary) => void;
   onEdit: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
-  onTest: (asset: AtpAssetSummary) => void;
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
   publishBusy: boolean;
@@ -114,12 +111,10 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
 export function AtpModelCard({
   asset,
   canManage,
-  canTest,
   deleteLoading,
   onView,
   onEdit,
   onDelete,
-  onTest,
   onPublish,
   onUnpublish,
   publishBusy,
@@ -134,10 +129,6 @@ export function AtpModelCard({
   const handleEdit = useCallback(() => {
     onEdit(asset);
   }, [onEdit, asset]);
-
-  const handleTest = useCallback(() => {
-    onTest(asset);
-  }, [onTest, asset]);
 
   // 不用 useCallback：Modal.confirm 稳定，包一层 memo 反而触发 React Compiler
   // 的 preserve-manual-memoization 编译跳过（error）。
@@ -190,7 +181,8 @@ export function AtpModelCard({
   ];
 
   // 动作清单：顺序即优先级，前 MAX_VISIBLE_ACTIONS 个平铺在右下角，其余进「更多」。
-  // 「详情」点卡片本身即可进入，故排在两位常用操作之后。
+  // 卡片上的「模型测试」入口已移除（LP-9）：测试统一走详情页「模型测试」Tab / 列表视图操作列。
+  // 发布/下线为首要操作；「详情」点卡片本身即可进入，仍保留一枚平铺按钮作兜底。
   const actions: CardAction[] = [];
   if (canManage) {
     if (published) {
@@ -219,14 +211,6 @@ export function AtpModelCard({
       });
     }
   }
-  actions.push({
-    key: "test",
-    label: t("测试"),
-    icon: <ExperimentOutlined />,
-    tooltip: canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）"),
-    disabled: !canTest,
-    run: handleTest,
-  });
   actions.push({
     key: "detail",
     label: t("详情"),

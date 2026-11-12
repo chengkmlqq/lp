@@ -4,18 +4,16 @@ import type { AtpAssetSummary } from "@/types/auth";
 interface AtpModelCardListProps {
   assets: AtpAssetSummary[];
   canManage: boolean;
-  canTest: boolean;
   deleteLoading: boolean;
   onView: (asset: AtpAssetSummary) => void;
   onEdit: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
-  onTest: (asset: AtpAssetSummary) => void;
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
   publishBusy: boolean;
 }
 
-export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, publishBusy }: AtpModelCardListProps) {
+export function AtpModelCardList({ assets, canManage, deleteLoading, onView, onEdit, onDelete, onPublish, onUnpublish, publishBusy }: AtpModelCardListProps) {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {assets.map((item) => (
@@ -23,12 +21,10 @@ export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, on
           key={item.id}
           asset={item}
           canManage={canManage}
-          canTest={canTest}
           deleteLoading={deleteLoading}
           onView={onView}
           onEdit={onEdit}
           onDelete={onDelete}
-          onTest={onTest}
           onPublish={onPublish}
           onUnpublish={onUnpublish}
           publishBusy={publishBusy}
