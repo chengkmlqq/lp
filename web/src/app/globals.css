@@ -3543,7 +3543,7 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 副标题行：编码 / 版本 / 创建时间 + 形态与状态 chips */
+/* 副标题行：编码 / 版本 / 创建时间 + 状态 chip */
 .admin-atp-models-detail-subline {
   display: flex;
   align-items: center;
@@ -3559,18 +3559,8 @@ body {
   color: var(--fquiz-theme-border);
 }
 
-.admin-atp-models-detail-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-/* 统计行：大数字 + 小灰标签，与标题区用虚线分隔 */
+/* 统计行：大数字 + 小灰标签，与标题区用虚线分隔。
+   概览页复用这套多格读数；详情页收敛为单格时用 .is-compact 去掉整行虚线与多余留白。 */
 .admin-atp-models-detail-stats {
   display: flex;
   flex-wrap: wrap;
@@ -3578,6 +3568,13 @@ body {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px dashed var(--fquiz-theme-border);
+}
+
+/* 详情页统计行只保留「文件数」单格：紧凑贴合标题区，不留整行虚线与大片空白 */
+.admin-atp-models-detail-stats.is-compact {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .admin-atp-models-detail-stat {

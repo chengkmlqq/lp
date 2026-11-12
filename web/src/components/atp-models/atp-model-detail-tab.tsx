@@ -30,7 +30,6 @@ import {
   ReloadOutlined,
   SearchOutlined,
   SwapOutlined,
-  WarningOutlined,
 } from "@ant-design/icons";
 import { useMemo, useState } from "react";
 import type { ColumnsType } from "antd/es/table";
@@ -40,7 +39,6 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { readApiError } from "@/lib/api";
 import { packModelFilesZip } from "@/lib/atp-model-pack";
-import { checkWarningCount, describeModelFormat, MODEL_ANALYZING_META } from "@/lib/atp-model-format";
 import { publishStateMeta, resolvePublishState } from "@/lib/atp-model-state";
 import type {
   AtpAssetFileListResponse,
@@ -109,11 +107,15 @@ function runStatusMeta(status: AtpAssetRunStatus | null, t: (s: string) => strin
  * bordered 表格的竖线也显得重。
  *
  * 新版按「概览带 → 分区 Tabs → 干净表格」重排：
- * - 顶部概览带：图标锚点 + 模型名/编码 + 语义 chip（发布/形态/状态）+ 刷新；
- *   下方一行大数字统计（测试次数 / 最近结果 / 文件数），三秒读完使用情况；
+ * - 顶部概览带：图标锚点 + 模型名/编码 + 语义 chip（发布/状态）+ 刷新；
+ *   下方一行紧凑读数（文件数）；
  * - 内容用 Tabs 分区：「基本信息」是无边框属性网格 + 参数槽位；「文件列表 (n)」
  *   带文件名筛选与分页，对齐知识构建页「概览 + 表格」的阅读节奏；
  * - 属性网格沿用卡片的两列 dl 视觉（标签灰 12px / 值深 13px），详情页放宽为四列。
+ *
+ * 2026-11-12 精简（信息过载反馈）：撤掉概览带里的「测试次数 / 最近结果」两格读数与
+ * 形态 chip，统计行只留「文件数」并收敛为紧凑单格；「基本信息」去掉「模型形态 / 存储挂载」
+ * 两项。形态与预检提示仍由「模型检查」Alert 呈现，最近运行结果保留在「基本信息」里。
  */
 export function AtpModelDetailTab({
   assetId,
@@ -407,13 +409,8 @@ export function AtpModelDetailTab({
     );
   }
 
-  // 模型形态与上传预检：形态决定仿真走 lib 还是 pch 链路；warning 是
-  // 「需要人工确认但不阻断仿真」的项。分析进行中时显示「检测中」。
+  // 后台形态 / 槽位分析进行中：预检提示（checkIssues）待分析结束后再展示。
   const analysisRunning = asset?.analysis_status === "pending" || asset?.analysis_status === "running";
-  const formatMeta = analysisRunning
-    ? MODEL_ANALYZING_META
-    : describeModelFormat(asset?.model_format, Boolean(asset?.format_check?.model_format));
-  const warnCount = checkWarningCount(asset?.format_check);
   const checkIssues = asset?.format_check?.issues ?? [];
   const abnormal = asset ? statusMeta(asset.status, t) : null;
   // 发布生命周期四态（2026-11-10）：新建 / 变更 / 已发布 / 下线
@@ -685,7 +682,7 @@ export function AtpModelDetailTab({
         <Alert type="error" showIcon message={t("加载 ATP 模型失败")} description={assetQuery.error instanceof Error ? assetQuery.error.message : ""} />
       ) : asset ? (
         <>
-          {/* 概览带：图标锚点 + 名称/编码 + 语义 chips + 刷新；下方大数字统计行 */}
+          {/* 概览带：图标锚点 + 名称/编码 + 发布状态 chip + 刷新；下方紧凑单格读数 */}
           <div className="admin-atp-models-detail-hero">
             <div className="admin-atp-models-detail-hero-head">
               <span className="admin-atp-models-card-tile admin-atp-models-detail-tile" aria-hidden>
@@ -713,17 +710,6 @@ export function AtpModelDetailTab({
                   <span>
                     {t("创建于")} {formatDateTime(asset.create_date)}
                   </span>
-                  <Tooltip title={t(formatMeta.hint)}>
-                    <span
-                      className="admin-atp-models-detail-chip"
-                      style={{ color: formatMeta.color, background: formatMeta.background }}
-                    >
-                      {t(formatMeta.short)}
-                      {warnCount > 0 && !analysisRunning ? (
-                        <WarningOutlined style={{ fontSize: 11 }} />
-                      ) : null}
-                    </span>
-                  </Tooltip>
                   {abnormal ? (
                     <span className={`admin-atp-models-state-chip ${abnormal.chipClass}`}>{abnormal.text}</span>
                   ) : null}
@@ -768,18 +754,8 @@ export function AtpModelDetailTab({
               </Space>
             </div>
 
-            <div className="admin-atp-models-detail-stats">
-              <div className="admin-atp-models-detail-stat">
-                <span className="admin-atp-models-detail-stat-value">{asset.run_count ?? 0}</span>
-                <span className="admin-atp-models-detail-stat-label">{t("测试次数")}</span>
-              </div>
-              <div className="admin-atp-models-detail-stat">
-                <span className={`admin-atp-models-detail-stat-value ${runStatus.className}`}>{runStatus.text}</span>
-                <span className="admin-atp-models-detail-stat-label">
-                  {t("最近结果")}
-                  {asset.last_run_date ? ` · ${formatDateTime(asset.last_run_date)}` : ""}
-                </span>
-              </div>
+            {/* 顶部统计行收敛为紧凑单格：只保留文件数（概览页仍复用同一套多格视觉） */}
+            <div className="admin-atp-models-detail-stats is-compact">
               <div className="admin-atp-models-detail-stat">
                 <span className="admin-atp-models-detail-stat-value">{files.length}</span>
                 <span className="admin-atp-models-detail-stat-label">{t("文件数")}</span>
@@ -859,27 +835,12 @@ export function AtpModelDetailTab({
                         <dd>{asset.shield_wire === "without" ? t("无避雷线") : t("有避雷线")}</dd>
                       </div>
                       <div>
-                        <dt>{t("模型形态")}</dt>
-                        <dd>
-                          <span style={{ color: formatMeta.color }}>{t(formatMeta.label)}</span>
-                          {warnCount > 0 && !analysisRunning ? (
-                            <Typography.Text type="warning" style={{ fontSize: 12, marginLeft: 6 }}>
-                              {warnCount} {t("条提示")}
-                            </Typography.Text>
-                          ) : null}
-                        </dd>
-                      </div>
-                      <div>
                         <dt>{t("最近运行")}</dt>
                         <dd>
                           {asset.last_run_status
                             ? `${runStatus.text} · ${formatDateTime(asset.last_run_date)}`
                             : "-"}
                         </dd>
-                      </div>
-                      <div>
-                        <dt>{t("存储挂载")}</dt>
-                        <dd>{asset.storage_mount_code || "-"}</dd>
                       </div>
                       <div>
                         <dt>{t("创建时间")}</dt>
