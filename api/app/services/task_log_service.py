@@ -172,7 +172,9 @@ def mark_task_log_end(task_id: str) -> None:
     settings = get_settings()
     client = _get_redis_client()
     key = task_log_redis_key(task_id)
-    client.xadd(key, {"field": "__end__"}, maxlen=100)
+    # 注意：这里不要再带 maxlen 截断，否则会在写入结束标记时把前面已经落盘的
+    # 诊断日志行（5000 行以内）一并砍掉，导致前端 SSE 最终收到的日志"前半段被清空"。
+    client.xadd(key, {"field": "__end__"})
     client.expire(key, settings.task_log_redis_ttl_seconds)
 
 
