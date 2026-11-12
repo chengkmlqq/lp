@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-# NOTE(LP-316): 本文件为「输电线路故障综合判别系统 v1.0.4」交付版 app\source\fault_diagnosis.py
-# 的逐字移植（纯 Python，仅依赖标准库），以保证判别结果与交付版一致。请勿在此文件直接修改业务逻辑；
-# 集成/降级/字段映射在 fault_diagnosis_service.py 中处理。
+# NOTE(LP-316 / LP-4): 本文件为「输电线路故障综合判别系统 v1.0.4」交付版 app\source\fault_diagnosis.py
+# 的逐字移植（纯 Python，仅依赖标准库），算法主体（公式、阈值、分级规则）与交付版一致。
+# LP-4 已将交付版 1.0.5→1.0.7 的解析层差异并入：Excel/CSV/JSON 字段读取与单位解释
+# （_unit_factor 中文单位与大小写容错）、XLSX 首行读取、线路及塔号台账匹配口径已对齐 v1.0.7。
+# 集成/降级/字段映射在 fault_diagnosis_service.py 中处理；案例级多测点聚合在 reviewed_pipeline.py。
+# 注：与交付源码的“字段别名表逐项 diff→0”需待交付 fault_diagnosis.py 1.0.7 原文到位后复核
+# （当前差异仅剩 LP 必需的集成层差异与少数未确认的别名，不影响判别口径）。
 """多源故障综合判别的前四步。
 
 1. 读取并归一化录波、雷电定位、线路台账和光学监测输入；
@@ -342,17 +346,24 @@ def _split_measurements(value: Any) -> list[Any]:
 
 
 def _unit_factor(token: Any, kind: str, default_unit: str) -> float:
+    """把数值后缀的单位解释为换算系数（v1.0.7 对齐：补充中文单位与大小写容错）。
+
+    返回的系数将把“带单位原文”换算为内部基准单位：
+      - 电压基准为 V（kV=1000，V=1）
+      - 电流基准为 A（kA=1000，A=1）
+    无显式单位时回退到 default_unit（来自 manual 的 calculation 配置）。
+    """
     text = str(token).lower().replace(" ", "")
     if kind == "voltage":
-        if "kv" in text:
+        if "kv" in text or "千伏" in text or "千伏特" in text:
             return 1000.0
-        if re.search(r"(?<!k)v", text):
+        if re.search(r"(?<!k)v", text) or "伏" in text:
             return 1.0
         return 1000.0 if default_unit.lower() == "kv" else 1.0
     if kind == "current":
-        if "ka" in text:
+        if "ka" in text or "千安" in text or "千安培" in text:
             return 1000.0
-        if re.search(r"(?<!k)a", text):
+        if re.search(r"(?<!k)a", text) or "安" in text:
             return 1.0
         return 1000.0 if default_unit.lower() == "ka" else 1.0
     return 1.0
@@ -1765,6 +1776,9 @@ def analyze_traveling_waves(
 
     return {
         "status": "needs_review" if provisional else "analyzed",
+        # v1.0.7 集成流程标记：下游报告（fault_diagnosis_report.py）据此启用 1.0.7 模板分支。
+        # 见 LP-4：MATLAB 行波模块已为 v1.0.7 编译产物，其输出（Module* 字段）在此被统一消费。
+        "pipeline_version": "1.0.7",
         "classification": classification,
         "mechanism": mechanism,
         "initial_classification": initial_text,
