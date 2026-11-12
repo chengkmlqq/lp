@@ -1551,6 +1551,119 @@ def sanitize_report_model_terms(doc: Document) -> None:
                 text_node.text = user_facing_model_terms(text_node.text)
 
 
+def case_process_fields(result: Mapping[str, Any]) -> dict[str, str]:
+    """v1.0.7 集成流程结论字段：只描述本例实际经过的分支，不改变推断本身。
+
+    移植自交付版 generate_final_report_docx.py::case_process_fields，供 report_field_values
+    在 result 携带 1.0.7 集成流程记录（traveling_wave_analysis.pipeline_version == "1.0.7"）
+    时计算 pipeline.* 与 wave.pure_model_sentence 等占位符取值；无记录时给出可读的回退文案，
+    保证新模板中的占位符始终被填充。
+    """
+    wave = result.get("traveling_wave_analysis", {})
+    trace = wave.get("decision_trace", {})
+    model = wave.get("model_result", {})
+    lightning = safe_get(result, "inputs", "lightning", default={}) or {}
+    ln = str(trace.get("ln_vote") or model.get("ln_prediction") or "")
+    fr = str(trace.get("fr_vote") or model.get("fr_prediction") or "")
+    first = str(trace.get("first_layer") or ln)
+    ln_n = ln in {"NonLightning", "N"}
+    first_n = first in {"NonLightning", "N"}
+    initial = "非雷击" if ln_n else {"F": "反击", "R": "绕击"}.get(fr, "待复核")
+    pure = f"根据行波特征，初步判别为{initial}。"
+    located = str(lightning.get("query_result", "")).strip().upper() in {"是", "有", "存在", "Y", "YES", "TRUE", "1"}
+    if located and ln_n:
+        gate = "根据雷电定位记录，判别为雷击，继续进行反击与绕击判断。"
+    elif located:
+        gate = "雷电定位记录支持雷击，保持雷击判断。"
+    elif first_n:
+        gate = "无可用雷电记录，保持非雷击初判。"
+    else:
+        gate = "无可用雷电记录，保持行波特征的雷击判断。"
+
+    def numeric(value):
+        try:
+            value = float(value)
+            return value if math.isfinite(value) else None
+        except (TypeError, ValueError):
+            return None
+
+    fbf = numeric(trace.get("fbf_evidence")) == 1
+    fsf = numeric(trace.get("fsf_evidence")) == 1
+    protected = not first_n and fbf and fr == "R"
+    lower = numeric(trace.get("withstand_lower_ka"))
+    current = numeric(lightning.get("current_ka"))
+    reached_boundary = not first_n and not protected
+    boundary_used = reached_boundary and located and current is not None and lower is not None
+    boundary_hit = boundary_used and abs(current) >= lower
+    boundary = "无"
+    if boundary_used:
+        comparison = "达到" if boundary_hit else "未达到"
+        boundary = f"雷电流幅值{format_number(abs(current))} kA，{comparison}反击耐雷水平{format_number(lower)} kA，" + ("判别为反击。" if boundary_hit else "未触发反击硬边界。")
+    pair = "无"
+    checked = numeric(trace.get("subtype_checked"))
+    if checked is None:
+        phases_present = {str(x.get("phase", "")).upper() for x in safe_get(result, "inputs", "traveling_wave_files", default=[]) or []}
+        checked = int({"A", "B", "C"}.issubset(phases_present) and bool(corrected_fault_phase(result)))
+    if checked:
+        if fbf:
+            pair = "已核查：相间幅值与波尾活动满足避雷线与导线型绕击特征，但本项未单独改变主类型判断。"
+        elif len(corrected_fault_phase(result)) >= 2:
+            pair = "已核查：录波为多相故障，未满足该判据要求的单相主导特征，不符合避雷线与导线型绕击判据。"
+        else:
+            pair = "已核查：单相主导、相间幅值与波尾活动的组合条件未同时满足，不符合避雷线与导线型绕击判据。"
+    else:
+        pair = "未执行：缺少完整三相行波或录波故障相信息。"
+    if protected:
+        pair = "根据三相行波的相间幅值与波尾活动，符合避雷线与导线型绕击特征，结合绕击行波判断，判别为避雷线与导线型绕击。"
+    score = numeric(trace.get("multiphase_f_score"))
+    phases = numeric(trace.get("fault_phase_count")) or 0
+    multi_used = reached_boundary and not boundary_hit and phases >= 2 and score is not None
+    multi = "无"
+    if multi_used:
+        direction = "反击" if score >= 5 else "绕击" if score <= 2 else {"F": "反击", "R": "绕击"}.get(fr, "待复核")
+        multi = f"多相复核结论为{direction}。"
+    final = fused_fault_conclusion(result)
+    final_r = str(model.get("final_label")) == "R"
+    subtype = str(model.get("final_subtype") or "")
+    subtype_sentence = ""
+    if final_r and not protected:
+        if subtype == "FBF" and fbf:
+            pair = "根据三相行波的相间幅值与波尾特征，判别为避雷线与导线型绕击。"
+        elif subtype == "FSF" and fsf:
+            phase = corrected_fault_phase(result)
+            name = "单相导线型绕击" if len(phase) == 1 else "多相导线型绕击" if len(phase) >= 2 else "导线型绕击"
+            subtype_sentence = f"根据行波特征与录波故障相，进一步判别为{name}。"
+        elif subtype == "SF":
+            subtype_sentence = "根据行波特征，采用普通绕击结论。"
+    stages = [pure, gate]
+    stages += [s for s in (pair, boundary, multi, subtype_sentence) if s and s != "无"]
+    summary = "".join(stages) + f"综合判别为{final}。"
+    value_sentence = f"本次反击耐雷水平为{format_number(lower)} kA。" if lower is not None else "本次未提供可用的反击耐雷水平。"
+    ledger = safe_get(result, "inputs", "line_ledger", default={}) or {}
+    if lower is None and not ledger.get("matched") and ledger.get("line_candidate_count"):
+        count = ledger["line_candidate_count"]
+        low, high = ledger.get("available_tower_min"), ledger.get("available_tower_max")
+        span = f"，塔号范围为{low}—{high}" if low is not None and high is not None else ""
+        tower = safe_get(result, "inputs", "fault_record", "fault_tower", default="所定位的杆塔")
+        value_sentence = f"台账已读取本线路{count}条记录{span}，但未包含{tower}对应记录，无法取得该杆塔反击耐雷水平。"
+    return {
+        "wave.pure_model_sentence": pure, "wave.initial_result_sentence": pure,
+        "wave.initial_basis_sentence": "", "wave.probability_summary_sentence": "",
+        "wave.initial_fusion_sentence": pure,
+        "pipeline.lightning_gate_sentence": gate, "pipeline.shielding_pair_sentence": pair,
+        "pipeline.withstand_sentence": boundary, "pipeline.withstand_value_sentence": value_sentence,
+        "pipeline.multiphase_sentence": multi, "pipeline.decision_sentence": summary,
+        "pipeline.rules_sentence": "", "pipeline.process_summary_sentence": summary,
+        "wave.review_summary_sentence": summary, "wave.initial_review_sentence": summary,
+        "wave.review_result_sentence": summary, "wave.process_summary_sentence": summary,
+        "lightning.section_sentence": value_sentence,
+        "lightning.threshold_statement": boundary,
+        "cause.ledger_withstand_sentence": value_sentence.rstrip("。"),
+        "summary.cause_sentence": "2）故障成因：" + summary,
+        "pipeline.final_sentence": subtype_sentence + final,
+    }
+
+
 def report_field_values(result: Mapping[str, Any]) -> dict[str, str]:
     """把判别结果转换为可填充模板字段；模板负责版式，脚本只负责字段值。"""
     inputs = result.get("inputs", {})
@@ -1813,6 +1926,77 @@ def report_field_values(result: Mapping[str, Any]) -> dict[str, str]:
         "optical.data_status": "已提供" if optical else "未提供",
         "optical.conditional_sentence": optical_sentence,
     }
+    # v1.0.7 新增占位符：始终提供回退取值，保证新模板字段全部被填充
+    # （见 issue LP-3：新模板引入 pipeline.* 与 wave.pure_model_sentence）。
+    pipeline_final = fused_fault_conclusion(result)
+    values.update({
+        "fault.confirmed_tower": display(fault.get("fault_tower")),
+        "wave.pure_model_sentence": wave_initial_result,
+        "pipeline.lightning_gate_sentence": "当前结果未提供集成流程第一层明细。",
+        "pipeline.shielding_pair_sentence": "当前结果未提供避雷线与导线型绕击核查结论。",
+        "pipeline.withstand_sentence": "当前结果未提供按电压等级选取的反击耐雷下限及命中状态。",
+        "pipeline.multiphase_sentence": "当前结果未提供集成流程多相得分。",
+        "pipeline.process_summary_sentence": f"综合判别为{pipeline_final}。",
+        "pipeline.final_sentence": pipeline_final,
+    })
+    if wave.get("pipeline_version") == "1.0.7":
+        trace = wave.get("decision_trace", {})
+        ln = trace.get("ln_vote") or model.get("ln_prediction")
+        fr = trace.get("fr_vote") or model.get("fr_prediction")
+        ln_text = {"Lightning": "雷击", "NonLightning": "非雷击", "L": "雷击", "N": "非雷击"}.get(str(ln), "未提供")
+        fr_text = {"F": "反击", "R": "绕击"}.get(str(fr), "未提供")
+        initial = model.get("initial_final_label")
+        initial_text = {"F": "反击", "R": "绕击", "N": "非雷击"}.get(str(initial), "未提供")
+        pure_sentence = (
+            f"冻结雷击与非雷击模型表决为{ln_text}，冻结反击与绕击模型表决为{fr_text}；"
+            f"不加条件修正的纯模型结果为{initial_text}。"
+        )
+        gate = trace.get("first_layer")
+        if gate == "Lightning" and str(ln) in {"NonLightning", "N"}:
+            gate_sentence = "本次输入确认存在同时刻雷电定位记录，排除非雷击，继续进行反击与绕击判别。"
+        elif gate == "NonLightning" or (not gate and str(model.get("final_label")) == "N"):
+            gate_sentence = "本次第一层保留非雷击，后续耐雷水平、多相及绕击亚型规则不覆盖该结论。"
+        elif gate == "Lightning":
+            gate_sentence = "本次第一层进入雷击分支。"
+        else:
+            gate_sentence = "当前结果未保存第一层条件修正明细，不推测其触发情况。"
+        lower = trace.get("withstand_lower_ka")
+        threshold_source = trace.get("withstand_source") or "本次程序记录的耐雷参数"
+        hit = trace.get("withstand_hit")
+        boundary = (
+            f"本次反击耐雷水平为{format_number(lower)} kA，来源为{threshold_source}；"
+            + ("雷电流绝对值达到下限。" if str(hit) in {"1", "1.0", "True"} else "本次未触发耐雷硬边界。")
+            if has_value(lower) else f"本次缺少可用的反击耐雷水平，未执行耐雷硬边界。参数状态：{threshold_source}。"
+        )
+        boundary += "未达到所采用的反击耐雷水平，不能单凭该项排除反击。"
+        rules = (
+            "先进行雷击与非雷击判别，输入确认存在同时刻雷电定位记录时排除非雷击；"
+            "进入雷击分支后，先保留波形证据与冻结反击绕击模型同判绕击的避雷线与导线型绕击例外，"
+            "再依次检查耐雷硬边界、多相反击得分，均未触发时保留冻结反击绕击模型结果。"
+            "仅在最终判为绕击后确定亚型，依次采用避雷线与导线型、多相导线型、普通绕击。"
+        )
+        review_text = wave_review_result_sentence(wave, model, review)
+        values.update({
+            "wave.initial_result_sentence": pure_sentence + f"最大幅值相{display(initial_phase)}，候选相{display(active)}。",
+            "wave.initial_basis_sentence": "初判采用冻结模型输出；条件修正不回写初判标签，不依据最终类别反推特征方向。",
+            "wave.initial_fusion_sentence": pure_sentence,
+            "wave.review_result_sentence": review_text,
+            "wave.initial_review_sentence": wave_initial_review_sentence(result),
+            "wave.review_summary_sentence": wave_initial_review_sentence(result),
+            "wave.candidate_types_display": "不再使用旧版幅值候选集合交集；按当前集成程序的规则优先顺序判别。",
+            "wave.pure_model_sentence": pure_sentence,
+            "pipeline.lightning_gate_sentence": gate_sentence,
+            "pipeline.withstand_sentence": boundary,
+            "pipeline.decision_sentence": review_text,
+            "pipeline.rules_sentence": rules,
+            "pipeline.multiphase_sentence": "录波为多相且六项特征齐全时，反击得分至少5分支持反击，不高于2分支持绕击；3至4分或特征缺失时保留冻结模型结果。多相故障也可能是非雷击，须先经过第一层判别。",
+            "lightning.section_sentence": boundary,
+            "lightning.threshold_statement": gate_sentence + boundary,
+            "cause.ledger_withstand_sentence": boundary.rstrip("。"),
+            "summary.cause_sentence": f"2）故障成因：{pure_sentence}{review_text}最终结论为{fused_fault_conclusion(result)}。",
+        })
+        values["pipeline.withstand_sentence"] += " 500/220 kV采用故障杆塔原台账；110/35 kV采用约定阈值。"
+        values.update(case_process_fields(result))
     return {key: user_facing_model_terms(display(value, "")) for key, value in values.items()}
 
 
