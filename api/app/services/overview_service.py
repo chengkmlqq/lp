@@ -28,7 +28,7 @@ _ASSET_SOURCES: list[tuple[str, str, type, str | None]] = [
     ("line", "线路", line.Line, "/admin/power-lines"),
     ("line_tower", "杆塔", line_tower.LineTower, "/admin/power-lines"),
     ("tower_model", "杆塔模型", tower_model.TowerModel, "/admin/tower-models"),
-    ("atp_asset", "ATP模型", atp_asset.AtpAsset, "/admin/atp-models"),
+    ("atp_asset", "ATP模型", atp_asset.AtpAssetVersion, "/admin/atp-models"),
     ("atp_param_template", "ATP参数模板", atp_param_template.AtpParamTemplate, "/admin/atp-param-templates"),
     ("atp_param_definition", "ATP参数定义", atp_param_definition.AtpParamDefinition, "/admin/atp-params"),
     ("lightning_amplitude", "闪电幅值记录", lightning_amplitude.LightningAmplitude, "/admin/lightning-currents"),

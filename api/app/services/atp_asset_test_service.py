@@ -49,7 +49,7 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import get_settings
-from ..models.atp_asset import AtpAsset, AtpAssetRun
+from ..models.atp_asset import AtpAssetVersion, AtpAssetRun
 from ..models.base import utcnow
 from ..schemas.atp_asset import AtpAssetRunDetail, AtpAssetTestRunRequest, AtpBatchTestRunRequest
 from .atp_asset_service import _decode_text_file as _decode_artifact_text
@@ -656,7 +656,7 @@ class _TestContext:
         *,
         db: Session,
         run_id: str,
-        asset: AtpAsset,
+        asset: AtpAssetVersion,
         payload: AtpAssetTestRunRequest,
         resolved_job: Any,
         run_dir: Path,

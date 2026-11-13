@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_asset import AtpAssetVersion, AtpAssetRun
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
@@ -29,7 +29,7 @@ def _build_sessionmaker():
             User.__table__,
             DimensionType.__table__,
             DimensionItem.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
         ],
     )
@@ -393,7 +393,7 @@ def test_list_assets_columns_cover_serialize_asset_fields() -> None:
 
     list_src = inspect.getsource(svc.list_assets)
     block = list_src[list_src.index("columns = (") : list_src.index("stmt = select(*columns)")]
-    provided = set(re.findall(r"AtpAsset\.([a-z_][a-z0-9_]*)", block))
+    provided = set(re.findall(r"AtpAssetVersion\.([a-z_][a-z0-9_]*)", block))
 
     missing = accessed - provided
     assert not missing, f"list_assets 少查了 serialize_asset 需要的列：{sorted(missing)}"
@@ -409,7 +409,7 @@ def test_list_assets_returns_test_line_id() -> None:
         bind=engine,
         tables=[
             User.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
             DimensionItem.__table__,
         ],
@@ -417,7 +417,7 @@ def test_list_assets_returns_test_line_id() -> None:
     session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)()
     try:
         session.add(
-            AtpAsset(
+            AtpAssetVersion(
                 code="TL-ASSET-1",
                 name="测试线路绑定资产",
                 status="enabled",
@@ -459,7 +459,7 @@ def test_list_assets_returns_model_format_and_check() -> None:
         bind=engine,
         tables=[
             User.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
             DimensionItem.__table__,
         ],
@@ -468,7 +468,7 @@ def test_list_assets_returns_model_format_and_check() -> None:
     try:
         session.add_all(
             [
-                AtpAsset(
+                AtpAssetVersion(
                     code="FMT-INSERT-1",
                     name="7.3 INSERT 形态资产",
                     status="enabled",
@@ -484,7 +484,7 @@ def test_list_assets_returns_model_format_and_check() -> None:
                         "issues": [{"code": "W001", "level": "warning", "message": "参数段有 $$", "fix_hint": "系统自动处理"}],
                     },
                 ),
-                AtpAsset(
+                AtpAssetVersion(
                     code="FMT-STORE-1",
                     name="存量资产（未写形态字段）",
                     status="enabled",
@@ -590,7 +590,7 @@ def test_recheck_asset_format_overrides_legacy_default(tmp_path) -> None:
         assert updated.format_check["error_count"] == 0
         assert "long3.pch" in updated.format_check["insert_refs"]
 
-        persisted = session.get(AtpAsset, asset.id)
+        persisted = session.get(AtpAssetVersion, asset.id)
         assert persisted is not None
         assert persisted.model_format == "insert"
     finally:
@@ -635,7 +635,7 @@ def test_recheck_asset_format_without_model_files_reports_conflict(tmp_path) -> 
 #   3) 任务主体一次读包同时写形态与槽位；4) token 被换掉后旧任务不覆盖新结果。
 
 
-def _make_asset_with_insert_package(session: Session, root_dir: Path, code: str) -> AtpAsset:
+def _make_asset_with_insert_package(session: Session, root_dir: Path, code: str) -> AtpAssetVersion:
     _seed_vfs_mount(session, root_dir=root_dir)
     asset = atp_asset_service.create_asset(
         session,
@@ -658,7 +658,7 @@ def _make_asset_with_insert_package(session: Session, root_dir: Path, code: str)
     driver.write_file(f"{storage_root}/long3.pch", content=_INSERT_FORM_PCH, content_type="text/plain")
     driver.write_file(f"{storage_root}/long.dat", content=b"  1.000     0.000\n", content_type="text/plain")
     # create_asset 返回的是 pydantic 摘要，这里取 ORM 行以便用例直接改分析状态
-    db_asset = session.get(AtpAsset, asset.id)
+    db_asset = session.get(AtpAssetVersion, asset.id)
     assert db_asset is not None
     return db_asset
 
@@ -682,7 +682,7 @@ def test_schedule_asset_analysis_marks_pending(monkeypatch, tmp_path) -> None:
         assert summary.analysis_status == "pending"
         assert summary.analysis_error is None
         assert len(calls) == 1 and calls[0][0] == asset.id
-        persisted = session.get(AtpAsset, asset.id)
+        persisted = session.get(AtpAssetVersion, asset.id)
         assert persisted is not None
         # token 必须落库，任务回写前要拿它比对
         assert persisted.analysis_token == calls[0][1]
@@ -722,7 +722,7 @@ def test_run_asset_analysis_writes_format_and_slots(monkeypatch, tmp_path) -> No
         outcome = atp_asset_service.run_asset_analysis(asset_id=asset.id, token="tok-run")
 
         assert outcome["status"] == "success"
-        persisted = session.get(AtpAsset, asset.id)
+        persisted = session.get(AtpAssetVersion, asset.id)
         assert persisted is not None
         session.refresh(persisted)
         assert persisted.analysis_status == "success"
@@ -750,7 +750,7 @@ def test_run_asset_analysis_skips_stale_token(monkeypatch, tmp_path) -> None:
         outcome = atp_asset_service.run_asset_analysis(asset_id=asset.id, token="tok-old")
 
         assert outcome == {"status": "skipped", "reason": "stale_token"}
-        persisted = session.get(AtpAsset, asset.id)
+        persisted = session.get(AtpAssetVersion, asset.id)
         assert persisted is not None
         session.refresh(persisted)
         # 旧任务不得改写状态与形态
@@ -781,7 +781,7 @@ def test_run_asset_analysis_marks_failed_without_files(monkeypatch, tmp_path) ->
             actor_user_id="tester",
         )
         assert asset is not None
-        db_asset = session.get(AtpAsset, asset.id)
+        db_asset = session.get(AtpAssetVersion, asset.id)
         assert db_asset is not None
         db_asset.analysis_status = "pending"
         db_asset.analysis_token = "tok-empty"
@@ -792,7 +792,7 @@ def test_run_asset_analysis_marks_failed_without_files(monkeypatch, tmp_path) ->
         assert outcome["status"] == "failed"
         # 从未传过文件 → 目录不存在；空目录 → 没有 .atp。两种情况都要引导「先传文件」
         assert "请先上传模型文件" in outcome["error"]
-        persisted = session.get(AtpAsset, asset.id)
+        persisted = session.get(AtpAssetVersion, asset.id)
         assert persisted is not None
         session.refresh(persisted)
         assert persisted.analysis_status == "failed"
@@ -884,8 +884,8 @@ def test_list_assets_filters_by_publish_status() -> None:
     try:
         session.add_all(
             [
-                AtpAsset(code="PUB-1", name="已发布模型", status="enabled", is_published=True),
-                AtpAsset(code="PUB-2", name="未发布模型", status="enabled", is_published=False),
+                AtpAssetVersion(code="PUB-1", name="已发布模型", status="enabled", is_published=True),
+                AtpAssetVersion(code="PUB-2", name="未发布模型", status="enabled", is_published=False),
             ]
         )
         session.commit()
@@ -1054,20 +1054,20 @@ def test_list_assets_filter_by_publish_state(tmp_path) -> None:
     try:
         session.add_all(
             [
-                AtpAsset(code="PS-NEW", name="新建", status="enabled", is_published=False, publish_state="new"),
-                AtpAsset(code="PS-CHG", name="变更", status="enabled", is_published=False, publish_state="changed"),
-                AtpAsset(code="PS-PUB", name="已发布", status="enabled", is_published=True, publish_state="published"),
-                AtpAsset(code="PS-OFF", name="下线", status="enabled", is_published=False, publish_state="offline"),
+                AtpAssetVersion(code="PS-NEW", name="新建", status="enabled", is_published=False, publish_state="new"),
+                AtpAssetVersion(code="PS-CHG", name="变更", status="enabled", is_published=False, publish_state="changed"),
+                AtpAssetVersion(code="PS-PUB", name="已发布", status="enabled", is_published=True, publish_state="published"),
+                AtpAssetVersion(code="PS-OFF", name="下线", status="enabled", is_published=False, publish_state="offline"),
                 # 加列前的存量行：只有 is_published / published_date
-                AtpAsset(code="PS-LEGACY-PUB", name="存量已发布", status="enabled", is_published=True),
-                AtpAsset(
+                AtpAssetVersion(code="PS-LEGACY-PUB", name="存量已发布", status="enabled", is_published=True),
+                AtpAssetVersion(
                     code="PS-LEGACY-OFF",
                     name="存量下线",
                     status="enabled",
                     is_published=False,
                     published_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
                 ),
-                AtpAsset(code="PS-LEGACY-NEW", name="存量未发布", status="enabled", is_published=False),
+                AtpAssetVersion(code="PS-LEGACY-NEW", name="存量未发布", status="enabled", is_published=False),
             ]
         )
         session.commit()
@@ -1142,7 +1142,7 @@ def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) 
         assert excinfo.value.status_code == 400
 
         # 派生的变更版本已被撤回：资产总数仍为 1，原版本仍是已发布 + 生效
-        total = session.execute(select(func.count()).select_from(AtpAsset)).scalar()
+        total = session.execute(select(func.count()).select_from(AtpAssetVersion)).scalar()
         assert int(total or 0) == 1
         old = atp_asset_service.get_asset_by_id(session, created.id)
         assert old is not None
@@ -1199,7 +1199,7 @@ def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) 
         assert excinfo.value.status_code == 400
 
         # 派生的变更版本已被撤回：资产总数仍为 1，原版本仍是已发布 + 生效
-        total = session.execute(select(func.count()).select_from(AtpAsset)).scalar()
+        total = session.execute(select(func.count()).select_from(AtpAssetVersion)).scalar()
         assert int(total or 0) == 1
         old = atp_asset_service.get_asset_by_id(session, created.id)
         assert old is not None

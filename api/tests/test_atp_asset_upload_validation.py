@@ -20,7 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_asset import AtpAssetVersion, AtpAssetRun
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
@@ -40,7 +40,7 @@ def _build_sessionmaker():
             User.__table__,
             DimensionType.__table__,
             DimensionItem.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
         ],
     )
@@ -110,14 +110,14 @@ def _legacy_entries() -> dict[str, bytes]:
     return entries
 
 
-def _create_asset(session: Session, code: str = "ATP-ASSET-VALIDATE") -> AtpAsset:
+def _create_asset(session: Session, code: str = "ATP-ASSET-VALIDATE") -> AtpAssetVersion:
     created = atp_asset_service.create_asset(
         session,
         AtpAssetCreateRequest(code=code, name="校验测试模型", description="上传校验测试"),
         actor_user_id="tester",
     )
     assert created is not None
-    asset = session.query(AtpAsset).filter(AtpAsset.code == code).first()
+    asset = session.query(AtpAssetVersion).filter(AtpAssetVersion.code == code).first()
     assert asset is not None
     return asset
 
@@ -417,7 +417,7 @@ def test_upload_legacy_pack_strips_parameter_substitution(tmp_path) -> None:
         assert b"ZRE01_=150." in body
         assert body.count(b"$$") == 0, "段内不应再有 $$"
 
-        saved = session.query(AtpAsset).filter(AtpAsset.code == "ATP-ASSET-VALIDATE").first()
+        saved = session.query(AtpAssetVersion).filter(AtpAssetVersion.code == "ATP-ASSET-VALIDATE").first()
         assert saved is not None
         codes = {issue["code"] for issue in (saved.format_check_json or {}).get("issues", [])}
         assert not codes & {"W001", "W002", "W003"}, f"删段后不该再报这三项：{codes}"

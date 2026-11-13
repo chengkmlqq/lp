@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import SessionLocal
-from app.models.atp_asset import AtpAsset
+from app.models.atp_asset import AtpAssetVersion
 
 CODES = {c.strip().upper() for c in os.environ.get("CODES", "").split(",") if c.strip()}
 APPLY = "--apply" in sys.argv
@@ -36,8 +36,8 @@ def main() -> None:
         raise SystemExit(2)
 
     with SessionLocal() as db:
-        rows = db.execute(select(AtpAsset)).scalars().all()
-        todo: list[tuple[AtpAsset, dict, list]] = []
+        rows = db.execute(select(AtpAssetVersion)).scalars().all()
+        todo: list[tuple[AtpAssetVersion, dict, list]] = []
         hit: Counter = Counter()
         for asset in rows:
             data = asset.format_check_json

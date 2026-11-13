@@ -47,7 +47,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.models.atp_asset import AtpAsset
+from app.models.atp_asset import AtpAssetVersion
 from app.services.atp_asset_service import (
     _build_driver_or_400,
     _resolve_asset_file_location,
@@ -62,7 +62,7 @@ BACKUP_DIR = "/app/data/backup_atp_cleanup"
 
 @dataclass
 class Plan:
-    asset: AtpAsset
+    asset: AtpAssetVersion
     driver: object
     storage_root_path: str
     atp_path: str
@@ -117,7 +117,7 @@ def main() -> int:
     db = SessionLocal()
 
     assets = [
-        a for a in db.scalars(select(AtpAsset).order_by(AtpAsset.code)).all()
+        a for a in db.scalars(select(AtpAssetVersion).order_by(AtpAssetVersion.code)).all()
         if (a.code or "").startswith(prefixes)
     ]
     if args.limit:

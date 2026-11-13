@@ -93,6 +93,35 @@ class AtpAssetListResponse(BaseModel):
     total: int
 
 
+class AtpModelSummary(AtpAssetSummary):
+    """决策 1：列表/卡片按「模型」展示（一模型一行/一卡）。
+
+    继承 ``AtpAssetSummary`` 的全部字段（取自该模型的**展示版本**，见 §6.2），
+    因此前端卡片/列表组件可在几乎不改代码的情况下从 ``/assets`` 切到 ``/models``：
+    卡片数由 1429（版本）降为 781（模型），而卡片上的发布/下线/激活/删除等操作
+    仍作用于 ``id``（= 展示版本 id，符合 §10-3「操作作用于展示版本」默认口径）。
+
+    额外补充模型级字段，供详情页按模型聚合、版本切换等 P3 交互使用。
+    """
+
+    # 模型主表 id（新 atp_model.id）；过渡期尚未回填 model_id 的存量行回落为展示版本派生键
+    model_id: str
+    # 模型编码：旧 code 去掉 -vN 段（如 ATP66-shangzi-raoji2-M123）
+    model_code: str
+    # 该模型下的版本总数
+    version_count: int = 1
+    # 展示版本 id（与继承的 id 相同，显式给出便于前端语义化使用）
+    active_version_id: str
+    display_version_id: str
+    # 展示版本原样保留的旧 code（含 -vN），供导出/日志/报告等外部引用
+    version_code: str | None = None
+
+
+class AtpModelListResponse(BaseModel):
+    items: list[AtpModelSummary]
+    total: int
+
+
 class AtpAssetTreeChild(BaseModel):
     """维度树懒加载节点：一层维度下的一个去重值（电压/塔型/场景/避雷器组合）。"""
 

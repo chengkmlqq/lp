@@ -12,7 +12,7 @@
    - `span_rows`：频率卡块行号（"ENDING CONDUCTOR" → "ENDING FREQUENCY" 之间非空行）
    - `span_col` / `span_width`：档距列位与宽度
 
-产物结构（dict，可直接 json 序列化存 AtpAsset.slots_json）::
+产物结构（dict，可直接 json 序列化存 AtpAssetVersion.slots_json）::
 
     {
       "scanned_at": "2026-10-29T...",
@@ -146,7 +146,7 @@ def scan_model_slots(
         work_atp_text: work.atp 全文（文本）。缺省时 work_atp 部分置空。
         dat_texts: {"long": 文本, "short": 文本, ...}，键须在 DAT_GEOMETRY_NAMES 内。
     返回:
-        可直接序列化存 AtpAsset.slots_json 的 dict。
+        可直接序列化存 AtpAssetVersion.slots_json 的 dict。
     """
     result: dict[str, Any] = {
         "scanned_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

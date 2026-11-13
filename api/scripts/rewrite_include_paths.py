@@ -37,7 +37,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.models.atp_asset import AtpAsset
+from app.models.atp_asset import AtpAssetVersion
 from app.services.atp_asset_service import (
     _build_driver_or_400,
     _resolve_asset_file_location,
@@ -70,7 +70,7 @@ def _decode(raw: bytes) -> tuple[str, str]:
     return raw.decode("utf-8", "replace"), "utf-8"
 
 
-def _dimensions(asset: AtpAsset, storage_root_path: str) -> tuple[str, str, str, str] | None:
+def _dimensions(asset: AtpAssetVersion, storage_root_path: str) -> tuple[str, str, str, str] | None:
     """返回 (电压, 塔形, 场景, 避雷器组合)。取自存储路径末尾四段，与资产维度互相校验。"""
     segments = [p for p in storage_root_path.replace("\\", "/").split("/") if p]
     if len(segments) < 4:
@@ -128,7 +128,7 @@ def main() -> int:
 
     db = SessionLocal()
     assets = db.scalars(
-        select(AtpAsset).where(AtpAsset.voltage_level.in_(voltages)).order_by(AtpAsset.code)
+        select(AtpAssetVersion).where(AtpAssetVersion.voltage_level.in_(voltages)).order_by(AtpAssetVersion.code)
     ).all()
     if args.limit:
         assets = assets[: args.limit]

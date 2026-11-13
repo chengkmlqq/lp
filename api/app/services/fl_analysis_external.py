@@ -51,7 +51,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models.atp_asset import AtpAsset
+from ..models.atp_asset import AtpAssetVersion
 from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisTowerSnapshot
 from .atp_asset_service import (
@@ -1482,9 +1482,9 @@ NUMERIC_RESULT_KEYS = {
 }
 
 
-def get_asset_by_id(db: Session, asset_id: str) -> AtpAsset | None:
+def get_asset_by_id(db: Session, asset_id: str) -> AtpAssetVersion | None:
     """Get ATP asset by ID."""
-    return db.execute(select(AtpAsset).where(AtpAsset.id == asset_id)).scalar_one_or_none()
+    return db.execute(select(AtpAssetVersion).where(AtpAssetVersion.id == asset_id)).scalar_one_or_none()
 
 
 def _auto_resolve_asset(
@@ -1494,7 +1494,7 @@ def _auto_resolve_asset(
     line_voltage_kv: int | None,
     scene_type: str | None,
     adapter_config_json: dict[str, Any],
-) -> AtpAsset:
+) -> AtpAssetVersion:
     """按线路杆塔参数自动选 ATP 资产（对齐 C# 桌面版 match_model 自动匹配模板）。
 
     匹配优先级：
@@ -1504,7 +1504,7 @@ def _auto_resolve_asset(
     避雷器配置缺省取 noM（C# 任务输入 A/B/C相=否，即无避雷器）。
     塔型支持 C# 式编码（s500guxing→guxing）与 DB 规范编码（500-guxing）归一。
     """
-    from ..models.atp_asset import AtpAsset  # noqa: PLC0415
+    from ..models.atp_asset import AtpAssetVersion  # noqa: PLC0415
 
     config = dict(adapter_config_json or {})
     voltage_kv = line_voltage_kv
@@ -1531,23 +1531,23 @@ def _auto_resolve_asset(
     # 塔型归一：s500guxing / 500-guxing / guxing → guxing
     tower = _normalize_tower_shape_code(tower_type or "") or str(config.get("tower_type") or "").strip()
 
-    def _query(tower_filter: str | None, arrester_filter: str | None) -> AtpAsset | None:
-        stmt = select(AtpAsset).where(AtpAsset.status == "enabled")
+    def _query(tower_filter: str | None, arrester_filter: str | None) -> AtpAssetVersion | None:
+        stmt = select(AtpAssetVersion).where(AtpAssetVersion.status == "enabled")
         # 版本发布管理（2026-11-05）：只在「已发布」版本中定位；
         # 下线（is_published=0）的版本不参与仿真，但保留文件与运行记录。
-        stmt = stmt.where(AtpAsset.is_published.is_(True))
+        stmt = stmt.where(AtpAssetVersion.is_published.is_(True))
         if voltage_kv is not None:
-            stmt = stmt.where(AtpAsset.voltage_level == str(voltage_kv))
+            stmt = stmt.where(AtpAssetVersion.voltage_level == str(voltage_kv))
         if tower_filter:
-            stmt = stmt.where(AtpAsset.tower_type == tower_filter)
-        stmt = stmt.where(AtpAsset.scene_type == scene)
+            stmt = stmt.where(AtpAssetVersion.tower_type == tower_filter)
+        stmt = stmt.where(AtpAssetVersion.scene_type == scene)
         if arrester_filter:
-            stmt = stmt.where(AtpAsset.arrester_config == arrester_filter)
+            stmt = stmt.where(AtpAssetVersion.arrester_config == arrester_filter)
         if shield_wire:
-            stmt = stmt.where(AtpAsset.shield_wire == shield_wire)
+            stmt = stmt.where(AtpAssetVersion.shield_wire == shield_wire)
         # 多版本改造：优先取「生效」版本；未设生效时回退任一 enabled（兼容存量/未激活）。
         active = db.execute(
-            stmt.where(AtpAsset.is_active.is_(True)).limit(1)
+            stmt.where(AtpAssetVersion.is_active.is_(True)).limit(1)
         ).scalar_one_or_none()
         if active:
             return active
@@ -1558,7 +1558,7 @@ def _auto_resolve_asset(
             "回退取任一 enabled 且已发布版本（最近更新优先）",
             voltage_kv, tower_filter, scene, arrester_filter, shield_wire or "不限",
         )
-        return db.execute(stmt.order_by(AtpAsset.update_date.desc()).limit(1)).scalar_one_or_none()
+        return db.execute(stmt.order_by(AtpAssetVersion.update_date.desc()).limit(1)).scalar_one_or_none()
 
     if tower:
         # ⚠️ 2026-09-13 修复：指定塔型时必须命中「该塔型」的资产；查不到就抛错，
@@ -1598,7 +1598,7 @@ def _auto_resolve_asset(
 @dataclass(slots=True)
 class ResolvedExternalWaveformJob:
     adapter: str
-    asset: AtpAsset
+    asset: AtpAssetVersion
     entry_file: str
     result_file: str | None
     storage_mount_code: str
@@ -1626,7 +1626,7 @@ class ExternalTowerExecutionResult:
 def _resolve_asset_worktree(
     db: Session,
     *,
-    asset: AtpAsset,
+    asset: AtpAssetVersion,
     tower_type: str | None = None,
 ) -> dict[str, Any]:
     """Resolve an executable file tree directly from the asset's own storage.

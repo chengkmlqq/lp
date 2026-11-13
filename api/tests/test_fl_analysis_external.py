@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_asset import AtpAssetVersion, AtpAssetRun
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
 from app.models.fl_analysis import (
     FlAnalysisJob,
@@ -65,7 +65,7 @@ def _build_sessionmaker():
             FileStorageBackend.__table__,
             FileStorageMount.__table__,
             FileIndexEntry.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
         ],
     )
@@ -165,14 +165,14 @@ def _seed_asset(
     manifest_json: dict[str, object] | None = None,
     entry_file: str = "work.atp",
     template: str | None = None,
-) -> AtpAsset:
+) -> AtpAssetVersion:
     if template is not None:
         asset_root = tmp_path / "vfs" / "atp-assets" / code
         asset_root.mkdir(parents=True, exist_ok=True)
         with (asset_root / entry_file).open("w", encoding="utf-8", newline="") as handle:
             handle.write(template)
 
-    asset = AtpAsset(
+    asset = AtpAssetVersion(
         code=code,
         name=f"资产 {code}",
         description="",
@@ -486,7 +486,7 @@ def _seed_asset_without_release(
     tmp_path: Path,
     code: str,
     template: str,
-) -> AtpAsset:
+) -> AtpAssetVersion:
     """Seed an asset with files but NO release records (the new asset-root mode).
 
     The template script must write its result to ``work.lis`` because the
@@ -497,7 +497,7 @@ def _seed_asset_without_release(
     (asset_root / "work.atp").write_text(template, encoding="utf-8")
     (asset_root / "work.lis").write_text("placeholder result", encoding="utf-8")
 
-    asset = AtpAsset(
+    asset = AtpAssetVersion(
         code=code,
         name=f"资产 {code}",
         description="",

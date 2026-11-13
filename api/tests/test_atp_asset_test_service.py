@@ -19,7 +19,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_asset import AtpAssetVersion, AtpAssetRun
 from app.models.atp_test_line import AtpTestLine, AtpTestLineCircuit
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
@@ -48,7 +48,7 @@ def _build_sessionmaker():
             User.__table__,
             DimensionType.__table__,
             DimensionItem.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
             AtpTestLine.__table__,
             AtpTestLineCircuit.__table__,
@@ -90,7 +90,7 @@ def _build_zip(entries: dict[str, bytes]) -> bytes:
 
 
 def _create_asset(session: Session, *, code: str = "ATP-TEST-001", tower_type: str = "d220maotou",
-                  voltage_level: str = "220") -> AtpAsset:
+                  voltage_level: str = "220") -> AtpAssetVersion:
     asset = atp_asset_service.create_asset(
         session,
         AtpAssetCreateRequest(

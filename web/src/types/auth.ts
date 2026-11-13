@@ -1284,6 +1284,27 @@ export type AtpAssetListResponse = {
   total: number;
 };
 
+/** LP-11 决策 1：/api/v1/atp/models 返回「一模型一行」的展示项。
+ *
+ * 后端 AtpModelSummary 继承版本摘要（AtpAssetSummary），因此卡片/表格/详情
+ * 组件可直接复用现有 AtpAssetSummary 渲染逻辑；id 为**展示版本 id**，
+ * 卡片上的发布/下线/编辑/删除等操作仍作用于展示版本（§10-3 默认口径）。
+ * 额外字段用于模型级聚合展示与详情页版本切换后回刷。
+ */
+export type AtpModelCardItem = AtpAssetSummary & {
+  model_id: string;
+  model_code: string;
+  version_count: number;
+  active_version_id: string;
+  display_version_id: string;
+  version_code: string | null;
+};
+
+export type AtpModelCardListResponse = {
+  items: AtpModelCardItem[];
+  total: number;
+};
+
 export type AtpAssetFileEntry = {
   relative_path: string;
   name: string;

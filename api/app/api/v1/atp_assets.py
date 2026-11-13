@@ -26,6 +26,7 @@ from ...schemas.atp_asset import (
     AtpAssetPublishRequest,
     AtpAssetVersionCompareResponse,
     AtpAssetVersionListResponse,
+    AtpModelListResponse,
     AtpBatchTestRunListResponse,
     AtpBatchTestRunRequest,
     AtpBatchTestRunSummary,
@@ -49,6 +50,7 @@ from ...services.atp_asset_service import (
     compare_asset_versions,
     list_assets,
     list_asset_tree_children,
+    list_models,
     list_runs,
     mark_asset_test_status,
     publish_asset,
@@ -102,6 +104,44 @@ def get_atp_asset_list(
     db: Session = Depends(get_db),
 ) -> AtpAssetListResponse:
     return list_assets(
+        db,
+        keyword=keyword,
+        status_filter=status_filter,
+        voltage_level=voltage_level,
+        tower_type=tower_type,
+        scene_type=scene_type,
+        arrester_config=arrester_config,
+        test_status=test_status,
+        is_published=is_published,
+        publish_state=publish_state,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/models", response_model=AtpModelListResponse)
+def get_atp_model_list(
+    keyword: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    voltage_level: str | None = Query(default=None),
+    tower_type: str | None = Query(default=None),
+    scene_type: str | None = Query(default=None),
+    arrester_config: str | None = Query(default=None),
+    test_status: str | None = Query(default=None),
+    is_published: bool | None = Query(default=None, description="按展示版本的发布状态过滤"),
+    publish_state: str | None = Query(
+        default=None,
+        description="按展示版本的发布生命周期过滤：new/changed/published/offline",
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpModelListResponse:
+    """决策 1：按「模型」聚合的列表（一模型一行）。卡片/列表视图走这里（781 模型），
+    详情页版本历史/对比/发布/下线/激活仍走 /assets 与版本接口（1429 版本，口径不变）。
+    """
+    return list_models(
         db,
         keyword=keyword,
         status_filter=status_filter,

@@ -21,10 +21,11 @@ from uuid import uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import get_settings
-from ..models.atp_asset import AtpAsset, AtpAssetRun
+from ..models.atp_asset import AtpModel, AtpAssetVersion, AtpAssetRun
 from ..models.base import utcnow
 from ..models.file_storage import FileStorageMount
 from ..models.dimension_item import DimensionItem
@@ -50,6 +51,8 @@ from ..schemas.atp_asset import (
     AtpAssetVersionListResponse,
     AtpAssetVersionSummary,
     AtpEngineStatusResponse,
+    AtpModelListResponse,
+    AtpModelSummary,
 )
 from .legacy_atp_adapter import build_legacy_atp_status_checks
 from .push_service import publish_topic
@@ -676,7 +679,7 @@ def _preprocess_legacy_members(members: dict[str, bytes]) -> dict[str, bytes]:
     return {entry_path: new_content}
 
 
-def _apply_format_report(asset: AtpAsset, report: PackageInspection) -> None:
+def _apply_format_report(asset: AtpAssetVersion, report: PackageInspection) -> None:
     """把预检结果写到资产行上（形态标记 + warning 清单）。"""
     asset.model_format = report.model_format
     asset.format_check_json = report.as_dict()
@@ -731,11 +734,11 @@ def _asset_dim_group_where(*, voltage_level, tower_type, scene_type, arrester_co
     """构建同维度组（电压/塔型/场景/避雷器/避雷线）的查询条件——定位资产版本组用。"""
     conds = []
     for col, val in (
-        (AtpAsset.voltage_level, voltage_level),
-        (AtpAsset.tower_type, tower_type),
-        (AtpAsset.scene_type, scene_type),
-        (AtpAsset.arrester_config, arrester_config),
-        (AtpAsset.shield_wire, shield_wire),
+        (AtpAssetVersion.voltage_level, voltage_level),
+        (AtpAssetVersion.tower_type, tower_type),
+        (AtpAssetVersion.scene_type, scene_type),
+        (AtpAssetVersion.arrester_config, arrester_config),
+        (AtpAssetVersion.shield_wire, shield_wire),
     ):
         if val is not None:
             conds.append(col == val)
@@ -744,9 +747,9 @@ def _asset_dim_group_where(*, voltage_level, tower_type, scene_type, arrester_co
 
 def _check_asset_storage_path_conflict(db: Session, storage_root_path: str, current_asset_id: str | None = None) -> None:
     """同一存储路径 + 同一 version 才判冲突（多版本改造：同维度组允许不同版本共存）。"""
-    asset_stmt = select(AtpAsset).where(AtpAsset.storage_root_path == storage_root_path)
+    asset_stmt = select(AtpAssetVersion).where(AtpAssetVersion.storage_root_path == storage_root_path)
     if current_asset_id:
-        asset_stmt = asset_stmt.where(AtpAsset.id != current_asset_id)
+        asset_stmt = asset_stmt.where(AtpAssetVersion.id != current_asset_id)
 
     existing_asset = db.execute(asset_stmt).scalar_one_or_none()
     if existing_asset:
@@ -756,7 +759,7 @@ def _check_asset_storage_path_conflict(db: Session, storage_root_path: str, curr
         )
 
 
-def _resolve_asset_file_location(db: Session, asset: AtpAsset) -> tuple[str, str]:
+def _resolve_asset_file_location(db: Session, asset: AtpAssetVersion) -> tuple[str, str]:
     storage_mount_code = asset.storage_mount_code or "main"
     storage_root_path = asset.storage_root_path
     if storage_root_path is None:
@@ -969,7 +972,7 @@ def _analysis_fields_for_display(item: Any) -> tuple[str | None, str | None]:
 
 
 def serialize_asset(
-    item: AtpAsset,
+    item: AtpAssetVersion,
     *,
     run_count: int,
     last_run_status: str | None,
@@ -1156,7 +1159,7 @@ def _publish_state_predicate(state: str) -> Any:
     只写 `publish_state = 'published'` 会漏掉加列后尚未回填的存量行（NULL），
     页面会出现「过滤已发布却看不到 700 多个模型」这种自相矛盾的结果。
     """
-    column = AtpAsset.publish_state
+    column = AtpAssetVersion.publish_state
     if state == PUBLISH_STATE_CHANGED:
         return column == PUBLISH_STATE_CHANGED
     if state == PUBLISH_STATE_PUBLISHED:
@@ -1164,7 +1167,7 @@ def _publish_state_predicate(state: str) -> Any:
             column == PUBLISH_STATE_PUBLISHED,
             and_(
                 column.is_(None),
-                or_(AtpAsset.is_published.is_(True), AtpAsset.is_published.is_(None)),
+                or_(AtpAssetVersion.is_published.is_(True), AtpAssetVersion.is_published.is_(None)),
             ),
         )
     if state == PUBLISH_STATE_OFFLINE:
@@ -1172,16 +1175,16 @@ def _publish_state_predicate(state: str) -> Any:
             column == PUBLISH_STATE_OFFLINE,
             and_(
                 column.is_(None),
-                AtpAsset.is_published.is_(False),
-                AtpAsset.published_date.is_not(None),
+                AtpAssetVersion.is_published.is_(False),
+                AtpAssetVersion.published_date.is_not(None),
             ),
         )
     return or_(
         column == PUBLISH_STATE_NEW,
         and_(
             column.is_(None),
-            AtpAsset.is_published.is_(False),
-            AtpAsset.published_date.is_(None),
+            AtpAssetVersion.is_published.is_(False),
+            AtpAssetVersion.published_date.is_(None),
         ),
     )
 
@@ -1205,59 +1208,59 @@ def list_assets(
     # 注：tags_json（2026-11-10 起卡片要展示标签）已加入白名单——它是小 JSON 数组，
     # 单行通常几十字节，带上不影响列表性能；slots_json 这类大列仍不在其中。
     columns = (
-        AtpAsset.id,
-        AtpAsset.code,
-        AtpAsset.name,
-        AtpAsset.description,
-        AtpAsset.status,
-        AtpAsset.voltage_level,
-        AtpAsset.tower_type,
-        AtpAsset.scene_type,
-        AtpAsset.arrester_config,
+        AtpAssetVersion.id,
+        AtpAssetVersion.code,
+        AtpAssetVersion.name,
+        AtpAssetVersion.description,
+        AtpAssetVersion.status,
+        AtpAssetVersion.voltage_level,
+        AtpAssetVersion.tower_type,
+        AtpAssetVersion.scene_type,
+        AtpAssetVersion.arrester_config,
         # 多版本 + 生效 + 避雷线（2026-10-30：serialize_asset 访问这三列，缺则 AttributeError）
-        AtpAsset.version,
-        AtpAsset.is_active,
+        AtpAssetVersion.version,
+        AtpAssetVersion.is_active,
         # 2026-11-05：发布状态（serialize_asset 会读，漏列抛 KeyError，同上事故）
-        AtpAsset.is_published,
+        AtpAssetVersion.is_published,
         # 2026-11-10：发布生命周期四态（serialize_asset 会读，漏列同样 KeyError）
-        AtpAsset.publish_state,
-        AtpAsset.published_date,
+        AtpAssetVersion.publish_state,
+        AtpAssetVersion.published_date,
         # 2026-11-10：版本描述（serialize_asset 会读，漏列同样 KeyError）
-        AtpAsset.release_notes,
+        AtpAssetVersion.release_notes,
         # 2026-11-10：标签（serialize_asset 会读，漏列同样 KeyError）
-        AtpAsset.tags_json,
-        AtpAsset.shield_wire,
+        AtpAssetVersion.tags_json,
+        AtpAssetVersion.shield_wire,
         # 2026-11-01：serialize_asset 访问 test_line_id（测试线路），缺则 500：
         #   KeyError: 'test_line_id'（select 列白名单漏列 → Row.__getattr__ 抛 KeyError）
-        AtpAsset.test_line_id,
+        AtpAssetVersion.test_line_id,
         # 2026-11-02：serialize_asset 访问 model_format / format_check_json（形态标记 +
         #   上传预检报告），漏加同样 500 → ATP 模型管理页「加载失败」。新增列务必同步此处。
-        AtpAsset.model_format,
-        AtpAsset.format_check_json,
+        AtpAssetVersion.model_format,
+        AtpAssetVersion.format_check_json,
         # 2026-11-03：异步分析状态（形态识别 + 槽位扫描），serialize_asset 会读，
         # 漏列同样抛 KeyError（见上方 2026-11-02 的同款事故）。
-        AtpAsset.analysis_status,
-        AtpAsset.analysis_error,
-        AtpAsset.analysis_started_at,
-        AtpAsset.analysis_finished_at,
+        AtpAssetVersion.analysis_status,
+        AtpAssetVersion.analysis_error,
+        AtpAssetVersion.analysis_started_at,
+        AtpAssetVersion.analysis_finished_at,
         # 2026-11-07：测试结论三档标记，serialize_asset 会读，漏列同样 KeyError
-        AtpAsset.test_status,
-        AtpAsset.test_message,
-        AtpAsset.test_date,
-        AtpAsset.storage_mount_code,
-        AtpAsset.storage_root_path,
-        AtpAsset.create_date,
-        AtpAsset.create_user,
-        AtpAsset.update_date,
-        AtpAsset.update_user,
+        AtpAssetVersion.test_status,
+        AtpAssetVersion.test_message,
+        AtpAssetVersion.test_date,
+        AtpAssetVersion.storage_mount_code,
+        AtpAssetVersion.storage_root_path,
+        AtpAssetVersion.create_date,
+        AtpAssetVersion.create_user,
+        AtpAssetVersion.update_date,
+        AtpAssetVersion.update_user,
     )
-    stmt = select(*columns).select_from(AtpAsset)
-    total_stmt = select(func.count()).select_from(AtpAsset)
+    stmt = select(*columns).select_from(AtpAssetVersion)
+    total_stmt = select(func.count()).select_from(AtpAssetVersion)
 
     normalized_keyword = (keyword or "").strip()
     if normalized_keyword:
         like = f"%{normalized_keyword}%"
-        predicate = or_(AtpAsset.code.ilike(like), AtpAsset.name.ilike(like), AtpAsset.description.ilike(like))
+        predicate = or_(AtpAssetVersion.code.ilike(like), AtpAssetVersion.name.ilike(like), AtpAssetVersion.description.ilike(like))
         stmt = stmt.where(predicate)
         total_stmt = total_stmt.where(predicate)
 
@@ -1265,30 +1268,30 @@ def list_assets(
     if normalized_status:
         if normalized_status not in VALID_ASSET_STATUS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid status filter: {status_filter}")
-        stmt = stmt.where(AtpAsset.status == normalized_status)
-        total_stmt = total_stmt.where(AtpAsset.status == normalized_status)
+        stmt = stmt.where(AtpAssetVersion.status == normalized_status)
+        total_stmt = total_stmt.where(AtpAssetVersion.status == normalized_status)
 
     if voltage_level and voltage_level.strip():
-        stmt = stmt.where(AtpAsset.voltage_level == voltage_level.strip())
-        total_stmt = total_stmt.where(AtpAsset.voltage_level == voltage_level.strip())
+        stmt = stmt.where(AtpAssetVersion.voltage_level == voltage_level.strip())
+        total_stmt = total_stmt.where(AtpAssetVersion.voltage_level == voltage_level.strip())
     if tower_type and tower_type.strip():
-        stmt = stmt.where(AtpAsset.tower_type == tower_type.strip())
-        total_stmt = total_stmt.where(AtpAsset.tower_type == tower_type.strip())
+        stmt = stmt.where(AtpAssetVersion.tower_type == tower_type.strip())
+        total_stmt = total_stmt.where(AtpAssetVersion.tower_type == tower_type.strip())
     if scene_type and scene_type.strip():
-        stmt = stmt.where(AtpAsset.scene_type == scene_type.strip())
-        total_stmt = total_stmt.where(AtpAsset.scene_type == scene_type.strip())
+        stmt = stmt.where(AtpAssetVersion.scene_type == scene_type.strip())
+        total_stmt = total_stmt.where(AtpAssetVersion.scene_type == scene_type.strip())
     if arrester_config and arrester_config.strip():
-        stmt = stmt.where(AtpAsset.arrester_config == arrester_config.strip())
-        total_stmt = total_stmt.where(AtpAsset.arrester_config == arrester_config.strip())
+        stmt = stmt.where(AtpAssetVersion.arrester_config == arrester_config.strip())
+        total_stmt = total_stmt.where(AtpAssetVersion.arrester_config == arrester_config.strip())
     # 测试结论筛选（2026-11-07）：untested 是伪值，表示"从未测过"（列为 NULL）
     normalized_test = (test_status or "").strip().lower()
     if normalized_test:
         if normalized_test == "untested":
-            stmt = stmt.where(AtpAsset.test_status.is_(None))
-            total_stmt = total_stmt.where(AtpAsset.test_status.is_(None))
+            stmt = stmt.where(AtpAssetVersion.test_status.is_(None))
+            total_stmt = total_stmt.where(AtpAssetVersion.test_status.is_(None))
         elif normalized_test in VALID_TEST_STATUS:
-            stmt = stmt.where(AtpAsset.test_status == normalized_test)
-            total_stmt = total_stmt.where(AtpAsset.test_status == normalized_test)
+            stmt = stmt.where(AtpAssetVersion.test_status == normalized_test)
+            total_stmt = total_stmt.where(AtpAssetVersion.test_status == normalized_test)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"Invalid test_status filter: {test_status}")
@@ -1298,9 +1301,9 @@ def list_assets(
     # 这里保持一致：NULL 归入「已发布」，避免列表与卡片状态自相矛盾。
     if is_published is not None:
         published_predicate = (
-            or_(AtpAsset.is_published.is_(True), AtpAsset.is_published.is_(None))
+            or_(AtpAssetVersion.is_published.is_(True), AtpAssetVersion.is_published.is_(None))
             if is_published
-            else AtpAsset.is_published.is_(False)
+            else AtpAssetVersion.is_published.is_(False)
         )
         stmt = stmt.where(published_predicate)
         total_stmt = total_stmt.where(published_predicate)
@@ -1319,7 +1322,7 @@ def list_assets(
         total_stmt = total_stmt.where(state_predicate)
 
     items = db.execute(
-        stmt.order_by(AtpAsset.update_date.desc(), AtpAsset.code.asc())
+        stmt.order_by(AtpAssetVersion.update_date.desc(), AtpAssetVersion.code.asc())
         .limit(limit)
         .offset(offset)
     ).all()
@@ -1342,6 +1345,303 @@ def list_assets(
         ],
         total=total,
     )
+
+
+# ===== 模型主表聚合（LP-11 决策 1：列表/卡片按「模型」展示）=====
+# 过渡期（P1–P3）模型级字段仍双写在版本行上，因此这里**以版本行的五维组合**
+# 作为模型身份分组，不依赖 atp_model 是否已回填：这样迁移前后、以及兼容视图
+# 回退场景下，/models 都能稳定聚合出 781 个模型，且不会因 model_id 为 NULL
+# 而把不同模型错误合并。atp_model 行存在时用于补齐权威的 model id / code。
+
+# -vN 版本后缀（可带 -rev3 / _r2 之类的尾巴）：ATP66-...-M123-v2 → ATP66-...-M123
+_VERSION_SUFFIX_RE = re.compile(r"-v\d+(?:[-_].*)?$", re.IGNORECASE)
+
+
+def _model_code_from_version_code(code: str | None) -> str:
+    """主表 code = 版本 code 去掉 -vN 段（决策 2）。无后缀时原样返回。"""
+    base = (code or "").strip()
+    return _VERSION_SUFFIX_RE.sub("", base) or base
+
+
+def _finalize_version_model_fields(db: Session, version: AtpAssetVersion, *, actor_user_id: str) -> None:
+    """双写过渡（决策 2/3）：写入版本行前补齐 version_code，并 upsert 模型主表行。
+
+    * version_code = 旧 code 原样保留（含 -vN），保证导出文件名 / 日志 / 报告引用不失效；
+    * model_id 指向 atp_model 主表行（同五维组合），并把模型级字段双写回主表；
+    * atp_model 表不存在（兼容视图回退态 / 单元测试的精简建表）时**只写 version_code**，
+      保证旧结构可随时反向 RENAME 回滚（硬性约束「可回滚」）。
+
+    主表 code 生成做去重校验：两个不同维度组恰好推出同一个去后缀 code 时追加 -2/-3。
+    """
+    if not _row_field(version, "version_code"):
+        version.version_code = version.code
+    try:
+        if not sa_inspect(db.get_bind()).has_table("atp_model"):
+            return
+    except Exception:  # noqa: BLE001 - 方言/权限异常一律退回「仅双写 version_code」
+        return
+
+    dim_key = _model_dimension_key(version)
+    try:
+        models = db.execute(select(AtpModel)).scalars().all()
+    except Exception:  # noqa: BLE001
+        return
+    model = next((m for m in models if _model_dimension_key(m) == dim_key), None)
+
+    if model is None:
+        base = _model_code_from_version_code(version.version_code or version.code) or "model"
+        existing_codes = {str(m.code) for m in models}
+        code = base[:60]
+        index = 2
+        while code in existing_codes:
+            suffix = f"-{index}"
+            code = f"{base[: max(1, 60 - len(suffix))]}{suffix}"
+            index += 1
+        model = AtpModel(
+            code=code,
+            name=version.name,
+            description=version.description or "",
+            status=version.status,
+            voltage_level=version.voltage_level,
+            tower_type=version.tower_type,
+            scene_type=version.scene_type,
+            arrester_config=version.arrester_config,
+            shield_wire=version.shield_wire or "with",
+            create_user=actor_user_id,
+            update_user=actor_user_id,
+        )
+        db.add(model)
+        db.flush()
+    else:
+        # 双写：模型级字段以上提主表为准，用本次写入的版本行刷新
+        model.name = version.name
+        model.description = version.description or ""
+        model.status = version.status
+        model.voltage_level = version.voltage_level
+        model.tower_type = version.tower_type
+        model.scene_type = version.scene_type
+        model.arrester_config = version.arrester_config
+        model.shield_wire = version.shield_wire or "with"
+        model.update_user = actor_user_id
+        model.update_date = utcnow()
+    version.model_id = model.id
+
+
+def _model_dimension_key(item: Any) -> tuple[str, str, str, str, str]:
+    """模型身份键 = 五维 + 避雷线（NULL 归一为 ''，与迁移回填 GROUP BY 口径一致）。"""
+    return (
+        str(_row_field(item, "voltage_level") or ""),
+        str(_row_field(item, "tower_type") or ""),
+        str(_row_field(item, "scene_type") or ""),
+        str(_row_field(item, "arrester_config") or ""),
+        str(_row_field(item, "shield_wire") or "with"),
+    )
+
+
+def _timestamp_key(item: Any, field: str) -> str:
+    """把 datetime 转成可比较的 ISO 字符串（规避 PG aware / SQLite naive 混用比较报错）。"""
+    value = _row_field(item, field)
+    return value.isoformat() if value is not None else ""
+
+
+def _pick_display_version(versions: list[Any]) -> Any:
+    """§6.2 展示版本优先级：is_active=true → 最新已发布 → 按 create_date 最新。"""
+    active = next((v for v in versions if _row_field(v, "is_active")), None)
+    if active is not None:
+        return active
+
+    def _rank(v: Any) -> tuple[int, str, str, str]:
+        published = _row_field(v, "is_published")
+        # NULL 存量按已发布处理，与 serialize_asset / 列表筛选口径一致
+        published_flag = 1 if (published is None or published) else 0
+        return (
+            published_flag,
+            _timestamp_key(v, "published_date"),
+            _timestamp_key(v, "create_date"),
+            str(_row_field(v, "id") or ""),
+        )
+
+    return max(versions, key=_rank)
+
+
+def _load_model_row_map(db: Session) -> dict[tuple, Any]:
+    """批量加载 atp_model 行并按维度键建索引；表不存在（过渡/测试库）时返回空。
+
+    用 has_table 守卫，避免 SQLite 内存库 / 兼容视图回退态下 SELECT 报「no such table」。
+    """
+    try:
+        if not sa_inspect(db.get_bind()).has_table("atp_model"):
+            return {}
+    except Exception:  # noqa: BLE001 - 任何方言/权限问题都退回「仅按版本聚合」
+        return {}
+    try:
+        rows = db.execute(select(AtpModel)).scalars().all()
+    except Exception:  # noqa: BLE001
+        return {}
+    return {_model_dimension_key(row): row for row in rows}
+
+
+def _model_summary_for_group(
+    group: list[Any],
+    *,
+    model_row: Any | None,
+    run_count_map: dict[str, int],
+    last_run_map: dict[str, tuple[str | None, datetime | None]],
+    label_map: dict[tuple[str, str], str],
+) -> AtpModelSummary:
+    display = _pick_display_version(group)
+    version_code = _row_field(display, "version_code") or display.code
+    dim_key = _model_dimension_key(display)
+    model_id = (
+        (getattr(model_row, "id", None) if model_row is not None else None)
+        or next((_row_field(v, "model_id") for v in group if _row_field(v, "model_id")), None)
+        or "mdl-" + hashlib.sha1("|".join(dim_key).encode("utf-8")).hexdigest()[:24]
+    )
+    model_code = (
+        (getattr(model_row, "code", None) if model_row is not None else None)
+        or _model_code_from_version_code(version_code)
+    )
+    summary = serialize_asset(
+        display,
+        run_count=run_count_map.get(display.id, 0),
+        last_run_status=last_run_map.get(display.id, (None, None))[0],
+        last_run_date=last_run_map.get(display.id, (None, None))[1],
+        label_map=label_map,
+    )
+    return AtpModelSummary(
+        **summary.model_dump(),
+        model_id=model_id,
+        model_code=model_code,
+        version_count=len(group),
+        active_version_id=display.id,
+        display_version_id=display.id,
+        version_code=version_code,
+    )
+
+
+def list_models(
+    db: Session,
+    *,
+    keyword: str | None,
+    status_filter: str | None,
+    voltage_level: str | None,
+    tower_type: str | None,
+    scene_type: str | None,
+    arrester_config: str | None = None,
+    test_status: str | None = None,
+    is_published: bool | None = None,
+    publish_state: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> AtpModelListResponse:
+    """按「模型」聚合的列表（决策 1）：一模型一行，卡片数由版本数 1429 → 模型数 781。
+
+    过渡期按版本行的五维组合分组；展示版本按 §6.2 优先级选取，卡片上的状态 /
+    测试结论 / 发布状态 / 版本号 / 标签 / 操作对象均取该展示版本。筛选口径默认
+    按展示版本（§6.3 / §10-2 默认），status 按模型级（双写期与展示版本一致）。
+    """
+    # 复用 list_assets 的列白名单（serialize_asset 需要的列全在里面），并补两列新字段。
+    columns = (
+        AtpAssetVersion.id, AtpAssetVersion.model_id, AtpAssetVersion.version_code,
+        AtpAssetVersion.code, AtpAssetVersion.name, AtpAssetVersion.description,
+        AtpAssetVersion.status, AtpAssetVersion.voltage_level, AtpAssetVersion.tower_type,
+        AtpAssetVersion.scene_type, AtpAssetVersion.arrester_config,
+        AtpAssetVersion.version, AtpAssetVersion.is_active, AtpAssetVersion.is_published,
+        AtpAssetVersion.publish_state, AtpAssetVersion.published_date,
+        AtpAssetVersion.release_notes, AtpAssetVersion.tags_json, AtpAssetVersion.shield_wire,
+        AtpAssetVersion.test_line_id, AtpAssetVersion.model_format,
+        AtpAssetVersion.format_check_json, AtpAssetVersion.analysis_status,
+        AtpAssetVersion.analysis_error, AtpAssetVersion.analysis_started_at,
+        AtpAssetVersion.analysis_finished_at, AtpAssetVersion.test_status,
+        AtpAssetVersion.test_message, AtpAssetVersion.test_date,
+        AtpAssetVersion.storage_mount_code, AtpAssetVersion.storage_root_path,
+        AtpAssetVersion.create_date, AtpAssetVersion.create_user,
+        AtpAssetVersion.update_date, AtpAssetVersion.update_user,
+    )
+    rows = db.execute(select(*columns).select_from(AtpAssetVersion)).all()
+
+    # 分组（模型身份 = 五维 + 避雷线）
+    groups: dict[tuple, list[Any]] = {}
+    for row in rows:
+        groups.setdefault(_model_dimension_key(row), []).append(row)
+
+    model_row_map = _load_model_row_map(db)
+    label_map = _load_dimension_label_map(db)
+    display_ids = [_pick_display_version(g).id for g in groups.values()]
+    run_count_map = _load_asset_run_count_map(db, display_ids)
+    last_run_map = _load_asset_last_run_map(db, display_ids)
+
+    # 参数校验（与 list_assets 一致）
+    normalized_keyword = (keyword or "").strip().lower()
+    normalized_status = (status_filter or "").strip().lower()
+    if normalized_status and normalized_status not in VALID_ASSET_STATUS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid status filter: {status_filter}")
+    normalized_test = (test_status or "").strip().lower()
+    if normalized_test and normalized_test != "untested" and normalized_test not in VALID_TEST_STATUS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Invalid test_status filter: {test_status}")
+    normalized_state = (publish_state or "").strip().lower()
+    if normalized_state and normalized_state not in VALID_PUBLISH_STATES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Invalid publish_state filter: {publish_state}")
+
+    def _matches(display: Any, model_code: str, version_code: str) -> bool:
+        if normalized_status and str(_row_field(display, "status") or "").lower() != normalized_status:
+            return False
+        for field, value in (
+            ("voltage_level", voltage_level), ("tower_type", tower_type),
+            ("scene_type", scene_type), ("arrester_config", arrester_config),
+        ):
+            if value and value.strip() and str(_row_field(display, field) or "") != value.strip():
+                return False
+        if normalized_test:
+            ts = _row_field(display, "test_status")
+            if normalized_test == "untested":
+                if ts is not None:
+                    return False
+            elif str(ts or "") != normalized_test:
+                return False
+        if is_published is not None:
+            published = _row_field(display, "is_published")
+            effective = True if published is None else bool(published)
+            if effective != is_published:
+                return False
+        if normalized_state and _derive_publish_state(display) != normalized_state:
+            return False
+        if normalized_keyword:
+            haystack = " ".join(
+                str(x or "") for x in (
+                    model_code, version_code, _row_field(display, "name"),
+                    _row_field(display, "code"), _row_field(display, "description"),
+                )
+            ).lower()
+            if normalized_keyword not in haystack:
+                return False
+        return True
+
+    # 排序默认按模型 update_date 倒序（取组内各版本最新的 ISO 时间），再按 model_code 稳定排序
+    ranked: list[tuple[str, str, AtpModelSummary]] = []
+    for dim_key, group in groups.items():
+        display = _pick_display_version(group)
+        version_code = _row_field(display, "version_code") or display.code
+        model_row = model_row_map.get(dim_key)
+        model_code = (
+            (getattr(model_row, "code", None) if model_row is not None else None)
+            or _model_code_from_version_code(version_code)
+        )
+        if not _matches(display, model_code, version_code):
+            continue
+        summary = _model_summary_for_group(
+            group, model_row=model_row,
+            run_count_map=run_count_map, last_run_map=last_run_map, label_map=label_map,
+        )
+        group_update = max(_timestamp_key(v, "update_date") for v in group)
+        ranked.append((group_update, summary.model_code, summary))
+
+    ranked.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    summaries = [entry[2] for entry in ranked]
+    total = len(summaries)
+    return AtpModelListResponse(items=summaries[offset:offset + limit], total=total)
 
 
 # 左侧维度树：电压等级 → 杆塔类型 → 场景 → 避雷器组合（与前端 ATP_TREE_LEVELS 一致）
@@ -1382,11 +1682,11 @@ def list_asset_tree_children(
         kw = keyword.strip().lower()
         like = f"%{kw}%"
         assets = db.execute(
-            select(AtpAsset).where(
+            select(AtpAssetVersion).where(
                 or_(
-                    AtpAsset.code.ilike(like),
-                    AtpAsset.name.ilike(like),
-                    AtpAsset.description.ilike(like),
+                    AtpAssetVersion.code.ilike(like),
+                    AtpAssetVersion.name.ilike(like),
+                    AtpAssetVersion.description.ilike(like),
                 )
             )
         ).scalars().all()
@@ -1475,16 +1775,16 @@ def list_asset_tree_children(
         return []
 
     next_field, next_dimension_type = _ATP_TREE_LEVELS[level_index][1], _ATP_TREE_LEVELS[level_index][2]
-    attr = getattr(AtpAsset, next_field)
+    attr = getattr(AtpAssetVersion, next_field)
 
     stmt = (
         select(attr, func.count())
-        .select_from(AtpAsset)
+        .select_from(AtpAssetVersion)
         .where(attr.isnot(None))
         .group_by(attr)
     )
     for field, code in filters.items():
-        stmt = stmt.where(getattr(AtpAsset, field) == code)
+        stmt = stmt.where(getattr(AtpAssetVersion, field) == code)
 
     rows = db.execute(stmt).all()
     if not rows:
@@ -1505,7 +1805,7 @@ def list_asset_tree_children(
     # has_children：该值下是否存在更深维度资产
     deeper_attr = None
     if level_index + 1 < len(_ATP_TREE_LEVELS):
-        deeper_attr = getattr(AtpAsset, _ATP_TREE_LEVELS[level_index + 1][1])
+        deeper_attr = getattr(AtpAssetVersion, _ATP_TREE_LEVELS[level_index + 1][1])
 
     result: list[dict[str, Any]] = []
     for code, count in rows:
@@ -1519,12 +1819,12 @@ def list_asset_tree_children(
 
         has_children = False
         if deeper_attr is not None:
-            deeper_stmt = select(func.count()).select_from(AtpAsset).where(
-                getattr(AtpAsset, next_field) == code_str,
+            deeper_stmt = select(func.count()).select_from(AtpAssetVersion).where(
+                getattr(AtpAssetVersion, next_field) == code_str,
                 deeper_attr.isnot(None),
             )
             for field, code_filter in filters.items():
-                deeper_stmt = deeper_stmt.where(getattr(AtpAsset, field) == code_filter)
+                deeper_stmt = deeper_stmt.where(getattr(AtpAssetVersion, field) == code_filter)
             has_children = int(db.scalar(deeper_stmt) or 0) > 0
 
         result.append(
@@ -1541,15 +1841,15 @@ def list_asset_tree_children(
     return result
 
 
-def get_asset_by_id(db: Session, asset_id: str) -> AtpAsset | None:
-    return db.execute(select(AtpAsset).where(AtpAsset.id == asset_id)).scalar_one_or_none()
+def get_asset_by_id(db: Session, asset_id: str) -> AtpAssetVersion | None:
+    return db.execute(select(AtpAssetVersion).where(AtpAssetVersion.id == asset_id)).scalar_one_or_none()
 
 
-def get_asset_by_code(db: Session, code: str) -> AtpAsset | None:
+def get_asset_by_code(db: Session, code: str) -> AtpAssetVersion | None:
     normalized = code.strip().lower()
     if not normalized:
         return None
-    return db.execute(select(AtpAsset).where(func.lower(AtpAsset.code) == normalized)).scalar_one_or_none()
+    return db.execute(select(AtpAssetVersion).where(func.lower(AtpAssetVersion.code) == normalized)).scalar_one_or_none()
 
 
 def _next_asset_version(db: Session, payload: AtpAssetCreateRequest, shield_wire: str) -> str:
@@ -1559,12 +1859,12 @@ def _next_asset_version(db: Session, payload: AtpAssetCreateRequest, shield_wire
     —— 否则存储路径冲突直接 400。这里按 v1/v2... 递增，非 vN 格式的版本
     （如 v2-rev3）不参与计数，只保证不与现有版本重名。
     """
-    stmt = select(AtpAsset.version).where(
-        AtpAsset.voltage_level == _normalize_optional_str(payload.voltage_level),
-        AtpAsset.tower_type == _normalize_optional_str(payload.tower_type),
-        AtpAsset.scene_type == _normalize_optional_str(payload.scene_type),
-        AtpAsset.arrester_config == _normalize_optional_str(payload.arrester_config),
-        AtpAsset.shield_wire == shield_wire,
+    stmt = select(AtpAssetVersion.version).where(
+        AtpAssetVersion.voltage_level == _normalize_optional_str(payload.voltage_level),
+        AtpAssetVersion.tower_type == _normalize_optional_str(payload.tower_type),
+        AtpAssetVersion.scene_type == _normalize_optional_str(payload.scene_type),
+        AtpAssetVersion.arrester_config == _normalize_optional_str(payload.arrester_config),
+        AtpAssetVersion.shield_wire == shield_wire,
     )
     existing = {v for v in db.scalars(stmt).all() if v}
     numbers = [int(m.group(1)) for v in existing if (m := re.fullmatch(r"v(\d+)", v.strip(), re.IGNORECASE))]
@@ -1594,7 +1894,7 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
             version=version,
             fallback_code=payload.code.strip(),
         )
-    item = AtpAsset(
+    item = AtpAssetVersion(
         code=payload.code.strip(),
         name=payload.name.strip(),
         description=payload.description.strip(),
@@ -1623,6 +1923,7 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         update_date=now,
     )
     _check_asset_storage_path_conflict(db, storage_root_path)
+    _finalize_version_model_fields(db, item, actor_user_id=actor_user_id)
     db.add(item)
     db.commit()
 
@@ -1634,7 +1935,7 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
     return serialize_asset(saved, run_count=0, last_run_status=None, last_run_date=None, db=db)
 
 
-def _exclusive_activate(db: Session, asset: AtpAsset) -> None:
+def _exclusive_activate(db: Session, asset: AtpAssetVersion) -> None:
     """把 asset 置为同维度组内唯一生效版本（组内其他版本全部失效）。
 
     调用方负责事务与并发（activate_asset 用 SELECT FOR UPDATE 锁行）。
@@ -1647,11 +1948,11 @@ def _exclusive_activate(db: Session, asset: AtpAsset) -> None:
         shield_wire=asset.shield_wire or "with",
     )
     db.execute(
-        update(AtpAsset)
-        .where(AtpAsset.id != asset.id)
+        update(AtpAssetVersion)
+        .where(AtpAssetVersion.id != asset.id)
         .where(
             *[
-                getattr(AtpAsset, key) == val
+                getattr(AtpAssetVersion, key) == val
                 for key, val in dims.items() if val is not None
             ]
         )
@@ -1670,7 +1971,7 @@ def activate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = No
     「还没上线」或「已撤下」，把它们设为生效会让仿真用到未发布的文件。
     """
     asset = db.scalar(
-        select(AtpAsset).where(AtpAsset.id == asset_id).with_for_update()
+        select(AtpAssetVersion).where(AtpAssetVersion.id == asset_id).with_for_update()
     )
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
@@ -1773,23 +2074,31 @@ def unpublish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = N
 # ===== 版本历史与对比（2026-11-10）=====
 
 
-def _dimension_group_conditions(asset: AtpAsset) -> list[Any]:
-    """同维度组合（电压/塔型/场景/避雷器/避雷线）的等值条件，NULL 用 IS NULL。"""
+def _dimension_group_conditions(asset: AtpAssetVersion) -> list[Any]:
+    """版本组定位条件（LP-11）：优先用 model_id 外键等值；过渡期 model_id 为 NULL
+    的存量/回滚行回落到五维组合等值（NULL 用 IS NULL），保证迁移前后分组一致。
+    """
+    model_id = _row_field(asset, "model_id")
+    if model_id:
+        return [AtpAssetVersion.model_id == model_id]
     conditions: list[Any] = []
     for column in (
-        AtpAsset.voltage_level,
-        AtpAsset.tower_type,
-        AtpAsset.scene_type,
-        AtpAsset.arrester_config,
+        AtpAssetVersion.voltage_level,
+        AtpAssetVersion.tower_type,
+        AtpAssetVersion.scene_type,
+        AtpAssetVersion.arrester_config,
     ):
         value = getattr(asset, column.key)
         conditions.append(column.is_(None) if value is None else column == value)
-    conditions.append(AtpAsset.shield_wire == (asset.shield_wire or "with"))
+    conditions.append(AtpAssetVersion.shield_wire == (asset.shield_wire or "with"))
     return conditions
 
 
-def _dimension_group_key(asset: AtpAsset) -> tuple[str | None, str | None, str | None, str | None, str]:
-    """维度组合的可比较键（版本归属判定用）。"""
+def _dimension_group_key(asset: AtpAssetVersion) -> tuple[str | None, str | None, str | None, str | None, str]:
+    """维度组合的可比较键（版本归属判定用；model_id 存在时以 model_id 为唯一键）。"""
+    model_id = _row_field(asset, "model_id")
+    if model_id:
+        return (model_id, None, None, None, "")
     return (
         asset.voltage_level,
         asset.tower_type,
@@ -1799,7 +2108,7 @@ def _dimension_group_key(asset: AtpAsset) -> tuple[str | None, str | None, str |
     )
 
 
-def _version_storage_stats(db: Session, asset: AtpAsset) -> tuple[int | None, int | None]:
+def _version_storage_stats(db: Session, asset: AtpAssetVersion) -> tuple[int | None, int | None]:
     """带 db 的版本目录统计；目录不存在（从未上传）返回 (None, None)。"""
     if not asset.storage_root_path:
         return (None, None)
@@ -1814,7 +2123,7 @@ def _version_storage_stats(db: Session, asset: AtpAsset) -> tuple[int | None, in
     return (len(tree.files), int(sum(obj.size or 0 for obj in tree.files)))
 
 
-def _serialize_asset_version(asset: AtpAsset, *, file_count: int | None = None, total_size: int | None = None) -> AtpAssetVersionSummary:
+def _serialize_asset_version(asset: AtpAssetVersion, *, file_count: int | None = None, total_size: int | None = None) -> AtpAssetVersionSummary:
     return AtpAssetVersionSummary(
         id=asset.id,
         version=asset.version or "v1",
@@ -1845,9 +2154,9 @@ def list_asset_versions(db: Session, *, asset_id: str) -> AtpAssetVersionListRes
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     siblings = db.execute(
-        select(AtpAsset)
+        select(AtpAssetVersion)
         .where(*_dimension_group_conditions(asset))
-        .order_by(AtpAsset.create_date.desc())
+        .order_by(AtpAssetVersion.create_date.desc())
     ).scalars().all()
     items: list[AtpAssetVersionSummary] = []
     for sibling in siblings:
@@ -1873,7 +2182,7 @@ def compare_asset_versions(db: Session, *, asset_id: str, other_id: str) -> AtpA
     if _dimension_group_key(asset_a) != _dimension_group_key(asset_b):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="两个版本不属于同一维度组合，无法对比")
 
-    def _relative_files(asset: AtpAsset) -> dict[str, int]:
+    def _relative_files(asset: AtpAssetVersion) -> dict[str, int]:
         if not asset.storage_root_path:
             return {}
         try:
@@ -1960,16 +2269,16 @@ def get_asset_overview_tree(db: Session) -> dict[str, Any]:
     """
     rows = db.execute(
         select(
-            AtpAsset.voltage_level,
-            AtpAsset.tower_type,
-            AtpAsset.scene_type,
-            AtpAsset.arrester_config,
-            AtpAsset.shield_wire,
-            AtpAsset.version,
-            AtpAsset.is_published,
-            AtpAsset.status,
-            AtpAsset.name,
-            AtpAsset.id,
+            AtpAssetVersion.voltage_level,
+            AtpAssetVersion.tower_type,
+            AtpAssetVersion.scene_type,
+            AtpAssetVersion.arrester_config,
+            AtpAssetVersion.shield_wire,
+            AtpAssetVersion.version,
+            AtpAssetVersion.is_published,
+            AtpAssetVersion.status,
+            AtpAssetVersion.name,
+            AtpAssetVersion.id,
         )
     ).all()
 
@@ -2342,15 +2651,15 @@ def export_assets_zip(
       兜底上限防异常巨型数据把容器打爆。
     - 返回 ``(zip 字节, 文件名)``。
     """
-    stmt = select(AtpAsset).where(AtpAsset.status == "enabled").order_by(
-        AtpAsset.voltage_level.asc(), AtpAsset.code.asc(), AtpAsset.version.asc()
+    stmt = select(AtpAssetVersion).where(AtpAssetVersion.status == "enabled").order_by(
+        AtpAssetVersion.voltage_level.asc(), AtpAssetVersion.code.asc(), AtpAssetVersion.version.asc()
     )
     normalized_voltage = (voltage_level or "").strip()
     normalized_tower = (tower_type or "").strip()
     if normalized_voltage:
-        stmt = stmt.where(AtpAsset.voltage_level == normalized_voltage)
+        stmt = stmt.where(AtpAssetVersion.voltage_level == normalized_voltage)
     if normalized_tower:
-        stmt = stmt.where(AtpAsset.tower_type == normalized_tower)
+        stmt = stmt.where(AtpAssetVersion.tower_type == normalized_tower)
     assets = db.execute(stmt).scalars().all()
     if not assets:
         raise HTTPException(
@@ -2359,7 +2668,7 @@ def export_assets_zip(
         )
 
     # 同 storage_root_path 的多版本资产按挂载去重（同一目录只打包一次，避免重复内容）
-    seen_roots: dict[tuple[str, str], list[AtpAsset]] = {}
+    seen_roots: dict[tuple[str, str], list[AtpAssetVersion]] = {}
     for asset in assets:
         mount_code, root_path = _resolve_asset_file_location(db, asset)
         seen_roots.setdefault((mount_code, root_path), []).append(asset)
@@ -2533,10 +2842,10 @@ def read_asset_file_content(
     )
 
 
-def _next_version_for_asset(db: Session, asset: AtpAsset) -> str:
+def _next_version_for_asset(db: Session, asset: AtpAssetVersion) -> str:
     """同维度组合内下一个版本号（vN 递增），供「变更版本」派生用。"""
     versions = db.scalars(
-        select(AtpAsset.version).where(*_dimension_group_conditions(asset))
+        select(AtpAssetVersion.version).where(*_dimension_group_conditions(asset))
     ).all()
     existing = {v for v in versions if v}
     numbers = [int(m.group(1)) for v in existing if (m := re.fullmatch(r"v(\d+)", v.strip(), re.IGNORECASE))]
@@ -2574,7 +2883,7 @@ def _storage_has_files(driver: StorageDriver, storage_root_path: str) -> bool:
     return bool(tree.files)
 
 
-def _fork_published_asset(db: Session, asset: AtpAsset, *, actor_user_id: str) -> AtpAsset:
+def _fork_published_asset(db: Session, asset: AtpAssetVersion, *, actor_user_id: str) -> AtpAssetVersion:
     """把一个**已发布**版本的文件变更派生为一条新的「变更」版本记录（2026-11-10）。
 
     为什么不原地覆盖：已发布的文件是对外承诺的那一份，仿真正在用它。原地覆盖会
@@ -2600,7 +2909,7 @@ def _fork_published_asset(db: Session, asset: AtpAsset, *, actor_user_id: str) -
     # 否则下面 replace 清空目录会把旧版本文件删掉。
     if asset.storage_root_path and storage_root_path.rstrip("/") == asset.storage_root_path.rstrip("/"):
         storage_root_path = f"{storage_root_path.rstrip('/')}-{uuid4().hex[:6]}"
-    forked = AtpAsset(
+    forked = AtpAssetVersion(
         code=code,
         name=asset.name,
         description=asset.description or "",
@@ -2634,6 +2943,7 @@ def _fork_published_asset(db: Session, asset: AtpAsset, *, actor_user_id: str) -
         update_date=now,
     )
     _check_asset_storage_path_conflict(db, storage_root_path)
+    _finalize_version_model_fields(db, forked, actor_user_id=actor_user_id)
     db.add(forked)
     db.commit()
     db.refresh(forked)
@@ -2672,7 +2982,7 @@ def upload_asset_files(
     # 的新版本承载新文件，旧版本原封不动继续可用，等人工验证后重新发布。
     # forked_asset 留引用：若本次上传随后在预检阶段失败，要把这条空版本撤回，
     # 避免用户上传失败却多出一个 0 文件的「变更」版本。
-    forked_asset: AtpAsset | None = None
+    forked_asset: AtpAssetVersion | None = None
     if _derive_publish_state(asset) == PUBLISH_STATE_PUBLISHED and _storage_has_files(driver, storage_root_path):
         forked_asset = _fork_published_asset(db, asset, actor_user_id=actor_user_id)
         asset = forked_asset
@@ -2918,7 +3228,7 @@ def collect_check_members_from_storage(
 
 def _analyze_asset_storage(
     db: Session,
-    asset: AtpAsset,
+    asset: AtpAssetVersion,
     *,
     include_slots: bool = True,
 ) -> dict[str, Any]:
@@ -3190,7 +3500,7 @@ def _finish_analysis_failed(db: Session, asset_id: str, token: str, message: str
 
 
 
-def _infer_asset_file_role(asset: AtpAsset, relative_path: str, is_dir: bool) -> str | None:
+def _infer_asset_file_role(asset: AtpAssetVersion, relative_path: str, is_dir: bool) -> str | None:
     if is_dir:
         return None
     lower = relative_path.lower()
@@ -3514,7 +3824,7 @@ def get_asset_scene(db: Session, *, asset_id: str, entry_file: str = _ENTRY_ATP_
 # ---------------------------------------------------------------------------
 
 
-def _read_asset_text(db: Session, asset: AtpAsset, relative_path: str) -> str | None:
+def _read_asset_text(db: Session, asset: AtpAssetVersion, relative_path: str) -> str | None:
     """从资产存储读取单个文本文件（UTF-8→GBK 兜底解码），找不到返回 None。"""
     mount_code, storage_root_path = _resolve_asset_file_location(db, asset)
     mount = _resolve_mount(db, mount_code)
@@ -3533,7 +3843,7 @@ def _read_asset_text(db: Session, asset: AtpAsset, relative_path: str) -> str | 
 
 
 def scan_asset_slots(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> dict[str, Any]:
-    """扫描模型槽位（work.atp $PARAMETER + 各 .dat 几何坐标），写回 AtpAsset.slots_json。"""
+    """扫描模型槽位（work.atp $PARAMETER + 各 .dat 几何坐标），写回 AtpAssetVersion.slots_json。"""
     asset = get_asset_by_id(db, asset_id)
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
@@ -3650,7 +3960,7 @@ def check_asset_slot_coverage(
     }
 
 
-def _template_matches_asset(tmpl: Any, asset: AtpAsset) -> bool:
+def _template_matches_asset(tmpl: Any, asset: AtpAssetVersion) -> bool:
     """模板维度字段匹配资产（None = 通配）。"""
     pairs = (
         (tmpl.tower_type, asset.tower_type),
@@ -3683,8 +3993,8 @@ def get_slot_options(
     用于参数模板编辑时的槽位下拉候选——不再手敲槽位名，直接从
     匹配维度的模型扫描缓存里取并集。返回每个槽位的出现次数和示例值。
     """
-    stmt = select(AtpAsset).where(AtpAsset.slots_json.is_not(None))
-    matched: list[AtpAsset] = []
+    stmt = select(AtpAssetVersion).where(AtpAssetVersion.slots_json.is_not(None))
+    matched: list[AtpAssetVersion] = []
     for asset in db.execute(stmt).scalars():
         pairs = (
             (tower_type, asset.tower_type),

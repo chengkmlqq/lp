@@ -120,10 +120,13 @@ function runStatusMeta(status: AtpAssetRunStatus | null, t: (s: string) => strin
 export function AtpModelDetailTab({
   assetId,
   onOpenAsset,
+  onDataChanged,
 }: {
   assetId: string;
   /** 覆盖上传派生「变更版本」后，用新版本 id 打开详情（父级负责开新 tab） */
   onOpenAsset?: (assetId: string) => void;
+  /** LP-11 决策 1：版本切换/发布/覆盖上传后回刷按模型聚合的列表（展示版本可能变化） */
+  onDataChanged?: () => void;
 }) {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -231,6 +234,8 @@ export function AtpModelDetailTab({
     assetQuery.refetch();
     filesQuery.refetch();
     versionsQuery.refetch();
+    // 决策 1：生效版本/发布状态变化会改变模型的「展示版本」，回刷卡片/列表
+    onDataChanged?.();
   };
 
   // ===== 重新上传覆盖（2026-11-10）：打包 zip → 临时上传 → replace=true 提交 =====

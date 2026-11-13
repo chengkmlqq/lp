@@ -11,20 +11,27 @@ from ..core.database import Base
 from .base import utcnow
 
 
-class AtpAsset(Base):
-    __tablename__ = "atp_asset"
+class AtpModel(Base):
+    """模型主表（LP-11：模型/版本拆表）。
+
+    一行 = 一个模型组（由五维 + 避雷线唯一确定）。模型级字段从原来的
+    ``atp_asset``（一行一版本，字段每行重复）上提到这里，版本归属从
+    「五维组合相等」改为 ``atp_asset_version.model_id`` 外键。
+
+    ``code`` 为**去掉 ``-vN`` 段**的模型编码（如 ``ATP66-shangzi-raoji2-M123``），
+    生成时必须做去重校验；版本级旧 ``code``（含 ``-vN``）由 ``version_code``
+    原样保留，保证导出文件名 / 日志 / 报告等外部引用不失效（决策 2）。
+    """
+
+    __tablename__ = "atp_model"
     __table_args__ = (
-        UniqueConstraint("code", name="uq_atp_asset_code"),
-        Index("idx_atp_asset_status", "status"),
-        Index("idx_atp_asset_voltage_level", "voltage_level"),
-        Index("idx_atp_asset_tower_type", "tower_type"),
-        Index("idx_atp_asset_scene_type", "scene_type"),
-        Index("idx_atp_asset_arrester_config", "arrester_config"),
-        # 多版本 + 生效：同维度组定位 + 版本唯一 + 生效过滤（2026-10-29 改造）
-        Index("idx_atp_asset_dim_version", "voltage_level", "tower_type",
-              "scene_type", "arrester_config", "shield_wire", "version"),
-        Index("idx_atp_asset_active", "voltage_level", "tower_type",
-              "scene_type", "arrester_config", "shield_wire", "is_active"),
+        UniqueConstraint("code", name="uq_atp_model_code"),
+        Index("idx_atp_model_status", "status"),
+        # 五维组合索引：按维度反查模型 / 回填 model_id 用（维度可为 NULL）
+        Index(
+            "idx_atp_model_dim",
+            "voltage_level", "tower_type", "scene_type", "arrester_config", "shield_wire",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid4().hex)
@@ -36,88 +43,90 @@ class AtpAsset(Base):
     tower_type: Mapped[str | None] = mapped_column(String(64))
     scene_type: Mapped[str | None] = mapped_column(String(32))
     arrester_config: Mapped[str | None] = mapped_column(String(64))
-    # ===== 多版本 + 生效管理（2026-10-29 改造）=====
-    # 同一维度组合（电压/塔型/场景/避雷器/避雷线）下可存在多个版本，
-    # 由 is_active 唯一生效的版本参与仿真定位（_query 增加 is_active 过滤）。
-    # version: 版本号（同维度组内唯一，自由文本，如 "v1" / "v2-rev3"）
+    shield_wire: Mapped[str] = mapped_column(String(16), default="with", nullable=False)
+    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    create_user: Mapped[str | None] = mapped_column(String(64), index=True)
+    update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    update_user: Mapped[str | None] = mapped_column(String(64), index=True)
+
+
+class AtpAssetVersion(Base):
+    """版本表（LP-11：由 ``atp_asset`` 一步改名而来）。
+
+    **沿用旧 ``atp_asset.id`` 作为主键**：三张外键表、仿真定位里存的资产 id、
+    日志 / 报告引用全部不用改数据（硬约束）。存储路径字符串也保持不变。
+
+    过渡期（P1–P3）采用双写：模型级字段（``name`` / ``description`` /
+    ``status`` / 五维 / ``shield_wire``）仍保留在本表并随 ``atp_model``
+    同步更新，使只读兼容视图 ``atp_asset`` 能原样映射给尚未切换的旧代码；
+    这些冗余列在 P4 清理阶段才删除。新增 ``model_id``（版本归属）与
+    ``version_code``（原样保留旧 ``code``）。
+    """
+
+    __tablename__ = "atp_asset_version"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_atp_asset_version_code"),
+        UniqueConstraint("version_code", name="uq_atp_asset_version_version_code"),
+        # 组内版本唯一；model_id 可为 NULL（过渡期存量/回滚），NULL 互不冲突
+        UniqueConstraint("model_id", "version", name="uq_atp_asset_version_model_version"),
+        Index("idx_atp_asset_version_status", "status"),
+        Index("idx_atp_asset_version_voltage_level", "voltage_level"),
+        Index("idx_atp_asset_version_tower_type", "tower_type"),
+        Index("idx_atp_asset_version_scene_type", "scene_type"),
+        Index("idx_atp_asset_version_arrester_config", "arrester_config"),
+        Index("idx_atp_asset_version_model", "model_id"),
+        # 多版本 + 生效：保留旧维度定位索引，仿真定位与版本历史过渡期仍可用
+        Index("idx_atp_asset_version_dim_version", "voltage_level", "tower_type",
+              "scene_type", "arrester_config", "shield_wire", "version"),
+        Index("idx_atp_asset_version_active", "voltage_level", "tower_type",
+              "scene_type", "arrester_config", "shield_wire", "is_active"),
+        Index("idx_atp_asset_version_model_published", "model_id", "is_published"),
+        Index("idx_atp_asset_version_model_state", "model_id", "publish_state"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid4().hex)
+    # 版本归属（LP-11）：外键在迁移脚本中以 ALTER TABLE ... ADD CONSTRAINT 落地，
+    # ORM 侧保持普通列，避免各内存库/测试建表时的 FK 依赖与方言差异。
+    model_id: Mapped[str | None] = mapped_column(String(32))
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    # version_code：原样保留旧 code（含 -vN），供外部引用；过渡期与 code 同值。
+    version_code: Mapped[str | None] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text(), default="")
+    status: Mapped[str] = mapped_column(String(20), default="enabled")
+    voltage_level: Mapped[str | None] = mapped_column(String(16))
+    tower_type: Mapped[str | None] = mapped_column(String(64))
+    scene_type: Mapped[str | None] = mapped_column(String(32))
+    arrester_config: Mapped[str | None] = mapped_column(String(64))
+    # ===== 多版本 + 生效管理 =====
     version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
-    # is_active: 当前是否生效（仿真用）。同维度组内**至多 1 条**为 True，
-    # 唯一性由 activate/deactivate 事务保证（SELECT FOR UPDATE + 组内清零）。
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # ===== 版本发布管理（2026-11-05 新增）=====
-    # is_published: 该版本是否已发布。发布 = 版本对仿真可见（fl_analysis 资产定位
-    # 只在已发布版本中选取）；下线 = 暂停对外提供，不参与仿真定位但保留文件与记录。
-    # 存量行由迁移 035 回填为已发布（行为不变）；新建默认未发布，需显式发布。
+    # ===== 版本发布管理 =====
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # ===== 发布生命周期状态（2026-11-10 新增）=====
-    # 把原来的「已发布 / 未发布」二态细分成人能一眼看懂的四个状态：
-    #   new       新建：从未发布过（含刚上传文件、还没走发布流程）
-    #   published 已发布：文件即发布内容，参与仿真定位
-    #   changed   变更：由「已发布」版本覆盖上传派生出的新版本，文件已变、待重新发布
-    #   offline   下线：曾发布后被人工下线，保留文件与记录但不参与仿真
-    # 与 is_published 的分工：is_published 只表示「这一版对仿真是否可见」（changed/new/
-    # offline 均为 False），publish_state 表示生命周期。覆盖上传已发布模型时**不原地改**
-    # 旧行，而是派生一条 changed 新版本 —— 这样「上一个发布过的版本」文件与生效状态都完好，
-    # 仿真不会因为一次覆盖上传就断档。
-    # 存量为 NULL 时由 _derive_publish_state 按 is_published / published_date 兜底派生，
-    # 因此本列保持 nullable（启动时 _sync_missing_columns 可安全自动补列，不会卡死老行）。
+    # ===== 发布生命周期状态 =====
     publish_state: Mapped[str | None] = mapped_column(String(20), index=True)
-    # release_notes: 版本描述（发布时弹窗填写，2026-11-10）：说明该版本改了什么，
-    # 供版本历史与版本对比展示；未发布/未填写为 NULL。
     release_notes: Mapped[str | None] = mapped_column(String(1000))
-    # shield_wire: 避雷线配置维度（with/without）。110kV 无避雷线变体（ganzino 等
-    # 塔型后缀）归一后落此处，塔型维度回归纯净。
     shield_wire: Mapped[str] = mapped_column(String(16), default="with", nullable=False)
     storage_mount_code: Mapped[str | None] = mapped_column(String(64), index=True)
     storage_root_path: Mapped[str | None] = mapped_column(
         String(2048),
         index=True,
-        # MySQL 索引长度限制 3072B（utf8mb4）：2048*4=8192 超限，用 191 前缀索引
         index_kwargs={"mysql_length": 191},
     )
     tags_json: Mapped[list[str]] = mapped_column(JSON, default=list)
-    # 模型级绑定的测试线路（单塔基准）：非空时优先于几何维匹配，
-    # 用于「这个模型必须用专用样本」的场景（见 models/atp_test_line.py）
     test_line_id: Mapped[str | None] = mapped_column(String(32), index=True)
-    # 槽位扫描缓存：{"scanned_at", "work_atp": {"slots": {...}, "count": N},
-    #                 "geometry": {"long": {...}, ...}}见 atp_slot_scanner.scan_model_slots
     slots_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    # ===== 模型形态（2026-11-02 新增）=====
-    # 上传时按 work.atp 的几何引用形态判定，决定仿真走哪条链路：
-    #   legacy → `$INCLUDE ... .lib`（6.x/7.0/7.1，DBM）：每轮 dat→LCC→pch→lib 重算几何
-    #   insert → `$INSERT ... <name><序号>.pch`（7.2+）：几何随包，pch 不再重算，
-    #            但 $PARAMETER 段需规范化（去 $$ / 整数补点 / 中间变量内联）
-    #   embed  → 7.2+ Enbed，几何内嵌烧死，上传即拒（存量数据可能残留）
-    #   plain  → 无 LCC 的纯 RLC 工程 / 手写文件，无需重算几何
-    # 判定逻辑见 services/atp_model_format.detect_model_format（不按版本指纹大小写判）
+    # ===== 模型形态 =====
     model_format: Mapped[str] = mapped_column(String(16), default="legacy", nullable=False)
-    # 上传期预检报告（services/atp_model_format.PackageInspection.as_dict()）：
-    # {"model_format", "format_label", "error_count", "warning_count",
-    #  "issues": [{code, level, message, fix_hint, file}], "stats": {...}}
-    # error 级问题在上传口直接 400，不会落库；本字段存的是放行时的 warning 清单，
-    # 供前端「模型检查」面板展示给人工处理（如 pch 目录不一致、模板缺小数点建议）。
     format_check_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    # ===== 异步分析状态（2026-11-03 新增）=====
-    # 「形态识别 + 槽位扫描」改为上传后自动触发的 Celery 任务：
-    #   判定本身只有毫秒级，但读模型包要走 OSS（每次 list/get 一次 HTTPS 往返），
-    #   同步执行会把上传响应与「重新检测」按钮拖到 2~3 秒，且资产越多越慢。
-    # analysis_status: pending → running → success | failed（NULL = 从未分析过）
-    # analysis_token : 入队时生成的随机串，任务回写前校验；上传/重判会换 token，
-    #                  旧任务发现 token 不符就直接放弃，避免慢任务覆盖新结果
-    # analysis_error : 失败原因（截断 512 字），成功时清空
+    # ===== 异步分析状态 =====
     analysis_status: Mapped[str | None] = mapped_column(String(20))
     analysis_error: Mapped[str | None] = mapped_column(String(512))
     analysis_token: Mapped[str | None] = mapped_column(String(32))
     analysis_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     analysis_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # ===== 测试结论标记（2026-11-07 新增）=====
-    # 与 analysis_status 区分：analysis_status 是上传期「能不能解析」，
-    # test_status 是实跑仿真后的「算得对不对」：
-    #   passed  = 跑通且数值合理（有结果塔、耐雷水平非 0 且未触上界）
-    #   failed  = 跑不起来（KILL=12 断链 / 缺变量 / 无结果）
-    #   suspect = 能算但数值异常（跳闸率越界被钳制、耐雷水平触顶、几何失真）
-    #   None    = 从未测过（存量行保持空，不臆造结论）
+    # ===== 测试结论标记 =====
     test_status: Mapped[str | None] = mapped_column(String(16), index=True)
     test_message: Mapped[str | None] = mapped_column(String(512))
     test_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -135,6 +144,12 @@ class AtpAsset(Base):
     )
 
 
+# 过渡期兼容别名（双写阶段）：约 20 个引用文件仍以 ``AtpAsset`` 导入，保持
+# 旧名可用，避免一次性改名牵连过广；新代码一律使用 ``AtpAssetVersion``。
+# P4 清理阶段删除该别名，并把所有引用收敛到新名。
+AtpAsset = AtpAssetVersion
+
+
 class AtpAssetRun(Base):
     __tablename__ = "atp_asset_run"
     __table_args__ = (
@@ -145,7 +160,7 @@ class AtpAssetRun(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid4().hex)
     asset_id: Mapped[str] = mapped_column(
         String(32),
-        ForeignKey("atp_asset.id", ondelete="CASCADE"),
+        ForeignKey("atp_asset_version.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -174,4 +189,4 @@ class AtpAssetRun(Base):
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     update_user: Mapped[str | None] = mapped_column(String(64), index=True)
 
-    asset: Mapped[AtpAsset] = relationship("AtpAsset", back_populates="runs", lazy="selectin")
+    asset: Mapped[AtpAssetVersion] = relationship("AtpAssetVersion", back_populates="runs", lazy="selectin")

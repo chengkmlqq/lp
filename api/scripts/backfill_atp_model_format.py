@@ -33,7 +33,7 @@ import time
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.models.atp_asset import AtpAsset
+from app.models.atp_asset import AtpAssetVersion
 from app.services.atp_asset_service import (
     _build_driver_or_400,
     _resolve_asset_file_location,
@@ -58,7 +58,7 @@ def main() -> int:
     args = parse_args()
     db = SessionLocal()
 
-    stmt = select(AtpAsset).order_by(AtpAsset.create_date, AtpAsset.id)
+    stmt = select(AtpAssetVersion).order_by(AtpAssetVersion.create_date, AtpAssetVersion.id)
     if args.offset:
         stmt = stmt.offset(args.offset)
     if args.limit:

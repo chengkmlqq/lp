@@ -641,7 +641,7 @@ def derive_template(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
 
 def meta_options(db: Session) -> dict[str, Any]:
     tower_rows = db.execute(
-        text("SELECT DISTINCT tower_type FROM atp_asset WHERE tower_type IS NOT NULL ORDER BY tower_type")
+        text("SELECT DISTINCT tower_type FROM atp_asset_version WHERE tower_type IS NOT NULL ORDER BY tower_type")
     ).fetchall()
     seen: dict[str, str] = {}
     for (tower_type,) in tower_rows:
@@ -654,14 +654,14 @@ def meta_options(db: Session) -> dict[str, Any]:
     for marker in markers:
         seen.setdefault(marker, marker)
     voltage_rows = db.execute(
-        text("SELECT DISTINCT voltage_level FROM atp_asset WHERE voltage_level IS NOT NULL ORDER BY voltage_level")
+        text("SELECT DISTINCT voltage_level FROM atp_asset_version WHERE voltage_level IS NOT NULL ORDER BY voltage_level")
     ).fetchall()
     voltages = [str(row[0]) for row in voltage_rows] or ["35", "66", "110", "220", "330", "500", "750", "1000"]
     scene_rows = db.execute(
-        text("SELECT DISTINCT scene_type FROM atp_asset WHERE scene_type IS NOT NULL ORDER BY scene_type")
+        text("SELECT DISTINCT scene_type FROM atp_asset_version WHERE scene_type IS NOT NULL ORDER BY scene_type")
     ).fetchall()
     arrester_rows = db.execute(
-        text("SELECT DISTINCT arrester_config FROM atp_asset WHERE arrester_config IS NOT NULL ORDER BY arrester_config")
+        text("SELECT DISTINCT arrester_config FROM atp_asset_version WHERE arrester_config IS NOT NULL ORDER BY arrester_config")
     ).fetchall()
     slot_names = sorted(
         {str(row[0]) for row in db.execute(select(AtpParamGlobal.slot)).fetchall()}

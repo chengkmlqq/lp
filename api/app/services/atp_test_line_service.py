@@ -25,7 +25,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models.atp_asset import AtpAsset, AtpAssetRun
+from ..models.atp_asset import AtpAssetVersion, AtpAssetRun
 from ..models.atp_test_line import AtpTestLine, AtpTestLineCircuit
 from ..models.atp_test_set import AtpTestSetCase
 from ..models.base import utcnow
@@ -220,7 +220,7 @@ def _asset_code_map(db: Session, asset_ids: Iterable[str | None]) -> dict[str, s
     ids = [aid for aid in {a for a in asset_ids if a}]
     if not ids:
         return {}
-    rows = db.execute(select(AtpAsset.id, AtpAsset.code).where(AtpAsset.id.in_(ids))).all()
+    rows = db.execute(select(AtpAssetVersion.id, AtpAssetVersion.code).where(AtpAssetVersion.id.in_(ids))).all()
     return {row[0]: row[1] for row in rows}
 
 
@@ -559,7 +559,7 @@ def create_test_line(
 
     asset_code = None
     if payload.asset_id:
-        asset = db.get(AtpAsset, payload.asset_id)
+        asset = db.get(AtpAssetVersion, payload.asset_id)
         if asset is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"ATP 资产不存在：{payload.asset_id}"
@@ -665,7 +665,7 @@ def list_usage(db: Session, test_line_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="测试线路不存在")
     items: list[dict[str, Any]] = []
     assets = list(
-        db.scalars(select(AtpAsset).where(AtpAsset.test_line_id == test_line_id)).all()
+        db.scalars(select(AtpAssetVersion).where(AtpAssetVersion.test_line_id == test_line_id)).all()
     )
     for asset in assets:
         items.append({"kind": "asset", "id": asset.id, "code": asset.code, "name": asset.name})
@@ -756,7 +756,7 @@ def resolve_test_line(
     db: Session,
     *,
     test_line_id: str | None = None,
-    asset: AtpAsset | None = None,
+    asset: AtpAssetVersion | None = None,
     voltage_level: str | None = None,
     tower_type: str | None = None,
     shield_wire: str | None = None,
@@ -832,7 +832,7 @@ def resolve_test_line(
 
 def resolve_for_asset(db: Session, *, asset_id: str) -> dict[str, Any]:
     """给前端「测试线路」来源切换用：按资产维度反查并给出提示。"""
-    asset = db.get(AtpAsset, asset_id)
+    asset = db.get(AtpAssetVersion, asset_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ATP 资产不存在")
     row, matched_by = resolve_test_line(db, asset=asset)
@@ -1000,9 +1000,9 @@ def _dimension_extra_map(db: Session, dimension_type: str, codes: Iterable[str |
 
 def derive_test_line(db: Session, payload: AtpTestLineDeriveRequest) -> dict[str, Any]:
     """按维度/资产/真实杆塔派生草稿（干跑，不落库）。"""
-    asset: AtpAsset | None = None
+    asset: AtpAssetVersion | None = None
     if payload.asset_id:
-        asset = db.get(AtpAsset, payload.asset_id)
+        asset = db.get(AtpAssetVersion, payload.asset_id)
         if asset is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"ATP 资产不存在：{payload.asset_id}"

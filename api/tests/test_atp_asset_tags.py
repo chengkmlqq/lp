@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_asset import AtpAssetVersion, AtpAssetRun
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
@@ -33,7 +33,7 @@ def session() -> Session:
             User.__table__,
             DimensionType.__table__,
             DimensionItem.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
         ],
     )
@@ -45,7 +45,7 @@ def session() -> Session:
         db.close()
 
 
-def _make_asset(db: Session, **overrides) -> AtpAsset:
+def _make_asset(db: Session, **overrides) -> AtpAssetVersion:
     payload = {
         "id": "asset-1",
         "code": "atp-test-1",
@@ -62,7 +62,7 @@ def _make_asset(db: Session, **overrides) -> AtpAsset:
         "tags_json": [],
     }
     payload.update(overrides)
-    asset = AtpAsset(**payload)
+    asset = AtpAssetVersion(**payload)
     db.add(asset)
     db.commit()
     return asset

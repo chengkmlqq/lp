@@ -95,7 +95,7 @@ class AtpTestLine(Base):
     # 非空 = 某 ATP 模型专用样本；空串 = 该几何维组共享基准（MySQL 唯一索引口径见上）
     asset_id: Mapped[str | None] = mapped_column(
         String(32),
-        ForeignKey("atp_asset.id", ondelete="SET NULL"),
+        ForeignKey("atp_asset_version.id", ondelete="SET NULL"),
         index=True,
     )
 

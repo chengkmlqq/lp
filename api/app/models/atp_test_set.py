@@ -85,7 +85,7 @@ class AtpTestSetCase(Base):
     )
     asset_id: Mapped[str] = mapped_column(
         String(32),
-        ForeignKey("atp_asset.id", ondelete="CASCADE"),
+        ForeignKey("atp_asset_version.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -111,7 +111,7 @@ class AtpTestSetCase(Base):
     update_user: Mapped[str | None] = mapped_column(String(64), index=True)
 
     test_set: Mapped[AtpTestSet] = relationship("AtpTestSet", back_populates="cases", lazy="selectin")
-    asset: Mapped[Any] = relationship("AtpAsset", lazy="selectin")
+    asset: Mapped[Any] = relationship("AtpAssetVersion", lazy="selectin")
 
 
 class AtpTestSetRun(Base):

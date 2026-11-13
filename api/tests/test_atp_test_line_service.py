@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_asset import AtpAssetVersion, AtpAssetRun
 from app.models.atp_test_line import AtpTestLine, AtpTestLineCircuit
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
@@ -51,7 +51,7 @@ def _build_sessionmaker():
             DimensionType.__table__,
             DimensionItem.__table__,
             TowerModel.__table__,
-            AtpAsset.__table__,
+            AtpAssetVersion.__table__,
             AtpAssetRun.__table__,
             AtpTestLine.__table__,
             AtpTestLineCircuit.__table__,
@@ -223,7 +223,7 @@ def _test_line_entity() -> AtpTestLine:
     return row
 
 
-def _create_asset(session: Session, *, code: str = "ATP-500-GUXING", **overrides: Any) -> AtpAsset:
+def _create_asset(session: Session, *, code: str = "ATP-500-GUXING", **overrides: Any) -> AtpAssetVersion:
     fields: dict[str, Any] = {
         "code": code,
         "name": "500kV 鼓型 反击 M123",
@@ -237,7 +237,7 @@ def _create_asset(session: Session, *, code: str = "ATP-500-GUXING", **overrides
         "is_active": True,
     }
     fields.update(overrides)
-    asset = AtpAsset(**fields)
+    asset = AtpAssetVersion(**fields)
     session.add(asset)
     session.commit()
     session.refresh(asset)

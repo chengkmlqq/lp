@@ -56,6 +56,7 @@ import type {
   AtpAssetListResponse,
   AtpAssetPublishState,
   AtpAssetSummary,
+  AtpModelCardListResponse,
   DimensionTypeTreeItem,
   TempUploadResponse,
 } from "@/types/auth";
@@ -829,17 +830,19 @@ export default function AtpModelsPage() {
         if (activeFilter.scene_type) params.set("scene_type", activeFilter.scene_type);
         if (activeFilter.arrester_config) params.set("arrester_config", activeFilter.arrester_config);
       }
-      const response = await fetchWithAuth(`/api/v1/atp/assets?${params.toString()}`);
+      // 决策 1：列表/卡片按「模型」聚合（一模型一卡，卡片数 1429 → 781）。
+      // 详情页版本历史/对比/发布/下线/激活仍走 /assets 与版本接口（口径不变）。
+      const response = await fetchWithAuth(`/api/v1/atp/models?${params.toString()}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as AtpAssetListResponse;
+      return (await response.json()) as AtpModelCardListResponse;
     },
     placeholderData: (previousData) => previousData,
     // 异步分析（2026-11-03）：上传/重判后后台任务在读 OSS 重判形态 + 扫槽位
     // （单资产 1~3 秒），有 pending/running 时每 2 秒刷一次，出终态自动停。
     refetchInterval: (query) => {
-      const items = (query.state.data as AtpAssetListResponse | undefined)?.items ?? [];
+      const items = (query.state.data as AtpModelCardListResponse | undefined)?.items ?? [];
       const busy = items.some(
         (item) => item.analysis_status === "pending" || item.analysis_status === "running",
       );
@@ -852,11 +855,12 @@ export default function AtpModelsPage() {
     queryKey: ["atp-assets", "total"],
     enabled: Boolean(user && canRead),
     queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/atp/assets?limit=1");
+      // 决策 1：总数按模型口径（781），与卡片/列表一致
+      const response = await fetchWithAuth("/api/v1/atp/models?limit=1");
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      const payload = (await response.json()) as AtpAssetListResponse;
+      const payload = (await response.json()) as AtpModelCardListResponse;
       return payload.total;
     },
   });
@@ -1572,6 +1576,9 @@ export default function AtpModelsPage() {
               <AtpModelDetailTab
                 assetId={tab.assetId}
                 onOpenAsset={openDetailById}
+                onDataChanged={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+                }}
               />
             ),
           })),
