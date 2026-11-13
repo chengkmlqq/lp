@@ -1962,32 +1962,6 @@ def execute_external_waveform_tower_analysis(
             _angle_val - 330.0 if _angle_val is not None else -330.0,
         )
 
-    # dT 自适应（2026-11-04 35kV 实测教训）：短横臂（如 0.8m，行程 3.2ns）小于模板
-    # dT=5ns 时引擎 KILL=29 拒跑，C# 桌面版靠 NoRelease_work.txt 人工覆写且不校验产物。
-    # 此处扫描渲染后 work.atp 的 /BRANCH 分布参数支路，自动收窄 dT（只收窄不放宽；
-    # 病态短支路低于硬下限时直接报错，绝不让引擎静默拒跑后出假结果）。
-    from .atp_deltat_adapter import AtpDataError, adapt_deltat as _adapt_deltat
-
-    try:
-        _adapted = _adapt_deltat(rendered_text)
-    except AtpDataError as exc:
-        raise RuntimeError(f"{snapshot.tower_no} 步长自适应失败：{exc}") from exc
-    for _note in _adapted.notes:
-        logger.info("[ATP] dT 自适应（%s）：%s", snapshot.tower_no, _note)
-    if _adapted.changed:
-        rendered_text = _adapted.atp_text
-        logger.info(
-            "[ATP] dT 自适应生效（%s）：%.2g s → %.2g s（最短支路行程 %.2f ns）",
-            snapshot.tower_no, _adapted.original_dt, _adapted.new_dt,
-            (_adapted.t_min or 0.0) * 1e9,
-        )
-        execution_options["_dt_adaptation"] = {
-            "original_dt": _adapted.original_dt,
-            "new_dt": _adapted.new_dt,
-            "t_min": _adapted.t_min,
-            "branch_count": len(_adapted.lines),
-        }
-
     # ── $PARAMETER 段规范化（2026-11-06 115/230 实测）──
     # 与资产测试路径（atp_asset_test_service）同口径。LP 引擎是 2003-09-19 的 tpbig，
     # 不认 ATPDraw 7.2+ 的三样写法：`$$` 行尾注释、整数写法、超过 List31 的中间变量引用。
@@ -2027,6 +2001,37 @@ def execute_external_waveform_tower_analysis(
             snapshot.tower_no, _param_diag.get("intermediates"),
             _param_diag.get("aliases"), _param_diag.get("resolved"),
         )
+
+    # ── dT 自适应（2026-11-04 35kV 实测教训）──
+    # 短横臂（0.45~0.8m，行程 1.7~3.2ns）小于模板 dT=5ns 时引擎 KILL=29 拒跑；
+    # C# 桌面版靠 NoRelease_work.txt 人工覆写且不校验产物。此处扫描 /BRANCH 段
+    # 分布参数支路自动收窄 dT（只收窄不放宽；低于硬下限直接报错，绝不让引擎
+    # 静默拒跑后出假结果）。
+    # ⚠️ 2026-11-13 复验：本段原先放在 normalize 之前，35kV 模板的 RELE13~16
+    # （0.45m）当时仍是悬空引用、长度查不到值 → 该 4 条最短支路被跳过 →
+    # t_min 虚高到 12.55ns → dT 不收窄 → 引擎照旧 KILL=29。必须先完成
+    # $PARAMETER 规范化，保证长度/波速变量都能解析，t_min 才是真实值。
+    from .atp_deltat_adapter import AtpDataError, adapt_deltat as _adapt_deltat
+
+    try:
+        _adapted = _adapt_deltat(rendered_text)
+    except AtpDataError as exc:
+        raise RuntimeError(f"{snapshot.tower_no} 步长自适应失败：{exc}") from exc
+    for _note in _adapted.notes:
+        logger.info("[ATP] dT 自适应（%s）：%s", snapshot.tower_no, _note)
+    if _adapted.changed:
+        rendered_text = _adapted.atp_text
+        logger.info(
+            "[ATP] dT 自适应生效（%s）：%.2g s → %.2g s（最短支路行程 %.2f ns）",
+            snapshot.tower_no, _adapted.original_dt, _adapted.new_dt,
+            (_adapted.t_min or 0.0) * 1e9,
+        )
+        execution_options["_dt_adaptation"] = {
+            "original_dt": _adapted.original_dt,
+            "new_dt": _adapted.new_dt,
+            "t_min": _adapted.t_min,
+            "branch_count": len(_adapted.lines),
+        }
 
     run_dir = _prepare_run_directory(
         job=job, snapshot=snapshot, resolved_job=resolved_job,

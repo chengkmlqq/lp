@@ -8,8 +8,9 @@ Setting/NoRelease_work.txt（内容 ``dT:Tmax`` 两个整数）人工覆写，�
 
 1. 扫描渲染后 work.atp 的 /BRANCH 段，识别分布参数支路行
    （形如 ``-1XX0106XX0139   150. 2.5E8RELE01 1 0``，波速 v∈[1e7,3e8]）；
-2. 长度字段是 $PARAMETER 变量名 → 查同文件 $PARAMETER 段真实值（渲染后
-   已含最终几何值）；是数值 → 直接使用；
+2. 波速/长度字段是 $PARAMETER 变量名（ATPDraw 导出形态
+   ``-1XX0005XX0120   ZRE02_VRE___RELE03 1 0``）→ 查同文件 $PARAMETER 段
+   真实值（渲染后已含最终几何值）；是数值 → 直接使用；
 3. 取全模型最小波行程时间 t_min = min(len/v)；
 4. dT_new = t_min / SAFETY_FACTOR，且只收窄不放宽（不超过模板原 dT）；
 5. dT_new < MIN_DT → 抛 AtpDataError（存在病态短支路，须人工核查几何参数）。
@@ -52,6 +53,7 @@ class DistributedLine:
     length: float         # 长度（m）
     length_source: str    # "param:RELE01" 或 "literal"
     travel_time: float    # 行程时间（秒）
+    velocity_source: str = "literal"  # "param:VRE___" 或 "literal"
 
 
 @dataclass
@@ -75,6 +77,11 @@ _V_RE = re.compile(r"\d+(?:\.\d+)?[Ee][+-]?\d{1,2}")
 # 分布参数支路行：模型码 -1/-2/-3 开头（-1 无损单相分布参数；塔模型只用 -1）
 _LINE_RE = re.compile(rf"^-?[123](?P<na>[A-Za-z0-9#]{{1,8}})(?P<nb>[A-Za-z0-9#]{{1,8}})")
 _VALUE_RE = re.compile(_FLOAT)
+# $PARAMETER 变量名（ATPDraw 按 6 列右补下划线，如 VRE___ / ZRE01_）
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# ATP 固定格式单字段列宽：A/B/Leng 各占 6 列，粘连时按此切块
+_ATOM_MAX = 8
+_FIELD_WIDTHS = (6, 5, 4, 7, 8)
 
 
 def _parse_float(token: str) -> float:
@@ -158,11 +165,74 @@ def _try_split_velocity(token: str, trailing: str = "") -> tuple[str, str] | Non
     return None
 
 
+def _param_index(param_values: dict[str, float]) -> dict[str, float]:
+    """$PARAMETER 名归一化索引：去掉 ATP 列位填充用的尾随下划线。
+
+    卡片与 $PARAMETER 段可能用不同补位形态（``VRE___`` / ``VRE`` / ``ZRE01_``），
+    统一 rstrip('_') 后比对。
+    """
+    return {name.rstrip("_").upper(): value for name, value in param_values.items()}
+
+
+def _lookup_param(
+    token: str, param_values: dict[str, float], index: dict[str, float]
+) -> float | None:
+    """按原形态或去尾随下划线的形态查 $PARAMETER 值。"""
+    value = param_values.get(token.upper())
+    if value is None:
+        value = index.get(token.rstrip("_").upper())
+    return value
+
+
+def _find_param_velocity(
+    body: str,
+    start: int,
+    param_values: dict[str, float],
+    index: dict[str, float] | None = None,
+) -> tuple[float, int, int] | None:
+    """在卡片的 A/B 字段区找变量名形态的波速，返回 (v, token_start, token_end)。
+
+    ATPDraw 导出的塔模型把 A/B/Leng 三个字段整体写成变量名且**紧贴无空格**，
+    如 ``-1XX0005XX0120   ZRE02_VRE___RELE03 1 0``。ATP 固定格式里每个字段占
+    6 列，所以先按列宽切块再逐块查 $PARAMETER；行内没有数值可供 ``_VALUE_RE``
+    识别，不回查参数段就必然 0 命中。``start`` 取节点名之后，避免把 ``XX0137``
+    这类节点标识当成变量。
+    """
+    if not param_values:
+        return None
+    index = index if index is not None else _param_index(param_values)
+    for m in _IDENT_RE.finditer(body, start):
+        tok = m.group(0)
+        # 单字段（未与相邻字段粘连）：整串直接查表
+        if len(tok) <= _ATOM_MAX:
+            value = _lookup_param(tok, param_values, index)
+            if value is not None and _V_MIN <= value <= _V_MAX:
+                return value, m.start(), m.end()
+            continue
+        # 多字段粘连：按 ATP 列位宽度整块切分
+        for width in _FIELD_WIDTHS:
+            if len(tok) % width:
+                continue
+            for off in range(0, len(tok), width):
+                value = _lookup_param(tok[off : off + width], param_values, index)
+                if value is not None and _V_MIN <= value <= _V_MAX:
+                    return value, m.start() + off, m.start() + off + width
+        # 列宽不规范时的滑动窗口兜底
+        for off in range(0, len(tok) - _ATOM_MAX + 1):
+            value = _lookup_param(
+                tok[off : off + _ATOM_MAX], param_values, index
+            )
+            if value is not None and _V_MIN <= value <= _V_MAX:
+                return value, m.start() + off, m.start() + off + _ATOM_MAX
+    return None
+
+
 def analyze_distributed_lines(
     atp_text: str, *, params: dict[str, float] | None = None
 ) -> tuple[list[DistributedLine], list[str]]:
     """扫描 /BRANCH 段的分布参数支路，返回（支路列表, 跳过说明列表）。"""
     param_values = params if params is not None else _extract_param_values(atp_text)
+    param_idx = _param_index(param_values)
     result: list[DistributedLine] = []
     skipped: list[str] = []
     start, end = _scan_branch_section(atp_text)
@@ -182,8 +252,9 @@ def analyze_distributed_lines(
 
         # 在行内找波速 v：指数形数值且落在 [1e7, 3e8]；
         # 波速被紧贴的数值长度吞并（"2.5E80.4"）时用拆分回退
-        v_match = None
         velocity = 0.0
+        velocity_source = "literal"
+        v_start = v_end = -1
         pre_len_token: str | None = None  # 拆分回退时预先确定的长度 token
         for m in _VALUE_RE.finditer(body):
             tok = m.group(0)
@@ -192,18 +263,36 @@ def analyze_distributed_lines(
             except ValueError:
                 continue
             if _V_MIN <= val <= _V_MAX:
-                v_match, velocity = m, val
+                velocity, v_start, v_end = val, m.start(), m.end()
                 break
             if val > _V_MAX:
                 split = _try_split_velocity(tok, body[m.end():])
                 if split is not None:
                     v_token, pre_len_token = split
                     velocity = _parse_float(v_token)
-                    v_match = re.match(r".*?" + re.escape(v_token), body)
+                    v_hit = re.match(r".*?" + re.escape(v_token), body)
+                    v_start, v_end = (v_hit.start(), v_hit.end()) if v_hit else (
+                        m.start(), m.end()
+                    )
                     break
-        if v_match is None:
-            continue  # 非分布参数行（电阻/电感/电容卡）
-        v_pos = v_match.end()
+        if v_start < 0:
+            # 波速写成 $PARAMETER 变量名（ATPDraw 导出：
+            # "-1XX0005XX0120   ZRE02_VRE___RELE03 1 0"），行内无可识别数值。
+            # ⚠️ 2026-11-13 750kV/66kV/35kV 共 12 个任务实测：此处原为静默
+            # continue 且不记 skipped，整族模板 t_min 恒为空、dT 不收窄，
+            # 日志还误报「未发现分布参数支路」，兜底形同虚设 → 引擎 KILL=29。
+            found = _find_param_velocity(
+                body, head.end(), param_values, param_idx
+            ) if stripped.startswith("-1") else None
+            if found is None:
+                if stripped.startswith("-1"):
+                    skipped.append(
+                        f"行{idx + 1} {node_a}-{node_b}：波速字段既非数值也非可解析变量"
+                    )
+                continue  # 非分布参数行（-2/-3 等卡片类型）
+            velocity, v_start, v_end = found
+            velocity_source = f"param:{body[v_start:v_end]}"
+        v_pos = v_end
 
         # 波速之后紧跟长度字段：变量名（如 RELE01）或数值；
         # 拆分回退时长度 token 已在波速 token 内确定
@@ -229,6 +318,9 @@ def analyze_distributed_lines(
             if name in param_values:
                 length = param_values[name]
                 source = f"param:{name}"
+            elif name.rstrip("_") in param_idx:
+                length = param_idx[name.rstrip("_")]
+                source = f"param:{name}"
         if length is None or length <= 0 or not math.isfinite(length):
             skipped.append(
                 f"行{idx + 1} {node_a}-{node_b}：长度 {len_token} 无法解析或非正"
@@ -236,7 +328,7 @@ def analyze_distributed_lines(
             continue
         # 波阻抗（波速之前的最后一个数值），解析失败不阻断
         imp = 0.0
-        for vm in _VALUE_RE.finditer(body[: v_match.start()]):
+        for vm in _VALUE_RE.finditer(body[:v_start]):
             imp = _parse_float(vm.group(0))
         result.append(
             DistributedLine(
@@ -248,6 +340,7 @@ def analyze_distributed_lines(
                 length=length,
                 length_source=source,
                 travel_time=length / velocity,
+                velocity_source=velocity_source,
             )
         )
     return result, skipped
@@ -311,6 +404,11 @@ def adapt_deltat(
     if not res.lines:
         res.notes.append("未发现分布参数支路，无需适配")
         return res
+    var_count = sum(1 for l in res.lines if l.velocity_source.startswith("param"))
+    if var_count:
+        res.notes.append(
+            f"其中 {var_count}/{len(res.lines)} 条支路波速取自 $PARAMETER 变量"
+        )
 
     t_min = min(l.travel_time for l in res.lines)
     res.t_min = t_min
