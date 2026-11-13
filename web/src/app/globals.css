@@ -6405,6 +6405,36 @@ h5.ant-typography,
   flex-direction: column;
 }
 
+/* LP-12: 防雷测试集 Tab 筛选/表格视图对齐主系统规范（与 atp 测试集页一致） */
+.modo-page-card > .admin-fl-test-sets-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-fl-test-sets-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-fl-test-sets-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-fl-test-sets-table-view .ant-table {
+  min-width: 1000px;
+}
+
+.admin-fl-test-sets-table-view .ant-table-body {
+  min-height: var(--admin-fl-test-sets-table-body-min-height, 180px);
+}
+
 /* ═══════════════════════════════════════════════════════════
  * MODO 统一标签（Tag）配色。
  * antd 6 默认 preset 色饱和度高，与 MODO 灰蓝克制基调冲突

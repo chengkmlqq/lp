@@ -7,7 +7,7 @@
  * 集合列表（新建/编辑/删除/停用）与详情抽屉入口（用例管理 + 批量执行 + 历史）。
  * 数据源：GET/POST/PATCH/DELETE /api/v1/fl-test-sets 系列接口。
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
   Button,
@@ -25,7 +25,6 @@ import {
 import {
   DeleteOutlined,
   EditOutlined,
-  ExperimentOutlined,
   PlusOutlined,
   RedoOutlined,
   SearchOutlined,
@@ -35,6 +34,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { FlTestSetCategory, FlTestSetListResponse, FlTestSetSummary } from "@/types/fl-test-set";
@@ -56,6 +56,8 @@ export function FlTestSetTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailSet, setDetailSet] = useState<FlTestSetSummary | null>(null);
   const [form] = Form.useForm();
+  const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const canRead =
     hasPermission("line.read") || hasPermission("line.manage") || hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
@@ -129,6 +131,21 @@ export function FlTestSetTab() {
     setCreateOpen(true);
   };
 
+  // 表格高度自适应视口（口径与 atp 测试集页 / 线路管理页一致：锚点底边推导）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const measure = () => {
+      const anchor = tableScrollAnchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const available = window.innerHeight - rect.top - 190;
+      setTableScrollY(Math.max(TABLE_MIN_SCROLL_Y, Math.floor(available)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   const columns = useMemo<ColumnsType<FlTestSetSummary>>(
     () => [
       {
@@ -182,46 +199,45 @@ export function FlTestSetTab() {
       {
         title: t("操作"),
         key: "actions",
-        width: 230,
+        width: 200,
+        fixed: "right" as const,
         render: (_: unknown, row) => (
-          <Space size={4}>
-            <Button
-              size="small"
-              type="link"
-              icon={<SettingOutlined />}
-              onClick={() => setDetailSet(row)}
-            >
-              {t("用例与执行")}
-            </Button>
-            {canManage ? (
-              <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEdit(row)}>
-                {t("编辑")}
-              </Button>
-            ) : null}
-            {canDelete ? (
-              <Button
-                size="small"
-                type="link"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => {
+          <ModoActionGroup
+            actions={[
+              {
+                key: "cases",
+                label: t("用例与执行"),
+                icon: <SettingOutlined />,
+                onClick: () => setDetailSet(row),
+              },
+              {
+                key: "edit",
+                label: t("编辑"),
+                icon: <EditOutlined />,
+                visible: canManage,
+                onClick: () => openEdit(row),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                visible: canDelete,
+                onClick: () =>
                   modalApi.confirm({
                     title: t("删除测试集"),
                     content: t("将同时删除其全部用例与执行记录（已创建的计算任务保留）。"),
                     okButtonProps: { danger: true },
                     onOk: () => deleteMutation.mutateAsync(row.id),
-                  });
-                }}
-              >
-                {t("删除")}
-              </Button>
-            ) : null}
-          </Space>
+                  }),
+              },
+            ]}
+          />
         ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, canManage, canDelete],
+    [t, canManage, canDelete, openEdit, deleteMutation],
   );
 
   if (!user || !canRead) {
@@ -233,60 +249,72 @@ export function FlTestSetTab() {
   const items = setsQuery.data?.items ?? [];
 
   return (
-    <div>
-      <div ref={null} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <Space size={8} wrap>
-          <Segmented
-            value={categoryFilter}
-            onChange={(value) => {
-              setCategoryFilter(value as "all" | FlTestSetCategory);
-              setPagination((prev) => ({ ...prev, current: 1 }));
-            }}
-            options={[
-              { label: t("全部"), value: "all" },
-              { label: t("防雷计算"), value: "fl_calc" },
-              { label: t("防雷改造"), value: "retrofit" },
-            ]}
-          />
-          <Input
-            allowClear
-            style={{ width: 240 }}
-            prefix={<SearchOutlined />}
-            placeholder={t("搜索测试集名称/描述")}
-            value={keywordDraft}
-            onChange={(event) => setKeywordDraft(event.target.value)}
-            onPressEnter={() => setKeyword(keywordDraft)}
-          />
-          <Button type="primary" htmlType="submit" icon={<SearchOutlined />} onClick={() => setKeyword(keywordDraft)}>
-            {t("查询")}
-          </Button>
-        </Space>
-        <Space size={8}>
-          <Button icon={<RedoOutlined />} onClick={() => invalidate()}>
-            {t("刷新")}
-          </Button>
-          {canManage ? (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              {t("新建测试集")}
+    <div className="admin-fl-test-sets-pane">
+      {/* 筛选栏 */}
+      <div className="admin-filter-bar">
+        <Form layout="inline" onFinish={() => setKeyword(keywordDraft)}>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Segmented
+              value={categoryFilter}
+              onChange={(value) => {
+                setCategoryFilter(value as "all" | FlTestSetCategory);
+                setPagination((prev) => ({ ...prev, current: 1 }));
+              }}
+              options={[
+                { label: t("全部"), value: "all" },
+                { label: t("防雷计算"), value: "fl_calc" },
+                { label: t("防雷改造"), value: "retrofit" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label={t("名称/描述")} style={{ marginBottom: 0 }}>
+            <Input
+              allowClear
+              style={{ width: 240 }}
+              prefix={<SearchOutlined />}
+              placeholder={t("搜索测试集名称/描述")}
+              value={keywordDraft}
+              onChange={(event) => setKeywordDraft(event.target.value)}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+              {t("查询")}
             </Button>
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0, marginInlineStart: "auto" }}>
+            <Button icon={<RedoOutlined />} onClick={() => invalidate()}>
+              {t("刷新")}
+            </Button>
+          </Form.Item>
+          {canManage ? (
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                {t("新建测试集")}
+              </Button>
+            </Form.Item>
           ) : null}
-        </Space>
+        </Form>
       </div>
-      <Table<FlTestSetSummary>
-        rowKey="id"
-        size="small"
-        columns={columns}
-        dataSource={items}
-        loading={setsQuery.isLoading}
-        scroll={{ y: TABLE_MIN_SCROLL_Y }}
-        pagination={modoTablePagination({
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: setsQuery.data?.total ?? 0,
-          onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-        })}
-        locale={{ emptyText: <Empty description={t("暂无测试集")} /> }}
-      />
+
+      {/* 表格 */}
+      <div ref={tableScrollAnchorRef} className="admin-fl-test-sets-table-view flex-1 min-h-0">
+        <Table<FlTestSetSummary>
+          rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={items}
+          loading={setsQuery.isLoading}
+          scroll={{ y: tableScrollY, x: 1080 }}
+          pagination={modoTablePagination({
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: setsQuery.data?.total ?? 0,
+            onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+          })}
+          locale={{ emptyText: <Empty description={t("暂无测试集")} /> }}
+        />
+      </div>
       <Modal
         title={editingSet ? t("编辑测试集") : t("新建测试集")}
         open={createOpen}
@@ -376,5 +404,3 @@ export function FlTestJobStatusTag({ status }: { status: string | null | undefin
   const item = map[status ?? ""] ?? { color: "default", label: status ?? "-" };
   return <Tag color={item.color}>{item.label}</Tag>;
 }
-
-export const FlTestIcons = { ExperimentOutlined };
