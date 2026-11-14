@@ -794,6 +794,30 @@ def _append_result_warnings(target: dict[str, Any], warnings: Any) -> list[str]:
     return bucket
 
 
+def _raoji_asset_record(asset: Any, scene_type: str) -> dict[str, Any]:
+    """LP-18：序列化某一绕击相实际解析到的 ATP 资产标识与选型维度。
+
+    绕击资产在每塔的 raoji1/2/3 循环里按各自 tower_type 现场解析（多塔线路
+    不同塔型可能落到不同资产），此前只把数值结果并入塔级 result_json，资产的
+    id/code/name/model_id/version/version_code 与维度信息全部被丢弃，库里既
+    统计不到绕击资产覆盖率、也分不清用的是 V1 还是 V2。这里在相内直接取解析到
+    的 asset 落库，供塔级展示与任务级聚合统计；只读属性、不改变任何计算逻辑。
+    """
+    return {
+        "asset_id": getattr(asset, "id", None),
+        "asset_code": getattr(asset, "code", None),
+        "asset_name": getattr(asset, "name", None),
+        "model_id": getattr(asset, "model_id", None),
+        "version": getattr(asset, "version", None),
+        "version_code": getattr(asset, "version_code", None),
+        "scene_type": scene_type,
+        "voltage_level": getattr(asset, "voltage_level", None),
+        "tower_type": getattr(asset, "tower_type", None),
+        "arrester_config": getattr(asset, "arrester_config", None),
+        "shield_wire": getattr(asset, "shield_wire", None),
+    }
+
+
 def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -> None:
             # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
             # 传入的是 snapshot.id 标量，job/run/snapshot/tower 全部用本塔 session 按 ID 反查，
@@ -1013,10 +1037,16 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                         f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
                                         f"{_raoji_voltage_kv if _raoji_voltage_kv is not None else '?'}kV)：{_exc}"
                                     ) from _exc
+                                # LP-18：绕击资产此前只在循环内解析、标识信息被丢弃，
+                                # 这里把该相实际命中的 asset 序列化后随执行结果带出，
+                                # 供塔级 result_json 与任务级聚合落库（不改变计算逻辑）。
+                                _raoji_asset_info = _raoji_asset_record(
+                                    _raoji_job.asset, f"raoji{_idx}"
+                                )
                                 _opts = dict(execution_options)
                                 if _use_raoji_par:
                                     _opts["_run_subdir"] = f"raoji{_idx}"
-                                return execute_shielding_binary_search_external(
+                                _raoji_exec = execute_shielding_binary_search_external(
                                     _raoji_job,
                                     db=raoji_db,
                                     job=job,
@@ -1026,6 +1056,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                     payload=payload,
                                     on_step=None if _use_raoji_par else _tower_on_step,
                                 )
+                                return _raoji_exec, _raoji_asset_info
 
                         _last_exc: Exception | None = None
                         for _attempt_no in (1, 2, 3):
@@ -1048,7 +1079,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
                     else:
                         _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
-                    for _idx, _sh in _raoji_execs.items():
+                    for _idx, (_sh, _raoji_asset_info) in _raoji_execs.items():
                         _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
                         for _key in (
                             "shielding_withstand_ka",
@@ -1062,6 +1093,10 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
                             f"{['A', 'B', 'C'][_idx - 1]}相"
                         ] = _sh.result_json.get("shielding_withstand_ka")
+                        # LP-18：逐相记录实际解析到的绕击资产（以塔级为准），供统计覆盖率/V1V2。
+                        _raoji_merged.setdefault("shielding_raoji_assets_by_phase", {})[
+                            f"{['A', 'B', 'C'][_idx - 1]}相"
+                        ] = _raoji_asset_info
                         _append_result_warnings(_raoji_merged, _sh.result_json.get("result_warnings"))
                     _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
                     tower_tracker.mark_phase_done()
@@ -1233,10 +1268,16 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                             f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
                                             f"{_raoji_voltage_kv if _raoji_voltage_kv is not None else '?'}kV)：{_exc}"
                                         ) from _exc
+                                    # LP-18：绕击资产此前只在循环内解析、标识信息被丢弃，
+                                    # 这里把该相实际命中的 asset 序列化后随执行结果带出，
+                                    # 供塔级 result_json 与任务级聚合落库（不改变计算逻辑）。
+                                    _raoji_asset_info = _raoji_asset_record(
+                                        _raoji_job.asset, f"raoji{_idx}"
+                                    )
                                     _opts = dict(execution_options)
                                     if _use_raoji_par:
                                         _opts["_run_subdir"] = f"raoji{_idx}"
-                                    return execute_shielding_binary_search_external(
+                                    _raoji_exec = execute_shielding_binary_search_external(
                                         _raoji_job,
                                         db=raoji_db,
                                         job=job,
@@ -1246,6 +1287,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                         payload=payload,
                                         on_step=None if _use_raoji_par else _tower_on_step,
                                     )
+                                    return _raoji_exec, _raoji_asset_info
 
                             _last_exc: Exception | None = None
                             for _attempt_no in (1, 2, 3):
@@ -1268,7 +1310,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                 _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
                         else:
                             _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
-                        for _idx, _sh in _raoji_execs.items():
+                        for _idx, (_sh, _raoji_asset_info) in _raoji_execs.items():
                             _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
                             for _key in (
                                 "shielding_withstand_ka",
@@ -1281,6 +1323,9 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                     _raoji_merged[_key] = _sh.result_json[_key]
                             _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
                                 f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
+                            # LP-18：逐相记录实际解析到的绕击资产（以塔级为准），供统计覆盖率/V1V2。
+                            _raoji_merged.setdefault("shielding_raoji_assets_by_phase", {})[
+                                f"{['A', 'B', 'C'][_idx - 1]}相"] = _raoji_asset_info
                             _append_result_warnings(_raoji_merged, _sh.result_json.get("result_warnings"))
                             if _sh.stdout_text:
                                 local_stdout.append(f"[{snapshot.tower_no}][绕击{['A', 'B', 'C'][_idx - 1]}相] {_sh.stdout_text}")
@@ -3096,6 +3141,10 @@ def _new_result_summary() -> dict[str, Any]:
         "action_total": 0,
         "scan_point_total": 0,
         "scan_point_average": 0,
+        # LP-18：绕击(raoji1/2/3) ATP 资产聚合（去重 + 命中塔数），由
+        # _accumulate_result_summary 按每塔 shielding_raoji_assets_by_phase 归并。
+        # 与反击资产 external_model_* 分开命名，避免混淆。
+        "shielding_external_models": [],
     }
 
 
@@ -3120,6 +3169,44 @@ def _accumulate_result_summary(summary: dict[str, Any], graded: dict[str, Any]) 
     if scan_point_count > 0:
         summary["scan_point_total"] = int(summary.get("scan_point_total", 0)) + scan_point_count
         summary["scan_point_average"] = round(summary["scan_point_total"] / total_count, 2) if total_count else 0
+
+    # LP-18：任务级聚合绕击(raoji1/2/3) ATP 资产，去重后写入 result_summary_json，
+    # 便于任务列表/详情页展示与按 version / scene_type 统计覆盖率（V1/V2 分布）。
+    # 绕击资产按每塔 tower_type 现场解析，故以塔级 shielding_raoji_assets_by_phase
+    # 为准，不能用任务级默认(反击)资产或 snapshots[0] 代表整任务。
+    _phase_assets = graded.get("shielding_raoji_assets_by_phase")
+    if isinstance(_phase_assets, dict) and _phase_assets:
+        _models = summary.setdefault("shielding_external_models", [])
+        _counted: set[str] = set()  # 每塔对同一资产只计一次命中
+        for _phase_label, _rec in _phase_assets.items():
+            if not isinstance(_rec, dict):
+                continue
+            _aid = str(_rec.get("asset_id") or "").strip()
+            if not _aid:
+                continue
+            _entry = next((m for m in _models if m.get("asset_id") == _aid), None)
+            if _entry is None:
+                _entry = {
+                    "asset_id": _aid,
+                    "asset_code": _rec.get("asset_code"),
+                    "asset_name": _rec.get("asset_name"),
+                    "model_id": _rec.get("model_id"),
+                    "version": _rec.get("version"),
+                    "version_code": _rec.get("version_code"),
+                    "scene_type": _rec.get("scene_type"),
+                    "voltage_level": _rec.get("voltage_level"),
+                    "tower_type": _rec.get("tower_type"),
+                    "arrester_config": _rec.get("arrester_config"),
+                    "shield_wire": _rec.get("shield_wire"),
+                    "phase_labels": [],
+                    "hit_tower_count": 0,
+                }
+                _models.append(_entry)
+            if _phase_label and _phase_label not in _entry["phase_labels"]:
+                _entry["phase_labels"].append(_phase_label)
+            if _aid not in _counted:
+                _entry["hit_tower_count"] = int(_entry["hit_tower_count"]) + 1
+                _counted.add(_aid)
 
 
 def _normalize_execution_options(job_type: str, execution_options: dict[str, Any]) -> dict[str, Any]:

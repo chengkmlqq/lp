@@ -504,3 +504,124 @@ def test_report_job_auto_links_latest_scenario_rows(monkeypatch) -> None:
         assert "112.45" in html
     finally:
         session.close()
+
+
+# ---- LP-18：绕击(raoji1/2/3) ATP 资产落库 ----
+
+def test_raoji_asset_record_serializes_identity_and_dimensions() -> None:
+    asset = SimpleNamespace(
+        id="asset-raoji3-v2",
+        code="ATP750-jiubei-raoji3-M2",
+        name="酒杯塔绕击C相模型",
+        model_id="model-m2",
+        version="v2",
+        version_code="ATP750-jiubei-raoji3-M2-v2",
+        voltage_level="750",
+        tower_type="jiubei",
+        scene_type="raoji3",
+        arrester_config="noM",
+        shield_wire="with",
+    )
+    rec = fl_analysis_service._raoji_asset_record(asset, "raoji3")
+    assert rec["asset_id"] == "asset-raoji3-v2"
+    assert rec["asset_code"] == "ATP750-jiubei-raoji3-M2"
+    assert rec["asset_name"] == "酒杯塔绕击C相模型"
+    assert rec["model_id"] == "model-m2"
+    assert rec["version"] == "v2"
+    assert rec["version_code"] == "ATP750-jiubei-raoji3-M2-v2"
+    assert rec["scene_type"] == "raoji3"
+    assert rec["voltage_level"] == "750"
+    assert rec["tower_type"] == "jiubei"
+    assert rec["arrester_config"] == "noM"
+    assert rec["shield_wire"] == "with"
+
+
+def test_raoji_asset_record_tolerates_missing_attributes() -> None:
+    # 资产对象缺列时降级为 None，不抛异常 → 不影响主计算流程
+    rec = fl_analysis_service._raoji_asset_record(SimpleNamespace(id="x"), "raoji1")
+    assert rec["asset_id"] == "x"
+    assert rec["scene_type"] == "raoji1"
+    assert rec["version"] is None
+    assert rec["model_id"] is None
+
+
+def _raoji_graded(phase_specs: dict[str, tuple[str, str, str]]) -> dict[str, object]:
+    """phase_specs: {"A相": (asset_id, version, scene_type), ...}"""
+    return {
+        "risk_level": "low",
+        "score": 10,
+        "shielding_raoji_assets_by_phase": {
+            phase: {
+                "asset_id": aid,
+                "asset_code": f"code-{aid}",
+                "asset_name": f"name-{aid}",
+                "model_id": f"model-{scene}",
+                "version": ver,
+                "version_code": f"{aid}-{ver}",
+                "scene_type": scene,
+                "voltage_level": "750",
+                "tower_type": "jiubei",
+                "arrester_config": "noM",
+                "shield_wire": "with",
+            }
+            for phase, (aid, ver, scene) in phase_specs.items()
+        },
+    }
+
+
+def test_accumulate_result_summary_aggregates_shielding_raoji_assets() -> None:
+    summary = fl_analysis_service._new_result_summary()
+    common = {
+        "A相": ("raoji1-v2", "v2", "raoji1"),
+        "B相": ("raoji2-v2", "v2", "raoji2"),
+        "C相": ("raoji3-v2", "v2", "raoji3"),
+    }
+    # 塔1/塔2 同塔型 → 同一组绕击资产；塔3 的 B 相落到不同资产/版本
+    tower3 = dict(common)
+    tower3["B相"] = ("raoji2-v1-othertower", "v1", "raoji2")
+    for graded in (_raoji_graded(common), _raoji_graded(common), _raoji_graded(tower3)):
+        fl_analysis_service._accumulate_result_summary(summary, graded)
+
+    models = summary["shielding_external_models"]
+    by_id = {m["asset_id"]: m for m in models}
+    assert set(by_id) == {"raoji1-v2", "raoji2-v2", "raoji3-v2", "raoji2-v1-othertower"}
+    # 去重 + 命中塔数（每塔对同一资产只计一次）
+    assert by_id["raoji1-v2"]["hit_tower_count"] == 3
+    assert by_id["raoji2-v2"]["hit_tower_count"] == 2
+    assert by_id["raoji3-v2"]["hit_tower_count"] == 3
+    assert by_id["raoji2-v1-othertower"]["hit_tower_count"] == 1
+    # 字段齐全、相位标签正确
+    assert by_id["raoji1-v2"]["phase_labels"] == ["A相"]
+    assert by_id["raoji1-v2"]["scene_type"] == "raoji1"
+    assert by_id["raoji1-v2"]["version"] == "v2"
+    assert by_id["raoji1-v2"]["version_code"] == "raoji1-v2-v2"
+    assert by_id["raoji1-v2"]["voltage_level"] == "750"
+    # 可按 version / scene_type 统计覆盖率：V1 一条、V2 三条；raoji2 两条
+    assert sum(1 for m in models if m["version"] == "v1") == 1
+    assert sum(1 for m in models if m["version"] == "v2") == 3
+    assert sum(1 for m in models if m["scene_type"] == "raoji2") == 2
+    # 既有汇总字段不受影响（反击 external_model_* 行为不变、无回归）
+    assert summary["risk_counts"]["low"] == 3
+    assert summary["score_total"] == 30
+
+
+def test_accumulate_result_summary_without_raoji_and_same_asset_multi_phase() -> None:
+    summary = fl_analysis_service._new_result_summary()
+    # 无绕击资产时聚合保持空（规程法 / 纯反击任务）
+    fl_analysis_service._accumulate_result_summary(summary, {"risk_level": "high", "score": 5})
+    assert summary["shielding_external_models"] == []
+    assert summary["risk_counts"]["high"] == 1
+
+    # 同一塔内两相命中同一 asset_id 时，该资产命中塔数只计一次
+    fl_analysis_service._accumulate_result_summary(
+        summary,
+        _raoji_graded({
+            "A相": ("shared", "v1", "raoji1"),
+            "B相": ("shared", "v1", "raoji2"),
+            "C相": ("raoji3", "v2", "raoji3"),
+        }),
+    )
+    by_id = {m["asset_id"]: m for m in summary["shielding_external_models"]}
+    assert by_id["shared"]["hit_tower_count"] == 1
+    assert by_id["shared"]["phase_labels"] == ["A相", "B相"]
+    assert by_id["raoji3"]["hit_tower_count"] == 1
