@@ -1919,6 +1919,10 @@ body {
   min-height: var(--admin-task-monitor-table-body-min-height, 180px);
 }
 
+.admin-platform-data-table-anchor .ant-table-body {
+  min-height: var(--admin-platform-data-table-body-min-height, 180px);
+}
+
 /* LP-250: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
 .admin_task_monitor_list_pane {
   display: flex;

@@ -445,6 +445,22 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "permission_code": "atp.read",
     },
     {
+        # LP-17：平台基础数据包工具入口（导出 / 导入 / 任务列表 / 轮询）。
+        # 必须随 seed-defaults 重跑注册，否则 /admin/platform-data 页面调接口时
+        # require_enabled_menu_route 因 menus 表无该路由节点而 403。
+        "code": "admin.platform_data",
+        "name": "基础数据包",
+        "path": "/admin/platform-data",
+        "icon": "InboxOutlined",
+        "parent_code": "admin.basic_data",
+        "type": "menu",
+        "sort_order": 30,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "platform_data.manage",
+    },
+    {
         "code": "admin.elevation",
         "name": "高程数据管理",
         "path": "/admin/elevation",
@@ -723,6 +739,7 @@ ROLE_MENU_BINDINGS: dict[str, list[str]] = {
         "admin.tower_models",
         "admin.atp_models",
         "admin.elevation",
+        "admin.platform_data",
         "admin.system_monitor",
         "admin.task_monitor",
         "admin.workers",
