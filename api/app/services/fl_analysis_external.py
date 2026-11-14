@@ -1497,12 +1497,16 @@ def _auto_resolve_asset(
 ) -> AtpAssetVersion:
     """按线路杆塔参数自动选 ATP 资产（对齐 C# 桌面版 match_model 自动匹配模板）。
 
-    匹配优先级：
+    匹配优先级（按维度组定位）：
       1. (voltage_level, tower_type, scene_type, arrester_config) 精确
       2. (voltage_level, tower_type, scene_type) 任意避雷器配置
       3. (voltage_level, scene_type) 任意塔型
     避雷器配置缺省取 noM（C# 任务输入 A/B/C相=否，即无避雷器）。
     塔型支持 C# 式编码（s500guxing→guxing）与 DB 规范编码（500-guxing）归一。
+
+    版本选择（LP-16）：同维度组（同一 model_id）内仅按「发布状态」is_published 定位，
+    取唯一已发布版本；弃用 is_active（生效）/ status（生命周期）双控制。组内至多一个
+    已发布版本由 publish_asset 的发布互斥逻辑保证，故此处无需「生效优先 / 兜底」分支。
     """
     from ..models.atp_asset import AtpAssetVersion  # noqa: PLC0415
 
@@ -1526,16 +1530,17 @@ def _auto_resolve_asset(
     if not arrester:
         arrester = "noM"
     # 避雷线维度（多版本归一后）：adapter_config 显式传 shield_wire（with/without）；
-    # 缺省不过滤——存量 4 段路径资产视为有避雷线，且回退取生效版，行为不变。
+    # 缺省不过滤——存量 4 段路径资产视为有避雷线，行为不变。
     shield_wire = str(config.get("shield_wire") or "").strip() or None
     # 塔型归一：s500guxing / 500-guxing / guxing → guxing
     tower = _normalize_tower_shape_code(tower_type or "") or str(config.get("tower_type") or "").strip()
 
     def _query(tower_filter: str | None, arrester_filter: str | None) -> AtpAssetVersion | None:
-        stmt = select(AtpAssetVersion).where(AtpAssetVersion.status == "enabled")
-        # 版本发布管理（2026-11-05）：只在「已发布」版本中定位；
-        # 下线（is_published=0）的版本不参与仿真，但保留文件与运行记录。
-        stmt = stmt.where(AtpAssetVersion.is_published.is_(True))
+        # LP-16：资产选择仅按「发布状态」(is_published) 单一控制，弃用 is_active（生效）
+        # 与 status（生命周期）双控制带来的歧义。同一模型（model_id）经发布逻辑保证
+        # 至多一个版本 is_published=true（publish_asset 发布时自动下线同模型其余版本），
+        # 故此处直接按发布状态定位、取唯一已发布版本即可，无需「生效优先 / 兜底」分支。
+        stmt = select(AtpAssetVersion).where(AtpAssetVersion.is_published.is_(True))
         if voltage_kv is not None:
             stmt = stmt.where(AtpAssetVersion.voltage_level == str(voltage_kv))
         if tower_filter:
@@ -1545,20 +1550,7 @@ def _auto_resolve_asset(
             stmt = stmt.where(AtpAssetVersion.arrester_config == arrester_filter)
         if shield_wire:
             stmt = stmt.where(AtpAssetVersion.shield_wire == shield_wire)
-        # 多版本改造：优先取「生效」版本；未设生效时回退任一 enabled（兼容存量/未激活）。
-        active = db.execute(
-            stmt.where(AtpAssetVersion.is_active.is_(True)).limit(1)
-        ).scalar_one_or_none()
-        if active:
-            return active
-        # 回退兜底：组内无生效版（存量未激活/全部被 deactivate）时取任一 enabled。
-        # 按 update_date 最新优先，避免 limit(1) 无排序任取造成行为抖动；并记警告方便排查。
-        logger.warning(
-            "ATP 资产组内无 is_active 生效版（voltage=%s tower=%s scene=%s arrester=%s shield_wire=%s），"
-            "回退取任一 enabled 且已发布版本（最近更新优先）",
-            voltage_kv, tower_filter, scene, arrester_filter, shield_wire or "不限",
-        )
-        return db.execute(stmt.order_by(AtpAssetVersion.update_date.desc()).limit(1)).scalar_one_or_none()
+        return db.execute(stmt.limit(1)).scalar_one_or_none()
 
     if tower:
         # ⚠️ 2026-09-13 修复：指定塔型时必须命中「该塔型」的资产；查不到就抛错，

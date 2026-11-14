@@ -609,3 +609,124 @@ def test_execute_job_asset_root_mode_no_release(tmp_path, monkeypatch) -> None:
             verify_session.close()
     finally:
         session.close()
+
+def test_auto_resolve_picks_published_version_over_unpublished(tmp_path) -> None:
+    """LP-16 回归：双版本模型（V1 未发布、V2 已发布）自动选资产时只命中已发布的 V2。
+
+    弃用 is_active 后，选择完全由发布状态决定——不再因 V1 是「生效版」而误选 V1。
+    """
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        v1 = AtpAssetVersion(
+            code="LP16-V1",
+            version_code="LP16-V1",
+            name="双版本模型 V1",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="lp16-a",
+            version="v1",
+            is_active=True,
+            is_published=False,
+        )
+        v2 = AtpAssetVersion(
+            code="LP16-V2",
+            version_code="LP16-V2",
+            name="双版本模型 V2",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="lp16-a",
+            version="v2",
+            is_active=False,
+            is_published=True,
+        )
+        session.add_all([v1, v2])
+        session.commit()
+
+        resolved = fl_analysis_external._auto_resolve_asset(
+            session,
+            tower_type="ganzi",
+            line_voltage_kv=110,
+            scene_type="fanji",
+            adapter_config_json={},
+        )
+        assert resolved is not None
+        assert resolved.id == v2.id
+        assert resolved.code == "LP16-V2"
+    finally:
+        session.close()
+
+
+def test_auto_resolve_single_published_version(tmp_path) -> None:
+    """LP-16 回归：仅 V1 的模型（已发布）自动选资产命中 V1。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        v1 = AtpAssetVersion(
+            code="LP16-SINGLE-V1",
+            version_code="LP16-SINGLE-V1",
+            name="单版本模型 V1",
+            status="enabled",
+            voltage_level="220",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="lp16-b",
+            version="v1",
+            is_active=True,
+            is_published=True,
+        )
+        session.add(v1)
+        session.commit()
+
+        resolved = fl_analysis_external._auto_resolve_asset(
+            session,
+            tower_type="ganzi",
+            line_voltage_kv=220,
+            scene_type="fanji",
+            adapter_config_json={},
+        )
+        assert resolved is not None
+        assert resolved.id == v1.id
+    finally:
+        session.close()
+
+
+def test_auto_resolve_ignores_unpublished_asset(tmp_path) -> None:
+    """LP-16 回归：某维度组所有版本均未发布时，自动选资产应报找不到（不兜底误选）。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        v1 = AtpAssetVersion(
+            code="LP16-UNPUB",
+            version_code="LP16-UNPUB",
+            name="未发布模型",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="lp16-c",
+            version="v1",
+            is_active=True,
+            is_published=False,
+        )
+        session.add(v1)
+        session.commit()
+
+        with pytest.raises(RuntimeError, match="未找到匹配的 ATP 资产"):
+            fl_analysis_external._auto_resolve_asset(
+                session,
+                tower_type="ganzi",
+                line_voltage_kv=110,
+                scene_type="fanji",
+                adapter_config_json={},
+            )
+    finally:
+        session.close()

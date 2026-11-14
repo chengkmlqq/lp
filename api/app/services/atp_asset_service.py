@@ -2025,12 +2025,34 @@ def publish_asset(
     set_active（2026-11-10 版本切换）：True 时把该版本一并切成同维度组内唯一生效版本。
     发布是「新建 → 已发布」「变更 → 已发布」「下线 → 重新上线」的统一出口，
     因此这里统一把 publish_state 落成 published。
+
+    LP-16：同一模型（model_id）在任一时刻只能有一个已发布版本。发布本版本时，自动将
+    该模型下其余版本的 is_published 置为 false（model_id 为 NULL 则按维度组兜底），
+    从根本上消除多版本同时发布导致的资产选择歧义。事务内先 SELECT ... FOR UPDATE 锁定
+    本行，再批量更新同模型其余行，防止并发发布竞态。
     """
-    asset = get_asset_by_id(db, asset_id)
+    asset = db.scalar(
+        select(AtpAssetVersion).where(AtpAssetVersion.id == asset_id).with_for_update()
+    )
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     if asset.status == "archived":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档的模型不能发布，请先恢复")
+    # 同模型（model_id）其余版本自动下线，保证「每模型仅一个已发布版本」。
+    # model_id 为 NULL（过渡期存量/回滚）时按维度组兜底，避免同组双发布。
+    if asset.model_id is not None:
+        sibling_stmt = (
+            update(AtpAssetVersion)
+            .where(AtpAssetVersion.id != asset.id)
+            .where(AtpAssetVersion.model_id == asset.model_id)
+        )
+    else:
+        sibling_stmt = (
+            update(AtpAssetVersion)
+            .where(AtpAssetVersion.id != asset.id)
+            .where(*_dimension_group_conditions(asset))
+        )
+    db.execute(sibling_stmt.values(is_published=False))
     asset.is_published = True
     asset.publish_state = PUBLISH_STATE_PUBLISHED
     asset.published_date = utcnow()

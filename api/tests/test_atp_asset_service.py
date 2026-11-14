@@ -1208,3 +1208,173 @@ def test_failed_upload_rolls_back_forked_changed_version(monkeypatch, tmp_path) 
         assert atp_asset_service.list_asset_files(session, asset_id=old.id).total > 0
     finally:
         session.close()
+
+
+def test_publish_asset_unpublishes_siblings_in_same_model(tmp_path) -> None:
+    """LP-16：发布某版本时，同一模型（model_id）其余版本自动下线。
+
+    双版本模型先让 V1 已发布、V2 未发布，发布 V2 后 V1 应被自动置为未发布，
+    保证同模型同时只有一个已发布版本（资产选择无歧义）。
+    """
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        v1 = AtpAssetVersion(
+            code="MODEL-A-V1",
+            version_code="MODEL-A-V1",
+            name="模型A V1",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="model-a",
+            version="v1",
+            is_published=True,
+        )
+        v2 = AtpAssetVersion(
+            code="MODEL-A-V2",
+            version_code="MODEL-A-V2",
+            name="模型A V2",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="model-a",
+            version="v2",
+            is_published=False,
+        )
+        # 不同模型的第三个版本，不应受本次发布影响
+        other = AtpAssetVersion(
+            code="MODEL-B-V1",
+            version_code="MODEL-B-V1",
+            name="模型B V1",
+            status="enabled",
+            voltage_level="220",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="model-b",
+            version="v1",
+            is_published=True,
+        )
+        session.add_all([v1, v2, other])
+        session.commit()
+
+        atp_asset_service.publish_asset(session, asset_id=v2.id, actor_user_id="tester")
+
+        session.refresh(v1)
+        session.refresh(v2)
+        session.refresh(other)
+        assert v2.is_published is True
+        assert v1.is_published is False
+        assert other.is_published is True
+    finally:
+        session.close()
+
+
+def test_publish_asset_null_model_id_falls_back_to_dimension_group(tmp_path) -> None:
+    """LP-16：model_id 为 NULL（过渡期存量）时，发布按维度组兜底下线同组其余版本。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        v1 = AtpAssetVersion(
+            code="NULL-MODEL-V1",
+            version_code="NULL-MODEL-V1",
+            name="无模型 V1",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id=None,
+            version="v1",
+            is_published=True,
+        )
+        v2 = AtpAssetVersion(
+            code="NULL-MODEL-V2",
+            version_code="NULL-MODEL-V2",
+            name="无模型 V2",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id=None,
+            version="v2",
+            is_published=False,
+        )
+        other_group = AtpAssetVersion(
+            code="NULL-MODEL-OTHER",
+            version_code="NULL-MODEL-OTHER",
+            name="无模型 其他维度",
+            status="enabled",
+            voltage_level="220",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id=None,
+            version="v1",
+            is_published=True,
+        )
+        session.add_all([v1, v2, other_group])
+        session.commit()
+
+        atp_asset_service.publish_asset(session, asset_id=v2.id, actor_user_id="tester")
+
+        session.refresh(v1)
+        session.refresh(v2)
+        session.refresh(other_group)
+        assert v2.is_published is True
+        assert v1.is_published is False
+        assert other_group.is_published is True
+    finally:
+        session.close()
+
+
+def test_publish_asset_is_idempotent_on_already_published(tmp_path) -> None:
+    """LP-16：对已发布资产再次发布应为幂等，且不影响同模型其它（已下线的）版本。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        v1 = AtpAssetVersion(
+            code="MODEL-C-V1",
+            version_code="MODEL-C-V1",
+            name="模型C V1",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="model-c",
+            version="v1",
+            is_published=False,
+        )
+        v2 = AtpAssetVersion(
+            code="MODEL-C-V2",
+            version_code="MODEL-C-V2",
+            name="模型C V2",
+            status="enabled",
+            voltage_level="110",
+            tower_type="ganzi",
+            scene_type="fanji",
+            arrester_config="noM",
+            model_id="model-c",
+            version="v2",
+            is_published=True,
+        )
+        session.add_all([v1, v2])
+        session.commit()
+
+        atp_asset_service.publish_asset(session, asset_id=v2.id, actor_user_id="tester")
+
+        session.refresh(v1)
+        session.refresh(v2)
+        assert v2.is_published is True
+        assert v1.is_published is False
+    finally:
+        session.close()
