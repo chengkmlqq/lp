@@ -6,8 +6,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Drawer, message, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
-import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
-import { JobDetailPanel } from "@/components/fl-analysis/job-detail-panel";
+import { CalculationJobDetailPanel, CalculationTowerDetailView } from "@/components/fl-analysis/calculation-detail";
+import { MitigationJobDetailPanel, MitigationTowerDetailView } from "@/components/fl-analysis/mitigation-detail";
+import { ScenarioJobDetailPanel, ReportJobDetailPanel } from "@/components/fl-analysis/job-detail-panel";
 import { ResultTable } from "@/components/fl-analysis/result-table";
 import { readApiError } from "@/lib/api";
 import type {
@@ -206,7 +207,7 @@ export function JobDetailTabView({
     setTowerDetailRow(row);
   }, []);
   // 进入详情页统一 loading：任务详情 + 分级结果任一在加载，只显示一个居中 Spin，
-  // 避免 JobDetailPanel 和 ResultTable 各自返回裸 <Spin /> 在左上角堆两个图标。
+  // 避免任务详情面板和 ResultTable 各自返回裸 <Spin /> 在左上角堆两个图标。
   if (jobDetailQuery.isLoading || towerResultsQuery.isLoading) {
     return (
       <div className="modo-page-card flex min-h-[280px] w-full flex-1 items-center justify-center">
@@ -220,28 +221,93 @@ export function JobDetailTabView({
       {contextHolder}
       <div className="admin-fl-analysis-detail-pane modo-page-card">
         <div>
-          <JobDetailPanel
-            selectedJob={liveJob}
-            selectedJobDetail={selectedJobDetail}
-            loading={jobDetailQuery.isLoading}
-            error={jobDetailQuery.error}
-            canManage={canManage}
-            canCreateMitigation={canCreateMitigation}
-            canCreateScenario={canCreateScenario}
-            canCreateReport={canCreateReport}
-            selectedJobDetailWaveformType={selectedJobDetailWaveformType}
-            candidateMitigationRows={candidateMitigationRows}
-            candidateScenarioRows={candidateScenarioRows}
-            candidateScenarioBaseJobs={candidateScenarioBaseJobs}
-            candidateReportRows={candidateReportRows}
-            downloadReportPending={downloadReportMutation.isPending}
-            onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
-            onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
-            onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
-            onDownloadReport={() => {
-              downloadReportMutation.mutate(job.id);
-            }}
-          />
+          {liveJob.job_type === "mitigation" ? (
+            <MitigationJobDetailPanel
+              selectedJob={liveJob}
+              selectedJobDetail={selectedJobDetail}
+              loading={jobDetailQuery.isLoading}
+              error={jobDetailQuery.error}
+              canManage={canManage}
+              canCreateMitigation={canCreateMitigation}
+              canCreateScenario={canCreateScenario}
+              canCreateReport={canCreateReport}
+              candidateMitigationRows={candidateMitigationRows}
+              candidateScenarioRows={candidateScenarioRows}
+              candidateReportRows={candidateReportRows}
+              downloadReportPending={downloadReportMutation.isPending}
+              onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
+              onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
+              onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
+              onDownloadReport={() => {
+                downloadReportMutation.mutate(job.id);
+              }}
+            />
+          ) : liveJob.job_type === "report" ? (
+            <ReportJobDetailPanel
+              selectedJob={liveJob}
+              selectedJobDetail={selectedJobDetail}
+              loading={jobDetailQuery.isLoading}
+              error={jobDetailQuery.error}
+              canManage={canManage}
+              canCreateMitigation={canCreateMitigation}
+              canCreateScenario={canCreateScenario}
+              canCreateReport={canCreateReport}
+              candidateMitigationRows={candidateMitigationRows}
+              candidateScenarioRows={candidateScenarioRows}
+              candidateReportRows={candidateReportRows}
+              downloadReportPending={downloadReportMutation.isPending}
+              onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
+              onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
+              onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
+              onDownloadReport={() => {
+                downloadReportMutation.mutate(job.id);
+              }}
+            />
+          ) : liveJob.job_type === "scenario" ? (
+            <ScenarioJobDetailPanel
+              selectedJob={liveJob}
+              selectedJobDetail={selectedJobDetail}
+              loading={jobDetailQuery.isLoading}
+              error={jobDetailQuery.error}
+              canManage={canManage}
+              canCreateMitigation={canCreateMitigation}
+              canCreateScenario={canCreateScenario}
+              canCreateReport={canCreateReport}
+              selectedJobDetailWaveformType={selectedJobDetailWaveformType}
+              candidateMitigationRows={candidateMitigationRows}
+              candidateScenarioRows={candidateScenarioRows}
+              candidateReportRows={candidateReportRows}
+              downloadReportPending={downloadReportMutation.isPending}
+              onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
+              onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
+              onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
+              onDownloadReport={() => {
+                downloadReportMutation.mutate(job.id);
+              }}
+            />
+          ) : (
+            <CalculationJobDetailPanel
+              selectedJob={liveJob}
+              selectedJobDetail={selectedJobDetail}
+              loading={jobDetailQuery.isLoading}
+              error={jobDetailQuery.error}
+              canManage={canManage}
+              canCreateMitigation={canCreateMitigation}
+              canCreateScenario={canCreateScenario}
+              canCreateReport={canCreateReport}
+              selectedJobDetailWaveformType={selectedJobDetailWaveformType}
+              candidateMitigationRows={candidateMitigationRows}
+              candidateScenarioRows={candidateScenarioRows}
+              candidateReportRows={candidateReportRows}
+              downloadReportPending={downloadReportMutation.isPending}
+              onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
+              onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
+              onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
+              onDownloadReport={() => {
+                downloadReportMutation.mutate(job.id);
+              }}
+            />
+          )}
         </div>
 
         {/* 分级结果：不再用选项卡，表格直接展示在下方；导出结果按钮置于表格右上方 */}
@@ -284,13 +350,22 @@ export function JobDetailTabView({
       >
         {towerDetailRow ? (
           <div className="admin-tower-detail-content">
-            <TowerDetailView
-              detailRow={towerDetailRow}
-              selectedJob={job}
-              selectedJobDetail={selectedJobDetail}
-              canReadLogs={canReadLogs}
-              onOpenLog={onOpenLog}
-            />
+            {job.job_type === "mitigation" ? (
+              <MitigationTowerDetailView
+                detailRow={towerDetailRow}
+                selectedJob={job}
+                canReadLogs={canReadLogs}
+                onOpenLog={onOpenLog}
+              />
+            ) : (
+              <CalculationTowerDetailView
+                detailRow={towerDetailRow}
+                selectedJob={job}
+                selectedJobDetail={selectedJobDetail}
+                canReadLogs={canReadLogs}
+                onOpenLog={onOpenLog}
+              />
+            )}
           </div>
         ) : null}
       </Drawer>
