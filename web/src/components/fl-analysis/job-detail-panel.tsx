@@ -115,6 +115,7 @@ export function JobDetailPanel({
   const selectedJobWorkflow = readObject(selectedJobDetail.result_summary_json).workflow as WorkflowSummary | undefined;
   const selectedJobExternalModelCode = readOptionalString(selectedJobSummary, "external_model_code");
   const selectedJobExternalModelName = readOptionalString(selectedJobSummary, "external_model_name");
+  const selectedJobExternalModelVersion = readOptionalString(selectedJobSummary, "external_model_version");
   const selectedJobExternalVersionNo = readOptionalNumber(selectedJobSummary, "external_version_no");
   const sourceJobId = readOptionalString(selectedJobExecutionOptions, "source_job_id");
   const scenarioBaseJobName = readOptionalString(selectedJobExecutionOptions, "base_job_name");
@@ -145,7 +146,9 @@ export function JobDetailPanel({
   const ATP_SCENE_TEXT: Record<string, string> = {
     fanji: "反击", raoji: "绕击", raoji1: "绕击1", raoji2: "绕击2", raoji3: "绕击3",
   };
-  const formatAtpModel = (src?: string | null) => {
+  // LP-13：formatAtpModel 增加 version 参数，非空时追加「 · vN」版本号；
+  // 历史任务无 external_model_version 时退化为原有行为（仅显示模型名）。
+  const formatAtpModel = (src?: string | null, version?: string | null) => {
     const text = (src || "").trim();
     if (!text) return "-";
     const parts = text.split("-").filter(Boolean);
@@ -161,7 +164,9 @@ export function JobDetailPanel({
         if (arrester) return `${t("避雷器组合")} ${arrester[0].toUpperCase()}`;
         return part;
       });
-    return [label, ...rest].filter(Boolean).join(" ") || "-";
+    const base = [label, ...rest].filter(Boolean).join(" ");
+    const ver = (version || "").trim();
+    return (ver ? `${base} · ${ver}` : base) || "-";
   };
   // 风险计数：high/medium/low → 高/中/低风险 + 座数
   const formatRiskCounts = (counts?: unknown) => {
@@ -234,7 +239,7 @@ export function JobDetailPanel({
             <Descriptions.Item label={t("绕击耐雷水平计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).raoji_naleishuiping_method)}</Descriptions.Item>
             <Descriptions.Item label={t("反击跳闸率计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).fanji_tzl_method)}</Descriptions.Item>
             <Descriptions.Item label={t("绕击跳闸率计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).raoji_tzl_method)}</Descriptions.Item>
-            <Descriptions.Item label={t("ATP模型")}>{formatAtpModel(selectedJobExternalModelName || selectedJobExternalModelCode)}</Descriptions.Item>
+            <Descriptions.Item label={t("ATP模型")}>{formatAtpModel(selectedJobExternalModelName || selectedJobExternalModelCode, selectedJobExternalModelVersion)}</Descriptions.Item>
           </Descriptions>
         </section>
       ) : null}

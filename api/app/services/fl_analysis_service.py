@@ -1693,9 +1693,15 @@ def execute_job(job_id: str) -> None:
                         line_voltage_kv=job.line.voltage_kv if job.line else None,
                         scene_type=_auto_scene_type_for_options(execution_options),
                     )
+                    # LP-13：显式记录版本主键 / 模型级 id / 版本号 / 版本 code，
+                    # 避免仅存版本 id 后无法直观区分同一模型的多版本。
                     summary["external_model_id"] = external_job.asset.id
                     summary["external_model_code"] = external_job.asset.code
                     summary["external_model_name"] = external_job.asset.name
+                    summary["external_model_version_id"] = external_job.asset.id
+                    summary["external_model_model_id"] = external_job.asset.model_id
+                    summary["external_model_version"] = external_job.asset.version
+                    summary["external_model_version_code"] = external_job.asset.version_code
                 except Exception as exc:
                     # ⚠️ 对齐 C#：计算方法明确选了 ATP（或适配器为 atp/wine）时，必须用 ATP 引擎。
                     # 若解不出资产/引擎，直接抛错，绝不静默回退到规程公式——否则计算结果与 C# 不一致
@@ -1715,6 +1721,12 @@ def execute_job(job_id: str) -> None:
                 summary["external_model_name"] = legacy_external_job.template_dir.name
                 summary["external_version_id"] = legacy_external_job.template_identifier
                 summary["external_version_no"] = 1
+                # LP-13：legacy 模板无「模型/版本」概念，version 置 v1（与 external_version_no 一致），
+                # model_id / version_code 置空，界面退化为仅显示模型名（兼容历史任务）。
+                summary["external_model_version_id"] = legacy_external_job.template_identifier
+                summary["external_model_model_id"] = None
+                summary["external_model_version"] = "v1"
+                summary["external_model_version_code"] = None
         # LP-560：legacy ATP 模板支持按塔型编码细分。循环内按每塔 tower_type 解析模板并缓存，
         # 塔型无对应子目录时回退任务级默认模板（legacy_external_job）。
         legacy_job_cache: dict[str, ResolvedLegacyAtpJob | None] = {}

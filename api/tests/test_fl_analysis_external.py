@@ -450,6 +450,11 @@ def test_execute_job_runs_external_adapter_and_backfills_results(tmp_path, monke
             assert saved_job.result_summary_json["adapter_status"] == "executed"
             assert saved_job.result_summary_json["external_model_code"] == "fl-execute-asset"
             assert saved_job.result_summary_json["external_version_no"] is None
+            # LP-13：显式记录版本主键 / 模型级 id / 版本号 / 版本 code
+            assert saved_job.result_summary_json["external_model_version_id"] == asset.id
+            assert saved_job.result_summary_json["external_model_version"] == "v1"
+            assert saved_job.result_summary_json["external_model_model_id"] is None
+            assert saved_job.result_summary_json["external_model_version_code"] is None
 
             result_row = verify_session.execute(
                 select(FlAnalysisTowerResult).where(FlAnalysisTowerResult.job_id == created.job.id)
