@@ -139,6 +139,8 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     # 但本字典与 permissions 表均未注册，导致非 admin 角色永远无法通过任何途径获得。
     "dimension.read": "Read dimension types and dimensions",
     "dimension.manage": "Manage dimension types and dimensions",
+    # LP-14：平台基础数据包导出 / 导入（维度、系统参数、ATP 模型）
+    "platform_data.manage": "Export and import platform base data package",
 }
 
 DEFAULT_ROLES: dict[str, dict[str, object]] = {
@@ -192,6 +194,7 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
             "fl.export",
             "fault.create",
             "fault.delete",
+            "platform_data.manage",
         ],
     },
     "user": {

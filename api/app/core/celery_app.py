@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.tasks.scheduled_task_tasks",
         "app.tasks.sync_matlab_engine_task",
         "app.tasks.worker_registry_tasks",
+        "app.tasks.platform_data_tasks",
     ],
 )
 
