@@ -95,7 +95,8 @@ def _install_pymysql_utc_decoder() -> None:
     使所有 API 的 datetime 输出带 +00:00，前端自动正确转换本地时区。
     项目内此前逐点 replace(tzinfo=timezone.utc) 的补丁（task_history_signals /
     flower_monitor 等）行为不变；auth_service 唯一的 naive 比较点已同步改为 aware。
-    仅影响 pymysql 驱动；SQLite（单测）与 PostgreSQL（读回即 aware）不受影响。
+    仅影响 pymysql 驱动；SQLite（单测）不受影响。PostgreSQL/psycopg 路径的时区
+    解码由 ``_install_psycopg_utc_decoder`` 单独补全（见 LP-21）。
     """
     try:
         import pymysql
@@ -123,6 +124,69 @@ def _install_pymysql_utc_decoder() -> None:
     pymysql.converters.convert_datetime = convert_datetime_utc
 
 
+def _install_psycopg_utc_decoder(engine) -> None:
+    """补齐 PostgreSQL/psycopg3 的 UTC 时区解码（与 _install_pymysql_utc_decoder 对齐）。
+
+    psycopg3 对 ``TIMESTAMPTZ`` 按「服务器会话时区」返回带 tz 的 datetime，对 plain
+    ``TIMESTAMP`` 则总是返回 naive datetime（值恒为 UTC）——psycopg3 没有
+    ``conn.timezone`` 属性（旧文档里 ``conn.timezone`` 的写法对 3.x 无效）。本项目全库
+    时间一律以 ``utcnow()`` 写入 UTC，读出端必须把读回的 datetime 统一标注为 aware UTC，
+    否则 Pydantic 序列化输出「无时区后缀」字符串，前端 ``dayjs`` 按本地时区（+8）解析
+    → 任务监控/详情页时间比实际晚 8 小时（LP-21）。
+
+    在每个 PG 连接上注册 ``timestamp`` / ``timestamptz`` 的 loader（覆盖 text 与 binary
+    两种线格式），读回后统一归一到 aware UTC。仅作用于 psycopg 连接；SQLite / MySQL
+    路径（dbapi_conn 无 ``.adapters``）不受任何影响。
+    """
+    try:
+        from sqlalchemy import event
+
+        from psycopg import _oids
+        from psycopg.types.datetime import (
+            TimestampBinaryLoader,
+            TimestampLoader,
+            TimestamptzBinaryLoader,
+            TimestamptzLoader,
+        )
+    except ImportError:
+        return
+
+    class _UtcDateTimeMixin:
+        @staticmethod
+        def _to_utc(dt: "datetime | None") -> "datetime | None":
+            if dt is None:
+                return None
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+
+    class _UtcTimestampLoader(_UtcDateTimeMixin, TimestampLoader):
+        def load(self, data):  # type: ignore[override]
+            return self._to_utc(super().load(data))
+
+    class _UtcTimestampBinaryLoader(_UtcDateTimeMixin, TimestampBinaryLoader):
+        def load(self, data):  # type: ignore[override]
+            return self._to_utc(super().load(data))
+
+    class _UtcTimestamptzLoader(_UtcDateTimeMixin, TimestamptzLoader):
+        def load(self, data):  # type: ignore[override]
+            return self._to_utc(super().load(data))
+
+    class _UtcTimestamptzBinaryLoader(_UtcDateTimeMixin, TimestamptzBinaryLoader):
+        def load(self, data):  # type: ignore[override]
+            return self._to_utc(super().load(data))
+
+    @event.listens_for(engine, "connect")
+    def _register_utc_loaders(dbapi_conn, _record) -> None:
+        adapters = getattr(dbapi_conn, "adapters", None)
+        if adapters is None:
+            return
+        adapters.register_loader(_oids.TIMESTAMP_OID, _UtcTimestampLoader)
+        adapters.register_loader(_oids.TIMESTAMP_OID, _UtcTimestampBinaryLoader)
+        adapters.register_loader(_oids.TIMESTAMPTZ_OID, _UtcTimestamptzLoader)
+        adapters.register_loader(_oids.TIMESTAMPTZ_OID, _UtcTimestamptzBinaryLoader)
+
+
 _install_pymysql_utc_decoder()
 
 engine = create_engine(
@@ -143,6 +207,11 @@ SessionLocal = sessionmaker(
     autoflush=False,
     expire_on_commit=False,
 )
+
+# PostgreSQL/psycopg 读出端时区解码补齐：将读回的 timestamp / timestamptz
+# 统一标注为 aware UTC，避免前端按本地时区解析时晚 8 小时（LP-21）。
+if database_url.startswith("postgresql"):
+    _install_psycopg_utc_decoder(engine)
 
 
 class Base(DeclarativeBase):
