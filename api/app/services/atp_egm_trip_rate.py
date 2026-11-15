@@ -334,6 +334,42 @@ def egm_type_for_tower(tower_type: str, circuit_count: int, voltage_kv: float | 
     return egm_type
 
 
+def expected_circuits_for_tower(tower_type: str) -> int | None:
+    """塔型 EGM 期望回路数；塔型不可解析或直流/特型（无回路约束）返回 None。
+
+    与 egm_type_for_tower 共用 _TOWER_TO_EGM，供测试线路「回路几何自检」复用：
+    guxing/guxingd=2、sihuita=4、单回塔型=1、直流/特型=None（不做回路数校验）。
+    纯查询、不抛异常（LP-19）。
+    """
+    name = parse_tower_name(tower_type) or _parse_tower_name_loose(tower_type)
+    if name is None:
+        return None
+    return _TOWER_TO_EGM[name][2]
+
+
+def circuit_geometry_mismatch(tower_type: str, base_tower: dict[str, Any]) -> str | None:
+    """回路几何自检：返回不一致原因；一致 / 无需校验时返回 None。
+
+    与 compute_shielding_trip_rate 同口径：回路数取自 ``circuit_geometry_json``
+    中 I/II/III/IV 里有完整相中距+相高的回路条数（_circuit_geometry），与塔型
+    期望回路数（expected_circuits_for_tower）比对。用于「测试线路回路几何自检」：
+    覆盖全部塔型/电压，避免单回/双回错配落在其它维度上。
+
+    刻意不抛异常——是否 warning / blocker / 下线由调用方决定；本模块既有的
+    「拒绝静默计算」校验（egm_type_for_tower）保持不变。
+    """
+    expected = expected_circuits_for_tower(tower_type)
+    if expected is None:
+        return None
+    actual = len(_circuit_geometry(base_tower))
+    if actual != expected:
+        return (
+            f"塔型「{tower_type}」EGM 期望 {expected} 回路，"
+            f"但 circuit_geometry_json 实际只有 {actual} 回路 —— 塔型与几何不一致"
+        )
+    return None
+
+
 def _parse_numbers(text: str) -> list[float]:
     """从 build_cic/build_ic 生成的文本里取数值（顺序即文件顺序）。"""
     out: list[float] = []

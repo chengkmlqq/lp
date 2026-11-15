@@ -818,6 +818,50 @@ def _raoji_asset_record(asset: Any, scene_type: str) -> dict[str, Any]:
     }
 
 
+def _compute_egm_trip_rate_with_fallback(
+    *,
+    tower_no: str,
+    voltage_kv,
+    base_tower: dict,
+    profile: dict,
+    tower_type: str,
+    raoji_withstand_ka: float,
+    counterstrike_withstand_ka,
+    result: dict,
+) -> float | None:
+    """绕击 EGM 跳闸率：normal / tongtiao 共用的容错封装（LP-19）。
+
+    与 C# 行为一致：几何回路数与塔型不符、塔型不可解析、该电压×塔型无 EGM 行、
+    或直流/特型 EGM 未移植（ValueError / NotImplementedError）时，跳过 EGM、记录
+    warning、保留已算出的反击/绕击耐雷结果，绝不让整塔失败；成功时才把
+    shielding_trip_rate / shielding_trip_rate_method 写入 result。
+
+    返回 EGM 跳闸率（供风险等级重算），EGM 跳过时返回 None。两条计算路径都调用
+    本函数，避免容错逻辑再次分叉（此前 tongtiao 缺 try/except 导致整塔失败）。
+    """
+    from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
+
+    egm_env = os.environ.copy()
+    egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+    try:
+        rate, _alpha = compute_shielding_trip_rate(
+            atp_root=Path("/app/data/wine/ATP"),
+            voltage_kv=voltage_kv,
+            base_tower=base_tower,
+            profile=profile,
+            tower_type=tower_type,
+            raoji_withstand_ka=raoji_withstand_ka,
+            counterstrike_withstand_ka=counterstrike_withstand_ka,
+            env=egm_env,
+        )
+    except (ValueError, NotImplementedError) as exc:
+        logger.warning("[ATP] 绕击 EGM 跳过（塔 %s）：%s", tower_no, exc)
+        return None
+    result["shielding_trip_rate"] = rate
+    result["shielding_trip_rate_method"] = "egm"
+    return rate
+
+
 def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -> None:
             # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
             # 传入的是 snapshot.id 标量，job/run/snapshot/tower 全部用本塔 session 按 ID 反查，
@@ -1109,56 +1153,45 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         raise RuntimeError(
                             f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
                         )
-                    from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
-
-                    _egm_env = os.environ.copy()
-                    _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
-                    try:
-                        _egm_rate, _egm_alpha = compute_shielding_trip_rate(
-                            atp_root=Path("/app/data/wine/ATP"),
-                            voltage_kv=job.line.voltage_kv if job.line else None,
-                            base_tower=snapshot.base_tower_json or {},
-                            profile=snapshot.profile_json or {},
-                            tower_type=snapshot.tower_type or "",
-                            raoji_withstand_ka=float(_egm_ic),
-                            counterstrike_withstand_ka=_raoji_merged.get("counterstrike_withstand_ka"),
-                            env=_egm_env,
-                        )
-                    except (ValueError, NotImplementedError) as exc:
-                        # 该电压×塔型在 tzl_model 无 EGM 行（如 230kV）或几何缺失 →
-                        # 与 C# 行为一致（该电压下不跑 EGM、无绕击跳闸率），跳过而非
-                        # 让整塔失败：反击二分结果已算出，应保留。
-                        logger.warning(
-                            "[ATP] 绕击 EGM 跳过（塔 %s）：%s", snapshot.tower_no, exc
-                        )
-                    else:
-                        _raoji_merged["shielding_trip_rate"] = _egm_rate
-                        _raoji_merged["shielding_trip_rate_method"] = "egm"
+                    # normal / tongtiao 共用容错封装：几何回路数与塔型不符等场景
+                    # 跳过 EGM、保留反击/绕击结果，不让整塔失败（LP-19）。
+                    _egm_rate = _compute_egm_trip_rate_with_fallback(
+                        tower_no=snapshot.tower_no,
+                        voltage_kv=job.line.voltage_kv if job.line else None,
+                        base_tower=snapshot.base_tower_json or {},
+                        profile=snapshot.profile_json or {},
+                        tower_type=snapshot.tower_type or "",
+                        raoji_withstand_ka=float(_egm_ic),
+                        counterstrike_withstand_ka=_raoji_merged.get("counterstrike_withstand_ka"),
+                        result=_raoji_merged,
+                    )
+                    if _egm_rate is not None:
                         # 普通计算：顶层绕击耐雷 = 三相最小值（C# 7891-7912）
-                        if _egm_ic is not None:
-                            _raoji_merged["shielding_withstand_ka"] = _egm_ic
+                        _raoji_merged["shielding_withstand_ka"] = _egm_ic
                     graded = _raoji_merged
                     # 普通计算：顶层耐雷/跳闸率保留实际值（C# 口径），但风险等级要用
-                    # EGM 之后的绕击跳闸率重算。
-                    try:
-                        from .fl_analysis_rules import (  # noqa: PLC0415
-                            _calculate_risk_grade,
-                            _normalize_lightning_inputs,
-                            _risk_level_from_grade,
-                        )
+                    # EGM 之后的绕击跳闸率重算。EGM 跳过时（_egm_rate is None）保留
+                    # baseline 风险等级，不做 counterstrike-only 的口径漂移（对齐旧行为）。
+                    if _egm_rate is not None:
+                        try:
+                            from .fl_analysis_rules import (  # noqa: PLC0415
+                                _calculate_risk_grade,
+                                _normalize_lightning_inputs,
+                                _risk_level_from_grade,
+                            )
 
-                        _norm = _normalize_lightning_inputs(payload)
-                        _ri, _th, _rg = _calculate_risk_grade(
-                            _norm,
-                            graded.get("counterstrike_trip_rate"),
-                            _egm_rate,
-                        )
-                        if _rg is not None:
-                            graded["risk_grade"] = _rg
-                            graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
-                            graded["risk_index_s"] = _ri
-                    except Exception as _exc:  # noqa: BLE001
-                        logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
+                            _norm = _normalize_lightning_inputs(payload)
+                            _ri, _th, _rg = _calculate_risk_grade(
+                                _norm,
+                                graded.get("counterstrike_trip_rate"),
+                                _egm_rate,
+                            )
+                            if _rg is not None:
+                                graded["risk_grade"] = _rg
+                                graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
+                                graded["risk_index_s"] = _ri
+                        except Exception as _exc:  # noqa: BLE001
+                            logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
                     if execution.engine_command:
                         local_engine_cmds.append(execution.engine_command)
                     if execution.working_dir:
@@ -1342,22 +1375,19 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             raise RuntimeError(
                                 f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
                             )
-                        from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
-
-                        _egm_env = os.environ.copy()
-                        _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
-                        _egm_rate, _egm_alpha = compute_shielding_trip_rate(
-                            atp_root=Path("/app/data/wine/ATP"),
+                        # normal / tongtiao 共用容错封装（LP-19）：此前这里没有
+                        # try/except，EGM 几何不符的 ValueError 直接冒泡把整塔记为失败；
+                        # 现改为与普通路径一致——跳过 EGM、保留反击/绕击结果、写 warning。
+                        _egm_rate = _compute_egm_trip_rate_with_fallback(
+                            tower_no=snapshot.tower_no,
                             voltage_kv=job.line.voltage_kv if job.line else None,
                             base_tower=snapshot.base_tower_json or {},
                             profile=snapshot.profile_json or {},
                             tower_type=snapshot.tower_type or "",
                             raoji_withstand_ka=float(_egm_ic),
                             counterstrike_withstand_ka=_raoji_merged.get("counterstrike_withstand_ka"),
-                            env=_egm_env,
+                            result=_raoji_merged,
                         )
-                        _raoji_merged["shielding_trip_rate"] = _egm_rate
-                        _raoji_merged["shielding_trip_rate_method"] = "egm"
                         graded = _raoji_merged
                         # ── 顶层口径对齐 C# 交流同跳，并用 EGM 跳闸率重算风险等级 ──
                         # （C# 引擎对 IDout24/26 只注册不赋值 → 顶层耐雷/反击跳闸率输出 0；
@@ -1365,21 +1395,23 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         graded["counterstrike_withstand_ka"] = 0.0
                         graded["counterstrike_trip_rate"] = 0.0
                         graded["shielding_withstand_ka"] = 0.0
-                        try:
-                            from .fl_analysis_rules import (  # noqa: PLC0415
-                                _calculate_risk_grade,
-                                _normalize_lightning_inputs,
-                                _risk_level_from_grade,
-                            )
+                        # EGM 跳过时保留 baseline 风险等级，不用 None 跳闸率重算。
+                        if _egm_rate is not None:
+                            try:
+                                from .fl_analysis_rules import (  # noqa: PLC0415
+                                    _calculate_risk_grade,
+                                    _normalize_lightning_inputs,
+                                    _risk_level_from_grade,
+                                )
 
-                            _norm = _normalize_lightning_inputs(payload)
-                            _ri, _th, _rg = _calculate_risk_grade(_norm, 0.0, _egm_rate)
-                            if _rg is not None:
-                                graded["risk_grade"] = _rg
-                                graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
-                                graded["risk_index_s"] = _ri
-                        except Exception as _exc:  # noqa: BLE001
-                            logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
+                                _norm = _normalize_lightning_inputs(payload)
+                                _ri, _th, _rg = _calculate_risk_grade(_norm, 0.0, _egm_rate)
+                                if _rg is not None:
+                                    graded["risk_grade"] = _rg
+                                    graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
+                                    graded["risk_index_s"] = _ri
+                            except Exception as _exc:  # noqa: BLE001
+                                logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
                     if execution.engine_command:
                         local_engine_cmds.append(execution.engine_command)
                     if execution.working_dir:
@@ -1862,7 +1894,14 @@ def execute_job(job_id: str) -> None:
                     return _execute_single_tower(tower_db, snapshot_id, idx, total, spawn=worker_spawn)
             except Exception as exc:
                 logger.exception("[ATP] 杆塔%s 计算失败（单塔独立，任务继续）", snapshot_id)
-                return {"ok": False, "idx": idx, "tower_no": snapshot_id, "error": str(exc)}
+                # 带上异常类型，塔级错误直接透出真实原因（如 ValueError: 塔型与几何
+                # 回路数不一致），而不是只剩一句笼统的失败（LP-19）。
+                return {
+                    "ok": False,
+                    "idx": idx,
+                    "tower_no": snapshot_id,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
 
         if tower_parallel_workers > 1 and len(snapshots) > 1:
             import concurrent.futures as _cfg
@@ -1891,6 +1930,12 @@ def execute_job(job_id: str) -> None:
             else:
                 logger.error("[ATP] 杆塔 %s 计算失败（单塔独立，任务继续）：%s",
                              _out.get("tower_no"), _out.get("error"))
+        # 透传各塔真实报错，供「全部塔失败」文案区分阶段、展示具体原因（LP-19）。
+        _failed_tower_errors = [
+            str(_out.get("error") or "")
+            for _out in _outcomes
+            if not _out.get("ok") and _out.get("error")
+        ]
 
         run.snapshot_tower_count = snapshot_count
         run.result_tower_count = result_count
@@ -1952,6 +1997,7 @@ def execute_job(job_id: str) -> None:
             started_perf=started_perf,
             summary=summary,
             adapter_status="executed" if external_job is not None or legacy_external_job is not None else "computed",
+            tower_errors=_failed_tower_errors,
         )
 
         # 任务终态清理：删本 job 的运行结果目录（成功路径）
@@ -2047,6 +2093,27 @@ def _dispatch_fl_analysis_task(*, job_id: str):
     return execute_fl_analysis_job.delay(job_id)
 
 
+def _all_towers_failed_message(total_towers: int, tower_errors: list[str] | None) -> str:
+    """构造「全部塔失败」文案：区分引擎/结果计算阶段并透出各塔真实报错（LP-19）。
+
+    旧文案把任何塔级异常都归到「ATP 模型不可运行」，会掩盖绕击 EGM 塔型与几何
+    回路数不一致这类结果计算阶段的失败。纯函数，便于单测。
+    """
+    uniq = list(dict.fromkeys(e.strip() for e in (tower_errors or []) if e and e.strip()))
+    detail = ""
+    if uniq:
+        detail = " 各塔实际报错：" + " | ".join(uniq[:5])
+        if len(uniq) > 5:
+            detail += f"（另 {len(uniq) - 5} 条见任务日志）"
+    return (
+        f"全部 {total_towers} 基杆塔计算失败，未产生任何结果。"
+        "常见原因分两类：①引擎执行失败（ATP 模型不可运行：pch 未带真实节点名导致 "
+        "KILL=12、$PARAMETER 段未规范化、$INCLUDE/$INSERT 目标文件缺失）；"
+        "②结果计算阶段失败（如绕击 EGM 塔型与几何回路数不一致、耐雷水平缺失等，"
+        "并非 ATP 模型不可运行）。请查看任务日志中各塔的具体报错。" + detail
+    )
+
+
 def _finish_rule_based_run(
     db: Session,
     *,
@@ -2055,6 +2122,7 @@ def _finish_rule_based_run(
     started_perf: float,
     summary: dict[str, Any],
     adapter_status: str = "computed",
+    tower_errors: list[str] | None = None,
 ) -> None:
     job = get_job_by_id(db, job_id)
     run = db.execute(select(FlAnalysisRun).where(FlAnalysisRun.id == run_id)).scalar_one_or_none()
@@ -2073,10 +2141,9 @@ def _finish_rule_based_run(
     _result_towers = int(job.result_tower_count or 0)
     _all_towers_failed = _total_towers > 0 and _result_towers == 0
     _fail_message = (
-        f"全部 {_total_towers} 基杆塔计算失败，未产生任何结果。"
-        "常见原因：ATP 模型不可运行（pch 未带真实节点名导致 KILL=12、$PARAMETER 段未规范化、"
-        "$INCLUDE/$INSERT 目标文件缺失）。请查看任务日志中各塔的具体报错。"
-    ) if _all_towers_failed else None
+        _all_towers_failed_message(_total_towers, tower_errors)
+        if _all_towers_failed else None
+    )
     final_status = "failed" if _all_towers_failed else "success"
 
     run.status = final_status
