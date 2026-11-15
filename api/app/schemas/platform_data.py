@@ -15,7 +15,13 @@ class PlatformDataExportRequest(BaseModel):
 
     categories: list[str] = Field(..., min_length=1, description="要导出的类别：dimensions / system_params / atp_models")
     # ATP 模型筛选条件（沿用 export_assets_zip 的维度过滤口径）
-    filters: dict[str, Any] = Field(default_factory=dict, description="ATP 模型筛选条件，如 {'voltage_level': '500kV'}")
+    # 维度值为单值字符串或字符串数组（下拉多选）：同维度 OR、跨维度 AND；兼容历史单值格式。
+    # 支持的 key：voltage_level / tower_type / scene（场景）。
+    filters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="ATP 模型筛选条件，如 {'voltage_level': ['500kV', '220kV'], 'scene': ['plain']}；"
+        "也兼容历史单值 {'voltage_level': '500kV'}",
+    )
 
 
 class PlatformDataImportReuseRequest(BaseModel):

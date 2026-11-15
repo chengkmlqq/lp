@@ -127,6 +127,54 @@ def _seed_asset(db: Session) -> None:
     driver.write_file(f"{asset.storage_root_path}/work.atp", content=b"TEST ATP CONTENT", content_type="text/plain")
 
 
+def _seed_filter_assets(db: Session) -> None:
+    """创建 4 个启用模型，覆盖电压/塔型/场景多值筛选的组合。"""
+    specs = [
+        ("M-500-CAT-PLAIN", "500kV", "cathead", "plain"),
+        ("M-500-CAT-MTN", "500kV", "cathead", "mountain"),
+        ("M-220-CAT-PLAIN", "220kV", "cathead", "plain"),
+        ("M-500-CUP-PLAIN", "500kV", "cup", "plain"),
+    ]
+    mount = db.scalar(select(FileStorageMount).where(FileStorageMount.code == "main"))
+    from app.services.storage_driver import build_storage_driver
+
+    driver = build_storage_driver(mount.backend, mount)
+    for code, voltage, tower, scene in specs:
+        root = f"/atp/{code}-v1"
+        db.add(
+            AtpAssetVersion(
+                code=code,
+                version_code=f"{code}-v1",
+                name=code,
+                description=code,
+                status="enabled",
+                voltage_level=voltage,
+                tower_type=tower,
+                scene_type=scene,
+                version="v1",
+                is_active=True,
+                is_published=True,
+                model_format="legacy",
+                storage_mount_code="main",
+                storage_root_path=root,
+                create_user="seed",
+                update_user="seed",
+            )
+        )
+        driver.ensure_directory(root)
+        driver.write_file(f"{root}/work.atp", content=f"ATP {code}".encode(), content_type="text/plain")
+    db.commit()
+
+
+def _export_atp_manifest(db: Session, filters: dict) -> dict:
+    """导出 atp_models 类别并返回内层 ATP manifest；无匹配时返回空 assets。"""
+    content, _ = svc.build_export_bundle(db, categories=["atp_models"], filters=filters)
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        if "atp_models/manifest.json" not in z.namelist():
+            return {"assets": [], "filters": {}, "total_assets": 0}
+        return json.loads(z.read("atp_models/manifest.json"))
+
+
 def _run_export(db: Session, categories, filters=None) -> PlatformDataJob:
     job = PlatformDataJob(kind="export", status="pending", request_payload_json={"categories": categories, "filters": filters or {}})
     db.add(job)
@@ -250,6 +298,69 @@ def test_atp_import_idempotent():
         assert job2.result_summary_json["atp_models"]["created"] == 0, job2.result_summary_json
         assert job2.result_summary_json["atp_models"]["updated"] == 1, job2.result_summary_json
         assert db_b.scalar(select(func.count()).select_from(AtpAssetVersion)) == 1
+    db_a.close()
+    db_b.close()
+
+
+def test_atp_export_multi_value_filters():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_filter_assets(db)
+    all_codes = {"M-500-CAT-PLAIN", "M-500-CAT-MTN", "M-220-CAT-PLAIN", "M-500-CUP-PLAIN"}
+
+    # 同一维度多值为 OR（IN）
+    manifest = _export_atp_manifest(db, {"voltage_level": ["500kV", "220kV"]})
+    assert {entry["code"] for entry in manifest["assets"]} == all_codes
+    manifest = _export_atp_manifest(db, {"scene": ["plain", "mountain"]})
+    assert {entry["code"] for entry in manifest["assets"]} == all_codes
+
+    # 不同维度之间为 AND
+    manifest = _export_atp_manifest(db, {"voltage_level": ["500kV"], "scene": ["plain"]})
+    assert {entry["code"] for entry in manifest["assets"]} == {"M-500-CAT-PLAIN", "M-500-CUP-PLAIN"}
+
+    # 空维度值（不传 / 空数组）导出全部
+    manifest = _export_atp_manifest(db, {})
+    assert {entry["code"] for entry in manifest["assets"]} == all_codes
+    manifest = _export_atp_manifest(db, {"scene": []})
+    assert {entry["code"] for entry in manifest["assets"]} == all_codes
+    db.close()
+
+
+def test_atp_export_scene_filter_and_legacy_single_value():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_filter_assets(db)
+
+    # 场景筛选此前失效，现单值/多值均应生效
+    manifest = _export_atp_manifest(db, {"scene": "mountain"})
+    assert [entry["code"] for entry in manifest["assets"]] == ["M-500-CAT-MTN"]
+    assert manifest["filters"]["scene_type"] == ["mountain"]
+
+    # 历史导出 job 复用的单值字符串格式仍按精确匹配工作
+    manifest = _export_atp_manifest(db, {"voltage_level": "220kV", "tower_type": "cathead"})
+    assert {entry["code"] for entry in manifest["assets"]} == {"M-220-CAT-PLAIN"}
+
+    # 无匹配仍返回空（沿用 404 → platform_data_service 留空）
+    manifest = _export_atp_manifest(db, {"scene": ["nonexistent"]})
+    assert manifest["assets"] == []
+    db.close()
+
+
+def test_legacy_single_value_export_job_import():
+    # 历史导出 job 的 request_payload_json.filters 为单值字符串，生成的包应能被导入
+    db_a = _new_session()
+    _seed_storage(db_a)
+    _seed_asset(db_a)
+    export_job = _run_export(db_a, ["atp_models"], filters={"voltage_level": "500kV", "tower_type": "cathead"})
+    assert export_job.status == "success", export_job.error_message
+    content = svc.download_job_artifact(db_a, export_job.id)[1]
+
+    db_b = _new_session()
+    _seed_storage(db_b)
+    with _patched_publish():
+        import_job = _run_import(db_b, content)
+    assert import_job.status == "success", import_job.error_message
+    assert db_b.scalar(select(func.count()).select_from(AtpAssetVersion)) == 1
     db_a.close()
     db_b.close()
 

@@ -203,6 +203,7 @@ def build_export_bundle(
                 db,
                 voltage_level=filters.get("voltage_level"),
                 tower_type=filters.get("tower_type"),
+                scene_type=filters.get("scene"),
             )
         except HTTPException as exc:
             if exc.status_code == status.HTTP_404_NOT_FOUND:

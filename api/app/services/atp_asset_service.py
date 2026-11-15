@@ -2660,12 +2660,16 @@ def list_asset_files(db: Session, *, asset_id: str) -> AtpAssetFileListResponse:
 def export_assets_zip(
     db: Session,
     *,
-    voltage_level: str | None = None,
-    tower_type: str | None = None,
+    voltage_level: str | list[str] | None = None,
+    tower_type: str | list[str] | None = None,
+    scene_type: str | list[str] | None = None,
 ) -> tuple[bytes, str]:
     """按维度过滤批量导出 ATP 模型：每个模型一个目录 + manifest.json 清单，打 zip。
 
     - 仅导出 status=enabled 的模型（草稿/停用不下包）。
+    - 每个维度既接单值字符串（历史导出 job 复用）也接字符串数组（下拉多选）：
+      单值会包成单元素列表；同一维度内多值为 OR（IN），不同维度之间为 AND。
+      空白/空列表视为不过滤该维度。
     - zip 内目录名 ``{code}_{version}``，防同 code 多版本覆盖。
     - manifest.json 记录每个模型的元数据与文件数，便于离线核对；存储缺失的模型
       记入 ``missing``，不中断整体导出。
@@ -2673,15 +2677,33 @@ def export_assets_zip(
       兜底上限防异常巨型数据把容器打爆。
     - 返回 ``(zip 字节, 文件名)``。
     """
+
+    def _normalize(value: str | list[str] | None) -> list[str]:
+        """单值/多值统一为去空白、去空、去重的字符串列表。"""
+        if value is None:
+            return []
+        raw = value if isinstance(value, list) else [value]
+        result: list[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            trimmed = item.strip()
+            if trimmed and trimmed not in result:
+                result.append(trimmed)
+        return result
+
+    normalized_voltage = _normalize(voltage_level)
+    normalized_tower = _normalize(tower_type)
+    normalized_scene = _normalize(scene_type)
     stmt = select(AtpAssetVersion).where(AtpAssetVersion.status == "enabled").order_by(
         AtpAssetVersion.voltage_level.asc(), AtpAssetVersion.code.asc(), AtpAssetVersion.version.asc()
     )
-    normalized_voltage = (voltage_level or "").strip()
-    normalized_tower = (tower_type or "").strip()
     if normalized_voltage:
-        stmt = stmt.where(AtpAssetVersion.voltage_level == normalized_voltage)
+        stmt = stmt.where(AtpAssetVersion.voltage_level.in_(normalized_voltage))
     if normalized_tower:
-        stmt = stmt.where(AtpAssetVersion.tower_type == normalized_tower)
+        stmt = stmt.where(AtpAssetVersion.tower_type.in_(normalized_tower))
+    if normalized_scene:
+        stmt = stmt.where(AtpAssetVersion.scene_type.in_(normalized_scene))
     assets = db.execute(stmt).scalars().all()
     if not assets:
         raise HTTPException(
@@ -2763,7 +2785,11 @@ def export_assets_zip(
                 {
                     "schema": "lp.atp.asset-export/1",
                     "exported_at": utcnow().isoformat(),
-                    "filters": {"voltage_level": normalized_voltage or None, "tower_type": normalized_tower or None},
+                    "filters": {
+                        "voltage_level": normalized_voltage or None,
+                        "tower_type": normalized_tower or None,
+                        "scene_type": normalized_scene or None,
+                    },
                     "total_assets": len(assets),
                     "exported_dirs": len(seen_roots),
                     "assets": manifest_entries,
@@ -2775,7 +2801,7 @@ def export_assets_zip(
         )
 
     stamp = utcnow().strftime("%Y%m%d")
-    scope = normalized_voltage or "all"
+    scope = ("-".join(normalized_voltage)) if normalized_voltage else "all"
     filename = f"atp-models-vl{scope}-{stamp}.zip"
     return buf.getvalue(), filename
 

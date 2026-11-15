@@ -22,7 +22,6 @@ import {
   Drawer,
   Empty,
   Form,
-  Input,
   Select,
   Space,
   Table,
@@ -40,6 +39,8 @@ import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { readApiError } from "@/lib/api";
 import { measureTableScrollY } from "@/lib/table-scroll-y";
+import type { DimensionTypeTreeItem } from "@/types/auth";
+import type { DimensionItemListResponse } from "@/types/dimension";
 
 const { Text } = Typography;
 
@@ -89,6 +90,27 @@ const STATUS_META: Record<JobStatus, { color: string; label: string }> = {
   failed: { color: "error", label: "失败" },
 };
 
+// ATP 模型导出筛选：前端维度字段 → 维度管理类型 code
+// 注意场景的类型 code 是 scenario（不是 scene_type），与 ATP 模型页保持一致
+const EXPORT_DIMENSION_TYPE_CODES = {
+  voltage_level: "voltage_level",
+  tower_type: "tower_type",
+  scene: "scenario",
+} as const;
+type ExportDimensionField = keyof typeof EXPORT_DIMENSION_TYPE_CODES;
+type DimensionOption = { label: string; value: string };
+type ExportDimensionOptions = Record<ExportDimensionField, DimensionOption[]>;
+
+const EMPTY_EXPORT_DIMENSION_OPTIONS: ExportDimensionOptions = {
+  voltage_level: [],
+  tower_type: [],
+  scene: [],
+};
+
+function flattenDimensionTypes(types: DimensionTypeTreeItem[]): DimensionTypeTreeItem[] {
+  return types.flatMap((type) => [type, ...flattenDimensionTypes(type.children ?? [])]);
+}
+
 function formatDateTime(value?: string | null): string {
   if (!value) return "—";
   const d = new Date(value);
@@ -133,10 +155,49 @@ export default function PlatformDataPage() {
 
   // ── 导出区 ────────────────────────────────────────────────────────
   const [exportCategories, setExportCategories] = useState<string[]>([]);
-  const [filterVoltage, setFilterVoltage] = useState("");
-  const [filterTower, setFilterTower] = useState("");
-  const [filterScene, setFilterScene] = useState("");
+  const [filterVoltage, setFilterVoltage] = useState<string[]>([]);
+  const [filterTower, setFilterTower] = useState<string[]>([]);
+  const [filterScene, setFilterScene] = useState<string[]>([]);
+  const [dimensionOptions, setDimensionOptions] = useState<ExportDimensionOptions>(EMPTY_EXPORT_DIMENSION_OPTIONS);
   const [exportLoading, setExportLoading] = useState(false);
+
+  const atpModelsSelected = exportCategories.includes("atp_models");
+
+  // 仅在勾选「ATP 模型」类别时按需加载维度选项（types/tree + 每维度一次 dimensions）
+  const dimensionOptionsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!atpModelsSelected || !canManage || dimensionOptionsLoadedRef.current) return;
+    dimensionOptionsLoadedRef.current = true;
+    void (async () => {
+      try {
+        const treeResponse = await fetchWithAuth("/api/v1/dimensions/types/tree");
+        if (!treeResponse.ok) return;
+        const types = (await treeResponse.json()) as DimensionTypeTreeItem[];
+        const flatTypes = flattenDimensionTypes(types);
+        const fields = Object.keys(EXPORT_DIMENSION_TYPE_CODES) as ExportDimensionField[];
+        const loaded = await Promise.all(
+          fields.map(async (field): Promise<[ExportDimensionField, DimensionOption[]]> => {
+            const typeId = flatTypes.find((t) => t.code === EXPORT_DIMENSION_TYPE_CODES[field])?.id;
+            if (!typeId) return [field, []];
+            const params = new URLSearchParams();
+            params.set("type_id", typeId);
+            params.set("enabled", "true");
+            params.set("limit", "200");
+            const response = await fetchWithAuth(`/api/v1/dimensions?${params.toString()}`);
+            if (!response.ok) return [field, []];
+            const data = (await response.json()) as DimensionItemListResponse;
+            const options = (data.items ?? [])
+              .map((item) => ({ label: item.name, value: item.code }))
+              .sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+            return [field, options];
+          }),
+        );
+        setDimensionOptions(Object.fromEntries(loaded) as ExportDimensionOptions);
+      } catch {
+        /* 维度选项加载失败不阻断导出，下拉保持空选项 */
+      }
+    })();
+  }, [atpModelsSelected, canManage, fetchWithAuth]);
 
   // ── 导入区 ────────────────────────────────────────────────────────
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -252,11 +313,11 @@ export default function PlatformDataPage() {
       message.warning(t("请至少勾选一个导出类别"));
       return;
     }
-    const filters: Record<string, string> = {};
-    if (exportCategories.includes("atp_models")) {
-      if (filterVoltage.trim()) filters.voltage_level = filterVoltage.trim();
-      if (filterTower.trim()) filters.tower_type = filterTower.trim();
-      if (filterScene.trim()) filters.scene = filterScene.trim();
+    const filters: Record<string, string[]> = {};
+    if (atpModelsSelected) {
+      if (filterVoltage.length) filters.voltage_level = filterVoltage;
+      if (filterTower.length) filters.tower_type = filterTower;
+      if (filterScene.length) filters.scene = filterScene;
     }
     setExportLoading(true);
     try {
@@ -482,33 +543,42 @@ export default function PlatformDataPage() {
                 onChange={(values) => setExportCategories(values as string[])}
               />
             </Form.Item>
-            {exportCategories.includes("atp_models") ? (
+            {atpModelsSelected ? (
               <>
                 <Form.Item label={t("电压")} style={{ marginBottom: 0 }}>
-                  <Input
+                  <Select
+                    mode="multiple"
                     allowClear
-                    style={{ width: 120 }}
-                    placeholder={t("如 500kV")}
+                    style={{ width: 200 }}
+                    placeholder={t("请选择电压等级")}
                     value={filterVoltage}
-                    onChange={(e) => setFilterVoltage(e.target.value)}
+                    onChange={(values) => setFilterVoltage(values ?? [])}
+                    options={dimensionOptions.voltage_level}
+                    maxTagCount="responsive"
                   />
                 </Form.Item>
                 <Form.Item label={t("塔型")} style={{ marginBottom: 0 }}>
-                  <Input
+                  <Select
+                    mode="multiple"
                     allowClear
-                    style={{ width: 140 }}
-                    placeholder={t("如 酒杯")}
+                    style={{ width: 200 }}
+                    placeholder={t("请选择塔型")}
                     value={filterTower}
-                    onChange={(e) => setFilterTower(e.target.value)}
+                    onChange={(values) => setFilterTower(values ?? [])}
+                    options={dimensionOptions.tower_type}
+                    maxTagCount="responsive"
                   />
                 </Form.Item>
                 <Form.Item label={t("场景")} style={{ marginBottom: 0 }}>
-                  <Input
+                  <Select
+                    mode="multiple"
                     allowClear
-                    style={{ width: 140 }}
-                    placeholder={t("如 平原")}
+                    style={{ width: 200 }}
+                    placeholder={t("请选择场景")}
                     value={filterScene}
-                    onChange={(e) => setFilterScene(e.target.value)}
+                    onChange={(values) => setFilterScene(values ?? [])}
+                    options={dimensionOptions.scene}
+                    maxTagCount="responsive"
                   />
                 </Form.Item>
               </>
