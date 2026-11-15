@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ...core.config import get_settings
@@ -86,6 +87,30 @@ def get_log(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except TaskLogServiceError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/{task_id}/raw")
+def get_raw_log(
+    task_id: str,
+    _: CurrentUser = Depends(require_any_permission("celery.read", "celery.manage")),
+) -> Response:
+    """下载逐字原始日志（未翻译），供排障使用（LP-22「查看原文」入口）。
+
+    ``logs/{task_id}.raw.log`` 由任务收尾在日志确实被翻译时才写入；不存在时
+    ``get_task_log`` 自动回落到主日志（zh 任务主日志本身就是原文）。
+    """
+    try:
+        log_content, _path = get_task_log(task_id, log_path=f"logs/{task_id}.raw.log")
+    except TaskLogNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TaskLogServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", task_id)
+    return Response(
+        content=log_content,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.raw.log"'},
+    )
 
 
 @router.get("/{task_id}/list", response_model=list[str])

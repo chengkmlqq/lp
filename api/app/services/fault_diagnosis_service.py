@@ -1611,7 +1611,7 @@ def _confidence_source(diag: Mapping[str, Any]) -> str:
     return "接地故障判别置信度" if decision.get("confidence") is not None else "未计算（接地属性不确定）"
 
 
-def generate_report_docx(db: Session, analysis_id: str, template_path: Path | None = None) -> Path:
+def generate_report_docx(db: Session, analysis_id: str, template_path: Path | None = None, lang: str | None = None) -> Path:
     """生成故障分析 Word 报告并归档到 MinIO Output。"""
     item = get_analysis_by_id(db, analysis_id)
     if item is None:
@@ -1634,6 +1634,14 @@ def generate_report_docx(db: Session, analysis_id: str, template_path: Path | No
 
     # 传入完整 result_json（含 sections 富结构），使报告生成直接消费页面同源数据。
     generate_report(item.result_json, output_path, template_path=template_path, front_only=False)
+    if lang == "en":
+        # Word 报告按同一任务语言输出（LP-22）：逐段翻译，未命中片段回落中文。
+        from .backend_text_i18n import translate_report_docx  # noqa: PLC0415
+
+        try:
+            translate_report_docx(output_path, "en")
+        except Exception:
+            logger.exception("Fault diagnosis report translation failed for %s", analysis_id)
     try:
         report_key = _archive_file(
             analysis_id,

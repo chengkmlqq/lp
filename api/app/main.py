@@ -8,6 +8,7 @@ from .api.router import api_router
 from .core.config import get_settings
 from .core.database import SessionLocal, init_db
 from .core.exception_handlers import global_exception_handler
+from .services.backend_lang import BackendLangMiddleware
 from .services.ws_event_bridge import ws_event_forwarder
 settings = get_settings()
 
@@ -41,6 +42,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 每个 HTTP 请求的 X-Lang 写入上下文变量 → 任务发布时注入 Celery 消息头 →
+# worker 在任务启动时快照语言（LP-22 后端日志/报告按发起者语言输出）。
+app.add_middleware(BackendLangMiddleware)
 
 
 @app.get("/health")

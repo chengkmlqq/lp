@@ -1431,6 +1431,7 @@ def _auto_seed_baseline() -> None:
     lock 抢进程级互斥：抢到的 worker 执行播种，其余直接跳过（幂等，缺失由下次
     启动或 seed-defaults 端点兜底）。
     """
+    from ..services.backend_lang import ensure_app_language_param  # noqa: PLC0415
     from ..services.dimension_seed import seed_dimensions  # noqa: PLC0415
     from ..services.param_category_seed import seed_param_categories  # noqa: PLC0415
 
@@ -1451,6 +1452,7 @@ def _auto_seed_baseline() -> None:
                 return
             try:
                 seed_dimensions(db, force=False, operator="system")
+                ensure_app_language_param(db)
                 seed_param_categories(db, force=False, operator="system")
                 db.commit()
             finally:

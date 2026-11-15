@@ -45,8 +45,11 @@ _logger = logging.getLogger(__name__)
 class _TaskLogBuffer:
     """单任务日志缓冲：内存行列表 + 批量写 Redis Stream + 全量出 MinIO。"""
 
-    def __init__(self, task_id: str) -> None:
+    def __init__(self, task_id: str, lang: str | None = None) -> None:
         self._task_id = task_id
+        # 任务启动时的语言快照：整个任务生命周期内固定，运行中改参数不影响本任务。
+        # 直接 new 出来的缓冲（单测 / 无任务上下文）默认 zh，不查库。
+        self.lang = lang or "zh"
         settings = get_settings()
         self._max_lines = settings.task_log_max_buffer_lines
         self._flush_interval = settings.task_log_flush_interval_seconds
@@ -100,9 +103,15 @@ class _TaskLogBuffer:
                 return
             snapshot = self._lines[start:]
         try:
+            from ..services.backend_text_i18n import translate_log_lines
+
+            outgoing = translate_log_lines(snapshot, self.lang)
+        except Exception:  # noqa: BLE001 —— 翻译异常不应丢日志，回落原文
+            outgoing = snapshot
+        try:
             from ..services import task_log_service
 
-            task_log_service.append_task_log_lines(self._task_id, snapshot)
+            task_log_service.append_task_log_lines(self._task_id, outgoing)
         except Exception:  # noqa: BLE001 —— Redis 不可用不应阻断任务执行
             _logger.debug("task_log flush to redis failed for %s", self._task_id)
             return
@@ -129,14 +138,29 @@ class _TaskLogBuffer:
         except Exception:  # noqa: BLE001
             _logger.debug("task_log mark_end failed for %s", self._task_id)
 
-    def snapshot(self) -> str:
-        """全量文本（任务结束时，含截断标记首部）。"""
+    def snapshot(self, *, translate: bool = True) -> str:
+        """全量文本（任务结束时，含截断标记首部）。
+
+        默认按任务语言翻译后输出（Redis Stream / MinIO 同源）；``translate=False``
+        返回逐字原文，供「查看原文 / 下载原始日志」入口使用。
+        """
         with self._lock:
             lines = list(self._lines)
             dropped = self._dropped
         header = ""
         if dropped:
-            header = f"[已截断 {dropped} 行（超过缓冲上限）]\n"
+            header = (
+                f"[Truncated {dropped} lines (buffer limit exceeded)]\n"
+                if translate and self.lang == "en"
+                else f"[已截断 {dropped} 行（超过缓冲上限）]\n"
+            )
+        if translate:
+            try:
+                from ..services.backend_text_i18n import translate_log_lines
+
+                lines = translate_log_lines(lines, self.lang)
+            except Exception:  # noqa: BLE001 —— 翻译异常回落原文
+                pass
         return header + "\n".join(lines)
 
     def close(self) -> None:
@@ -263,15 +287,19 @@ class TaskLogCapture:
 
     # --- 生命周期 ---
     @classmethod
-    def start(cls, task_id: str) -> None:
-        """创建（或复用）task_id 对应的缓冲。Tee / root handler 在进程启动时已安装。"""
+    def start(cls, task_id: str, lang: str | None = None) -> None:
+        """创建（或复用）task_id 对应的缓冲，并快照任务语言。
+
+        ``lang`` 由任务启动信号（``task_prerun``）解析后传入：任务级 lang 优先，
+        缺省回落全局 ``app.language``。其余 Tee / root handler 在进程启动时已安装。
+        """
         if not task_id:
             return
         with cls._lock:
             existing = cls._registry.get(task_id)
             if existing is not None and not existing._closed:  # noqa: SLF001
                 return
-            cls._registry[task_id] = _TaskLogBuffer(task_id)
+            cls._registry[task_id] = _TaskLogBuffer(task_id, lang=lang)
 
     @classmethod
     def stop(cls, task_id: str) -> list[str]:
@@ -288,6 +316,15 @@ class TaskLogCapture:
         if text:
             return text.splitlines()
         return []
+
+    @classmethod
+    def peek_raw(cls, task_id: str) -> str:
+        """取逐字原文快照（不关闭缓冲）；供任务收尾上传「原始日志」副本。"""
+        with cls._lock:
+            buffer = cls._registry.get(task_id)
+        if buffer is None or buffer._closed:  # noqa: SLF001
+            return ""
+        return buffer.snapshot(translate=False)
 
     @classmethod
     def get(cls, task_id: str) -> _TaskLogBuffer | None:

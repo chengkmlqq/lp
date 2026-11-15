@@ -62,9 +62,12 @@ def _ensure_storage_enabled() -> None:
         raise TaskLogServiceError("Object storage is not enabled")
 
 
-def upload_task_log(task_id: str, log_content: str) -> tuple[str, datetime]:
+def upload_task_log(task_id: str, log_content: str, *, suffix: str = "") -> tuple[str, datetime]:
     """
-    Upload task execution log at the fixed path logs/{task_id}.log.
+    Upload task execution log at the fixed path logs/{task_id}{suffix}.log.
+
+    ``suffix=".raw"`` 用于保存逐字原文副本（LP-22「查看原文 / 下载原始日志」入口），
+    与翻译后的主日志分开，避免英文界面日志翻译后无法排障。
 
     2026-11-08：改经 minio_storage 双后端（local 本机磁盘 / s3 对象存储）。
     此前本模块用裸 boto3 直连阿里云 OSS，OSS 账号被禁（UserDisable）后
@@ -74,7 +77,7 @@ def upload_task_log(task_id: str, log_content: str) -> tuple[str, datetime]:
     _ensure_storage_enabled()
 
     uploaded_at = datetime.now(timezone.utc)
-    log_path = _get_log_path(task_id, uploaded_at)
+    log_path = f"logs/{task_id}{suffix}.log"
 
     from . import minio_storage
 

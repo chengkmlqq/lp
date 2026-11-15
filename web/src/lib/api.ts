@@ -76,6 +76,25 @@ export function setAuthHooks(hooks: AuthHooks | null): void {
 }
 
 /**
+ * 当前界面语言（zh / en），与 i18n.tsx 的 detectBrowserLang 同源。
+ * 后端据此决定任务日志 / 阶段文案 / Word 报告的语言（LP-22）。
+ */
+function currentRequestLang(): string {
+  if (typeof window === "undefined") {
+    return "zh";
+  }
+  try {
+    const stored = window.localStorage.getItem("lp.lang");
+    if (stored === "zh" || stored === "en") {
+      return stored;
+    }
+    return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+  } catch {
+    return "zh";
+  }
+}
+
+/**
  * 携带 Bearer token 的请求封装（credentials: include），
  * 401 时尝试刷新 token 一次后重放请求。
  */
@@ -88,6 +107,11 @@ export async function fetchWithAuth(
   const token = authHooks?.getAccessToken() ?? null;
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  // 统一带上界面语言：后端在任务发布时快照进 Celery 消息头，使该用户创建的
+  // 任务日志 / 报告按界面语言输出；显式传入 X-Lang 的调用方优先。
+  if (!headers.has("X-Lang")) {
+    headers.set("X-Lang", currentRequestLang());
   }
 
   const response = await fetch(withApiPath(path), {
@@ -112,6 +136,9 @@ export async function fetchWithAuth(
   const nextToken = authHooks.getAccessToken();
   if (nextToken) {
     retryHeaders.set("Authorization", `Bearer ${nextToken}`);
+  }
+  if (!retryHeaders.has("X-Lang")) {
+    retryHeaders.set("X-Lang", currentRequestLang());
   }
 
   return fetch(withApiPath(path), {

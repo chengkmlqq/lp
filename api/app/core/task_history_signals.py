@@ -148,10 +148,18 @@ def _finalize_task_log(task_id: str) -> None:
       3. 上传 MinIO 固定路径 + 写回 log_path
     上传失败不阻断：log_path 不写，error 字段追加提示（成功任务无 error 时写入）。
     """
+    # 在 stop() 清空缓冲前取逐字原文；仅当翻译确实改变了内容时才另存一份
+    # logs/{task_id}.raw.log，供「查看原文 / 下载原始日志」入口使用。
+    raw_text = TaskLogCapture.peek_raw(task_id)
     full_lines = TaskLogCapture.stop(task_id)
     if not full_lines:
         return
     full_text = "\n".join(full_lines)
+    if raw_text and raw_text != full_text:
+        try:
+            upload_task_log(task_id, raw_text, suffix=".raw")
+        except TaskLogServiceError:
+            pass
     log_path = _persist_log(task_id, full_text)
 
     if log_path:
@@ -187,8 +195,17 @@ def on_task_prerun(task_id=None, task=None, **kwargs):  # type: ignore[no-untype
         queue_name=queue_name,
         started_at=started_at,
     )
+    # 任务级语言快照（LP-22）：发布侧把发起请求的 X-Lang 注入 Celery 消息头，
+    # 这里在任务启动时读一次并固定；缺省回落全局 app.language 系统参数。
+    # 运行中改参数不影响本任务，新任务才生效。
+    from ..services.backend_lang import resolve_backend_lang  # noqa: PLC0415
+
+    header_lang = getattr(request, "lp_lang", None) if request is not None else None
+    if header_lang is None and isinstance(request, dict):
+        header_lang = request.get("lp_lang")
+    lang = resolve_backend_lang(header_lang)
     # 新增：安装采集器，从任务开始捕获 Celery / print / 业务日志
-    TaskLogCapture.start(task_id)
+    TaskLogCapture.start(task_id, lang=lang)
 
 
 @signals.task_postrun.connect
@@ -297,6 +314,26 @@ def on_task_revoked(sender=None, request=None, terminated=None, signum=None, exp
         state="REVOKED",
         done_at=datetime.now(timezone.utc),
     )
+
+
+@signals.before_task_publish.connect
+def on_before_task_publish(sender=None, headers=None, body=None, **kwargs):  # type: ignore[no-untyped-def]
+    """把发起 HTTP 请求的 ``X-Lang`` 注入任务消息头（LP-22 方案 B）。
+
+    在生产者（API）进程执行：请求语言由 BackendLangMiddleware 写入上下文变量。
+    Celery 会把消息头原样带进 worker 的 ``task.request``，``task_prerun`` 据此
+    做任务级语言快照。非 HTTP 触发的任务（beat / worker 内二次派发）读不到
+    上下文变量，不注入，worker 回落全局 app.language。
+    """
+    if not headers:
+        return
+    from ..services.backend_lang import get_request_lang  # noqa: PLC0415
+
+    lang = get_request_lang()
+    if lang:
+        # 不能占用 Celery 自带的 ``lang`` 头（其值为 "py"，表示生产者语言），
+        # 用独立键避免覆盖协议字段。
+        headers["lp_lang"] = lang
 
 
 @signals.after_task_publish.connect

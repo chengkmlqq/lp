@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, Empty, Modal, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
-import { readApiError, API_BASE_URL } from "@/lib/api";
+import { downloadFileWithAuth, readApiError, API_BASE_URL } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { WsTicketResponse } from "@/types/ws";
 
@@ -383,6 +383,19 @@ export function TaskLogViewerDrawer({
     onClose();
   };
 
+  /** 下载逐字原始日志（未翻译），供排障使用（LP-22「查看原文」入口）。 */
+  const handleDownloadRaw = useCallback(() => {
+    if (!taskId) {
+      return;
+    }
+    void downloadFileWithAuth(
+      `/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/raw`,
+      `${taskId}.raw.log`,
+    ).catch(() => {
+      // 下载失败不打断日志查看，交由用户重试
+    });
+  }, [taskId]);
+
   /** 逻辑行 → 显示行；短 ASCII 行走快速路径，全量重算也只是几毫秒。 */
   const displayRows = useMemo(
     () => wrapLogLines(lines, viewportSize.width > 0 ? viewportSize.width : LOG_FALLBACK_VIEWPORT_WIDTH),
@@ -415,6 +428,24 @@ export function TaskLogViewerDrawer({
     </div>
   ) : (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <button
+          type="button"
+          onClick={handleDownloadRaw}
+          disabled={!taskId}
+          style={{
+            background: "transparent",
+            border: "1px solid #334155",
+            borderRadius: 4,
+            color: "#cbd5e1",
+            cursor: taskId ? "pointer" : "not-allowed",
+            fontSize: 12,
+            padding: "2px 10px",
+          }}
+        >
+          {t("下载原始日志")}
+        </button>
+      </div>
       <div
         ref={contentRef}
         onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}

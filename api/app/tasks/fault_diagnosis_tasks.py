@@ -63,7 +63,11 @@ def _update_progress(analysis_id: str, progress: float, status: str | None = Non
     if progress >= 0:
         payload["progress"] = max(progress, 0)
     if step is not None:
-        payload["step"] = step
+        # WS 阶段文案按任务语言翻译（LP-22）：zh 逐字不变，en 走短语映射。
+        from ..services.backend_lang import current_backend_lang  # noqa: PLC0415
+        from ..services.backend_text_i18n import translate_backend_text  # noqa: PLC0415
+
+        payload["step"] = translate_backend_text(step, current_backend_lang())
 
     _publish_fault_analysis_event("analysis.diagnosis_progress", payload)
 
@@ -97,9 +101,10 @@ def run_fault_diagnosis_task(self, analysis_id: str) -> dict[str, str]:
             )
             # 判别成功后生成 Word 报告
             _update_progress(analysis_id, 90, "processing", "生成Word报告")
-            from ..services.fault_diagnosis_service import generate_report_docx
+            from ..services.fault_diagnosis_service import generate_report_docx  # noqa: PLC0415
+            from ..services.backend_lang import current_backend_lang  # noqa: PLC0415
             try:
-                generate_report_docx(db, analysis_id)
+                generate_report_docx(db, analysis_id, lang=current_backend_lang())
             except Exception as report_exc:
                 log_parts.append(f"[{task_id}] 报告生成失败（不影响判别结果）: {report_exc}")
         finally:

@@ -3258,6 +3258,7 @@ export const EN_DICT: Record<string, string> = {
   "串长": "string len",
   "使用": "Usage",
   "原文": "Original",
+  "下载原始日志": "Download raw log",
   "呼高": "call height",
   "呼高(m)": "Call height (m)",
   "回击": "Return stroke",

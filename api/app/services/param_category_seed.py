@@ -22,6 +22,7 @@ PARAM_CATEGORIES: list[dict[str, Any]] = [
     {"name": "天地图底图", "sort_order": 1},
     {"name": "登录认证", "sort_order": 2},
     {"name": "MATLAB 引擎", "sort_order": 3},
+    {"name": "应用配置", "sort_order": 4},
 ]
 
 # 参数 param_key 前缀 -> 分类名（按声明顺序匹配，首个命中生效）
@@ -30,6 +31,7 @@ PARAM_CATEGORY_MAP: list[tuple[str, str]] = [
     ("tianditu", "天地图底图"),
     ("auth", "登录认证"),
     ("matlab_engine", "MATLAB 引擎"),
+    ("app.", "应用配置"),
 ]
 
 
