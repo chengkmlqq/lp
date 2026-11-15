@@ -13,9 +13,13 @@ from pathlib import Path
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Mapping
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.orm import Session, noload, selectinload
 
@@ -2094,10 +2098,12 @@ def _dispatch_fl_analysis_task(*, job_id: str):
 
 
 def _all_towers_failed_message(total_towers: int, tower_errors: list[str] | None) -> str:
-    """构造「全部塔失败」文案：区分引擎/结果计算阶段并透出各塔真实报错（LP-19）。
+    """构造「全部塔失败」文案：区分引擎/结果计算/结果落库阶段并透出各塔真实报错。
 
     旧文案把任何塔级异常都归到「ATP 模型不可运行」，会掩盖绕击 EGM 塔型与几何
-    回路数不一致这类结果计算阶段的失败。纯函数，便于单测。
+    回路数不一致这类结果计算阶段的失败（LP-19），以及结果回写撞唯一键
+    ``uq_tower_lightning_result_tower_id`` 这类落库冲突（LP-20，与 ATP 引擎无关）。
+    纯函数，便于单测。
     """
     uniq = list(dict.fromkeys(e.strip() for e in (tower_errors or []) if e and e.strip()))
     detail = ""
@@ -2105,6 +2111,22 @@ def _all_towers_failed_message(total_towers: int, tower_errors: list[str] | None
         detail = " 各塔实际报错：" + " | ".join(uniq[:5])
         if len(uniq) > 5:
             detail += f"（另 {len(uniq) - 5} 条见任务日志）"
+
+    # LP-20：结果回写撞唯一键属于「结果落库」阶段故障，与 ATP 引擎无关，单独归类，
+    # 避免被笼统并入「ATP 模型不可运行」误导排查。正常已改为数据库级 upsert，不应再出现，
+    # 此分支作为兜底诊断保留。
+    _conflict_markers = (
+        "UniqueViolation",
+        "duplicate key",
+        "uq_tower_lightning_result_tower_id",
+    )
+    if any(marker.lower() in e.lower() for e in uniq for marker in _conflict_markers):
+        return (
+            f"全部 {total_towers} 基杆塔计算失败，未产生任何结果。"
+            "失败发生在结果落库阶段：同塔结果回写撞唯一键 "
+            "uq_tower_lightning_result_tower_id（结果落库并发/时序冲突，与 ATP 引擎无关）。"
+            "请查看任务日志中各塔的具体报错。" + detail
+        )
     return (
         f"全部 {total_towers} 基杆塔计算失败，未产生任何结果。"
         "常见原因分两类：①引擎执行失败（ATP 模型不可运行：pch 未带真实节点名导致 "
@@ -3115,34 +3137,70 @@ def _upsert_tower_lightning_result_from_graded(
     graded: dict[str, Any],
     actor_user_id: str,
 ) -> None:
-    """将计算引擎输出的雷电结果写回 tower_lightning_result 子表。"""
+    """将计算引擎输出的雷电结果写回 tower_lightning_result 子表（数据库级幂等 upsert，LP-20）。
+
+    ⚠️ 不再读 ORM 关系 ``tower.lightning_result`` 来决定 INSERT / UPDATE：该关系是
+    ``lazy="selectin"``，会随 ``db.get(LineTower, ...)`` 一次性预加载并缓存在 session
+    identity map 里（``expire_on_commit=False``）。同一基塔被 normal / tongtiao 两个任务
+    在「都还没有结果行」的时刻各自加载后，后完成的那个仍拿着缓存的 None 走 INSERT，撞
+    唯一键 ``uq_tower_lightning_result_tower_id`` 导致整塔失败（计算本身已完成，纯落库竞态）。
+
+    改为一条数据库级原子 upsert：PostgreSQL ``INSERT ... ON CONFLICT (tower_id)
+    DO UPDATE SET ...``（MySQL 部署走 ON DUPLICATE KEY UPDATE，SQLite 单测走 ON CONFLICT
+    DO UPDATE）。并发两个任务各自 commit 都幂等收敛到一行，不依赖 session 缓存可见性。
+
+    结果口径（一塔一行）：冲突时只覆盖结果字段与 update_date，保留原主键 id 与
+    create_date；「后完成」以数据库提交顺序为准 —— 最后 commit 的任务结果覆盖先落库的，
+    口径确定，不随并发时序抖动、也不再抛唯一键冲突。
+    """
     now = utcnow()
-    result = tower.lightning_result
-    if result is None:
-        result = TowerLightningResult(
-            tower_id=tower.id,
-            create_date=now,
-            update_date=now,
+    data = {
+        "counterstroke_indicator": _as_int_or_none(graded.get("stroke_mode") or graded.get("counterstroke_indicator")),
+        "counterstroke_withstand_ka": _as_float_or_none(
+            graded.get("counterstrike_withstand_ka") or graded.get("counterstroke_withstand_ka")
+        ),
+        "counterstroke_trip_rate": _as_float_or_none(
+            graded.get("counterstrike_trip_rate") or graded.get("counterstroke_trip_rate")
+        ),
+        "shielding_withstand_ka": _as_float_or_none(
+            graded.get("shielding_withstand_ka")
+        ),
+        "shielding_trip_rate": _as_float_or_none(
+            graded.get("shielding_trip_rate")
+        ),
+        "angle_deg": _as_float_or_none(graded.get("angle_deg")),
+        "current_a_ka": _as_float_or_none(graded.get("current_a")),
+        "current_b_ka": _as_float_or_none(graded.get("current_b")),
+        "risk_level": _normalize_risk_level_text(graded.get("risk_level")),
+    }
+    insert_values = {
+        "id": uuid4().hex,
+        "tower_id": tower.id,
+        "create_date": now,
+        "update_date": now,
+        **data,
+    }
+    # 冲突(已有一塔一行)时只更新结果字段与 update_date；id / create_date / tower_id 保持不变。
+    update_values = {**data, "update_date": now}
+
+    # 按 session 实际绑定的方言选用对应的 insert 构造器（生产 PG / MySQL 部署 / SQLite 单测）。
+    dialect = db.get_bind().dialect.name
+    if dialect == "mysql":
+        stmt = mysql_insert(TowerLightningResult).values(**insert_values)
+        stmt = stmt.on_duplicate_key_update(**update_values)
+    elif dialect == "sqlite":
+        stmt = sqlite_insert(TowerLightningResult).values(**insert_values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[TowerLightningResult.tower_id],
+            set_=update_values,
         )
-        tower.lightning_result = result
-    result.counterstroke_indicator = _as_int_or_none(graded.get("stroke_mode") or graded.get("counterstroke_indicator"))
-    result.counterstroke_withstand_ka = _as_float_or_none(
-        graded.get("counterstrike_withstand_ka") or graded.get("counterstroke_withstand_ka")
-    )
-    result.counterstroke_trip_rate = _as_float_or_none(
-        graded.get("counterstrike_trip_rate") or graded.get("counterstroke_trip_rate")
-    )
-    result.shielding_withstand_ka = _as_float_or_none(
-        graded.get("shielding_withstand_ka")
-    )
-    result.shielding_trip_rate = _as_float_or_none(
-        graded.get("shielding_trip_rate")
-    )
-    result.angle_deg = _as_float_or_none(graded.get("angle_deg"))
-    result.current_a_ka = _as_float_or_none(graded.get("current_a"))
-    result.current_b_ka = _as_float_or_none(graded.get("current_b"))
-    result.risk_level = _normalize_risk_level_text(graded.get("risk_level"))
-    result.update_date = now
+    else:  # postgresql（生产方言）；未识别方言也按 PG 语法处理
+        stmt = pg_insert(TowerLightningResult).values(**insert_values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[TowerLightningResult.tower_id],
+            set_=update_values,
+        )
+    db.execute(stmt)
 
 
 def _as_int_or_none(value: Any) -> int | None:
