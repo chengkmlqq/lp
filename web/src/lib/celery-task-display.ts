@@ -13,6 +13,8 @@ const TASK_NAME_LABELS: Record<string, string> = {
   "app.tasks.lightning_tasks.import_lightning_amplitude_job": "雷电流幅值数据导入",
   "app.tasks.lightning_tasks.render_lp_density_job": "LP 分区密度图绘制",
   "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs": "过期任务日志清理",
+  "app.tasks.platform_data_tasks.export_platform_data_job": "基础数据包导出",
+  "app.tasks.platform_data_tasks.import_platform_data_job": "基础数据包导入",
   "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks": "到期定时任务派发",
   "app.tasks.scheduled_task_tasks.execute_scheduled_task_job": "定时任务执行",
   "app.tasks.sync_matlab_engine_task.sync_matlab_engine": "同步 MATLAB 引擎（单模块兼容）",

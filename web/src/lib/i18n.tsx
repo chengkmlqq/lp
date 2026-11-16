@@ -848,6 +848,8 @@ export const EN_DICT: Record<string, string> = {
   "基准点(反击) / kA": "Baseline Point (Back Flashover) / kA",
   "基准点(绕击) / kA": "Baseline Point (Shielding Flashover) / kA",
   "基本信息": "Basic Information",
+  "基础数据包导入": "Base Data Package Import",
+  "基础数据包导出": "Base Data Package Export",
   "基础数据文件": "Base Data File",
   "基线计算任务": "Baseline Calculation Task",
   "塔号": "Tower Number",
