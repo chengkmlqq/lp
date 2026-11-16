@@ -122,6 +122,17 @@ class AtpModelListResponse(BaseModel):
     total: int
 
 
+class AtpTagOptionsResponse(BaseModel):
+    """标签候选（2026-11-16）：从现有版本的 ``tags_json`` 去重聚合而来。
+
+    没有独立的标签字典/管理表，候选即「已被打过的全部标签」；字典里没有、
+    或曾打过但已全部清掉的标签都不会出现。供主列表「标签」多选下拉使用。
+    """
+
+    items: list[str] = Field(default_factory=list)
+    total: int = 0
+
+
 class AtpAssetTreeChild(BaseModel):
     """维度树懒加载节点：一层维度下的一个去重值（电压/塔型/场景/避雷器组合）。"""
 

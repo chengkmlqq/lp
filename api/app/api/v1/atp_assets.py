@@ -27,6 +27,7 @@ from ...schemas.atp_asset import (
     AtpAssetVersionCompareResponse,
     AtpAssetVersionListResponse,
     AtpModelListResponse,
+    AtpTagOptionsResponse,
     AtpBatchTestRunListResponse,
     AtpBatchTestRunRequest,
     AtpBatchTestRunSummary,
@@ -51,6 +52,7 @@ from ...services.atp_asset_service import (
     list_assets,
     list_asset_tree_children,
     list_models,
+    list_tag_options,
     list_runs,
     mark_asset_test_status,
     publish_asset,
@@ -98,6 +100,10 @@ def get_atp_asset_list(
         default=None,
         description="按发布生命周期过滤：new=新建 / changed=变更 / published=已发布 / offline=下线；不传=全部",
     ),
+    tags: list[str] | None = Query(
+        default=None,
+        description="按标签过滤（可重复传 tags=a&tags=b），多选 OR，命中任一即入选；不传=不过滤",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
@@ -114,6 +120,7 @@ def get_atp_asset_list(
         test_status=test_status,
         is_published=is_published,
         publish_state=publish_state,
+        tags=tags,
         limit=limit,
         offset=offset,
     )
@@ -132,6 +139,10 @@ def get_atp_model_list(
     publish_state: str | None = Query(
         default=None,
         description="按展示版本的发布生命周期过滤：new/changed/published/offline",
+    ),
+    tags: list[str] | None = Query(
+        default=None,
+        description="按标签过滤（可重复传 tags=a&tags=b），多选 OR，命中任一展示版本的标签即入选；不传=不过滤",
     ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -152,9 +163,21 @@ def get_atp_model_list(
         test_status=test_status,
         is_published=is_published,
         publish_state=publish_state,
+        tags=tags,
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/models/tags", response_model=AtpTagOptionsResponse)
+def get_atp_model_tag_options(
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpTagOptionsResponse:
+    """标签候选（2026-11-16）：返回现有版本 tags_json 去重后的全部已用标签，
+    供主列表「标签」多选下拉使用；无独立标签字典，未使用过的标签不出现。
+    """
+    return list_tag_options(db)
 
 
 @router.get("/assets/tree/children", response_model=AtpAssetTreeChildrenResponse)

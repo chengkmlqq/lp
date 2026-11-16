@@ -20,7 +20,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, exists, func, literal, or_, select, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session, joinedload
 
@@ -53,6 +53,7 @@ from ..schemas.atp_asset import (
     AtpEngineStatusResponse,
     AtpModelListResponse,
     AtpModelSummary,
+    AtpTagOptionsResponse,
 )
 from .legacy_atp_adapter import build_legacy_atp_status_checks
 from .push_service import publish_topic
@@ -201,6 +202,31 @@ def _normalize_tags(values: list[str] | None) -> list[str]:
         result.append(tag)
         if len(result) >= MAX_TAGS:
             break
+    return result
+
+
+def _normalize_tag_filter(values: list[str] | None) -> list[str]:
+    """查询侧标签归一化：去空白、丢空项、去重（保序）。
+
+    与入库用的 ``_normalize_tags`` 不同，**不截断长度、不封顶数量**：过滤是读操作，
+    多选 10 个标签也应当正常 OR 命中；入库的 8 个/32 字上限是展示约束，不该悄悄
+    裁剪用户的筛选条件。匹配本身大小写敏感（与卡片上展示的标签字符串一致）。
+    """
+    if not values:
+        return []
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in values:
+        if not isinstance(raw, str):
+            continue
+        tag = raw.strip()
+        if not tag:
+            continue
+        key = tag.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(tag)
     return result
 
 
@@ -1189,6 +1215,39 @@ def _publish_state_predicate(state: str) -> Any:
     )
 
 
+def _tag_match_predicate(tags: list[str], dialect_name: str) -> Any:
+    """``tags_json`` 命中任一标签（OR）的 SQL 谓词，按方言选兼容实现。
+
+    ``tags_json`` 是 JSON 数组列，项目同时跑 SQLite（测试/内存库）、MySQL（生产），
+    也保留了 PostgreSQL 兼容分支。三方没有统一的「数组包含标量」函数，故按方言
+    选择，且**全部下推到 SQL WHERE**，保证 ``total`` / 分页不失真（绝不在 Python 侧
+    对分页后结果过滤）：
+
+    - MySQL / MariaDB：``JSON_CONTAINS(col, '"tag"') = 1`` 用 OR 连接；
+      第二参用 ``json.dumps`` 生成合法 JSON 标量，标签里的引号/反斜杠/中文都能安全转义。
+    - SQLite：``EXISTS (SELECT 1 FROM json_each(col) WHERE value IN (:tags))``（JSON1）。
+    - PostgreSQL：``json_array_elements_text(col)`` 展开为文本集合后 IN 判定
+      （``tags_json`` 为通用 JSON 而非 JSONB，故用 ``json_*`` 而非 ``jsonb_*``）。
+
+    空数组 / NULL 列在三方言下都不产生命中：json_each 无行、JSON_CONTAINS 返回 0/NULL，
+    语义一致。返回的是关联到 ``AtpAssetVersion`` 的布尔表达式，可直接用于数据查询和
+    count 查询（SQLAlchemy 会自动把外层表相关列关联进 EXISTS 子查询）。
+    """
+    column = AtpAssetVersion.tags_json
+    if dialect_name in ("mysql", "mariadb"):
+        return or_(*[
+            func.json_contains(column, json.dumps(tag, ensure_ascii=False)) == 1
+            for tag in tags
+        ])
+    # SQLite / PostgreSQL：表值函数展开 JSON 数组，命中任一标签即 EXISTS 为真。
+    # 其余方言（默认）也回退到 json_each——这是测试与内存库使用的方言。
+    fn = "json_array_elements_text" if dialect_name == "postgresql" else "json_each"
+    elements = getattr(func, fn)(column).table_valued("value")
+    return exists(
+        select(literal(1)).select_from(elements).where(elements.c.value.in_(tags))
+    )
+
+
 def list_assets(
     db: Session,
     *,
@@ -1201,6 +1260,7 @@ def list_assets(
     test_status: str | None = None,
     is_published: bool | None = None,
     publish_state: str | None = None,
+    tags: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
@@ -1320,6 +1380,15 @@ def list_assets(
         state_predicate = _publish_state_predicate(normalized_state)
         stmt = stmt.where(state_predicate)
         total_stmt = total_stmt.where(state_predicate)
+
+    # 标签筛选（2026-11-16）：多选 OR，命中展示的 tags_json 任一标签即入选。
+    # 下推到 SQL WHERE 并同步施加到 count 查询，保证 total / 分页不失真；方言兼容
+    # 见 _tag_match_predicate。空白/重复项归一化后为空则等价于不过滤。
+    normalized_tags = _normalize_tag_filter(tags)
+    if normalized_tags:
+        tag_predicate = _tag_match_predicate(normalized_tags, db.get_bind().dialect.name)
+        stmt = stmt.where(tag_predicate)
+        total_stmt = total_stmt.where(tag_predicate)
 
     items = db.execute(
         stmt.order_by(AtpAssetVersion.update_date.desc(), AtpAssetVersion.code.asc())
@@ -1531,6 +1600,7 @@ def list_models(
     test_status: str | None = None,
     is_published: bool | None = None,
     publish_state: str | None = None,
+    tags: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AtpModelListResponse:
@@ -1584,6 +1654,7 @@ def list_models(
     if normalized_state and normalized_state not in VALID_PUBLISH_STATES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Invalid publish_state filter: {publish_state}")
+    normalized_tags = _normalize_tag_filter(tags)
 
     def _matches(display: Any, model_code: str, version_code: str) -> bool:
         if normalized_status and str(_row_field(display, "status") or "").lower() != normalized_status:
@@ -1617,6 +1688,15 @@ def list_models(
             ).lower()
             if normalized_keyword not in haystack:
                 return False
+        if normalized_tags:
+            # 按「展示版本」的 tags_json 过滤（与卡片上展示的标签一致），多选 OR。
+            # 本函数先在全量模型分组上过滤、再切片并令 total=len(过滤结果)，
+            # 因此这里的 Python 侧过滤不会让 total / 分页失真。
+            display_tags = _row_field(display, "tags_json") or []
+            if not isinstance(display_tags, list):
+                display_tags = []
+            if not any(tag in display_tags for tag in normalized_tags):
+                return False
         return True
 
     # 排序默认按模型 update_date 倒序（取组内各版本最新的 ISO 时间），再按 model_code 稳定排序
@@ -1642,6 +1722,38 @@ def list_models(
     summaries = [entry[2] for entry in ranked]
     total = len(summaries)
     return AtpModelListResponse(items=summaries[offset:offset + limit], total=total)
+
+
+def list_tag_options(db: Session) -> AtpTagOptionsResponse:
+    """标签候选（2026-11-16）：从现有版本的 ``tags_json`` 去重聚合出全部已用标签。
+
+    轻量实现——只查 ``tags_json`` 一列，Python 侧去重（大小写不敏感，保留首次写法）
+    后排序。没有独立标签字典/管理表，因此候选即「已被打过的标签」：字典里没有的、
+    或已全部清掉的标签都不会出现；不做重命名/删除等管理操作（超出本次范围）。
+
+    只读取列、不展开 JSON 函数，天然兼容 SQLite / MySQL / PostgreSQL 三方言。
+    """
+    rows = db.execute(
+        select(AtpAssetVersion.tags_json).where(AtpAssetVersion.tags_json.is_not(None))
+    ).all()
+    seen: set[str] = set()
+    items: list[str] = []
+    for (raw_tags,) in rows:
+        if not isinstance(raw_tags, list):
+            continue
+        for raw in raw_tags:
+            if not isinstance(raw, str):
+                continue
+            tag = raw.strip()
+            if not tag:
+                continue
+            key = tag.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(tag)
+    items.sort()
+    return AtpTagOptionsResponse(items=items, total=len(items))
 
 
 # 左侧维度树：电压等级 → 杆塔类型 → 场景 → 避雷器组合（与前端 ATP_TREE_LEVELS 一致）

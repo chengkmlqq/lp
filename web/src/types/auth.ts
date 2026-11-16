@@ -1305,6 +1305,12 @@ export type AtpModelCardListResponse = {
   total: number;
 };
 
+/** 标签候选（2026-11-16）：GET /api/v1/atp/models/tags 返回的去重已用标签。 */
+export type AtpTagOptionsResponse = {
+  items: string[];
+  total: number;
+};
+
 export type AtpAssetFileEntry = {
   relative_path: string;
   name: string;

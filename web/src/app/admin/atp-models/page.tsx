@@ -57,6 +57,7 @@ import type {
   AtpAssetPublishState,
   AtpAssetSummary,
   AtpModelCardListResponse,
+  AtpTagOptionsResponse,
   DimensionTypeTreeItem,
   TempUploadResponse,
 } from "@/types/auth";
@@ -224,6 +225,8 @@ export default function AtpModelsPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   // 发布状态过滤：undefined = 全部（allowClear 清除后即回到全部）
   const [publishStatusFilter, setPublishStatusFilter] = useState<PublishStatusFilter | undefined>(undefined);
+  // 标签过滤（2026-11-16）：多选 OR，空数组 = 不过滤；候选项来自 /atp/models/tags
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<AtpAssetSummary | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -670,6 +673,13 @@ export default function AtpModelsPage() {
     setPagination((previous) => ({ ...previous, current: 1 }));
   }, []);
 
+  // 标签过滤即时生效（多选 OR）：变更即应用并重置分页到第 1 页，与发布状态过滤一致。
+  // allowClear 清空时 antd 可能回传 undefined，统一收敛为 []（与页面既有 Select 口径一致）。
+  const handleTagFilterChange = useCallback((value: string[]) => {
+    setTagFilter(Array.isArray(value) ? value : []);
+    setPagination((previous) => ({ ...previous, current: 1 }));
+  }, []);
+
   // ===== 左侧维度树（后台接口懒加载：点击展开才请求下一层） =====
   // 数据源：GET /api/v1/atp/assets/tree/children?path=<父路径>，path 空 = 第一层；
   // 搜索（treeFilterKeyword 非空）时带 keyword 返回过滤嵌套树并全展开。
@@ -813,6 +823,7 @@ export default function AtpModelsPage() {
         keyword: searchKeyword.trim(),
         filter: activeFilter ?? null,
         publishStatus: publishStatusFilter ?? null,
+        tags: tagFilter,
       },
     ],
     enabled: Boolean(user && canRead),
@@ -824,6 +835,8 @@ export default function AtpModelsPage() {
       if (publishStatusFilter) {
         params.set("publish_state", publishStatusFilter);
       }
+      // 标签多选：重复传同名参数（tags=a&tags=b），后端按 OR 命中任一标签
+      tagFilter.forEach((tag) => params.append("tags", tag));
       if (activeFilter) {
         if (activeFilter.voltage_level) params.set("voltage_level", activeFilter.voltage_level);
         if (activeFilter.tower_type) params.set("tower_type", activeFilter.tower_type);
@@ -864,6 +877,25 @@ export default function AtpModelsPage() {
       return payload.total;
     },
   });
+
+  // 标签候选（2026-11-16）：从现有 tags_json 去重聚合，供「标签」多选下拉。
+  // 无独立标签字典，未使用过的标签不会出现；发布/编辑改动标签后随列表一起失效重拉。
+  const tagOptionsQuery = useQuery({
+    queryKey: ["atp-assets", "tag-options"],
+    enabled: Boolean(user && canRead),
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/atp/models/tags");
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const payload = (await response.json()) as AtpTagOptionsResponse;
+      return payload.items;
+    },
+  });
+  const tagOptions = useMemo(
+    () => tagOptionsQuery.data ?? [],
+    [tagOptionsQuery.data],
+  );
 
   const assetItems = useMemo(
     () => assetsQuery.data?.items ?? EMPTY_ASSET_ITEMS,
@@ -1427,6 +1459,21 @@ export default function AtpModelsPage() {
                             ]}
                             placeholder={t("全部发布状态")}
                             onChange={handlePublishStatusFilterChange}
+                          />
+                        </Form.Item>
+                        <Form.Item label={t("标签")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                          <Select
+                            mode="multiple"
+                            allowClear
+                            showSearch
+                            optionFilterProp="label"
+                            maxTagCount="responsive"
+                            style={{ minWidth: 200 }}
+                            value={tagFilter}
+                            options={tagOptions.map((tag) => ({ value: tag, label: tag }))}
+                            placeholder={t("全部标签")}
+                            onChange={handleTagFilterChange}
+                            loading={tagOptionsQuery.isFetching}
                           />
                         </Form.Item>
                         <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
