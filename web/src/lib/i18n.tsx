@@ -1928,6 +1928,7 @@ export const EN_DICT: Record<string, string> = {
   "章节更新成功": "Chapter updated successfully",
   "第 {String(step.step)} 轮": "Round {String(step.step)}",
   "等待日志...": "Waiting for logs...",
+  "等待中": "Pending",
   "等待校验": "Waiting for validation",
   "筛选": "Filter",
   "管理/特权": "Admin / Privileged",

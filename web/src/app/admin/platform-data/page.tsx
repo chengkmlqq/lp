@@ -48,7 +48,8 @@ const TABLE_MIN_SCROLL_Y = 180;
 const POLL_INTERVAL_MS = 3000;
 
 type JobKind = "export" | "import";
-type JobStatus = "pending" | "running" | "completed" | "failed";
+// 与后端 PlatformDataJob.status 对齐：终态成功值为 success（非 completed）
+type JobStatus = "pending" | "running" | "success" | "failed";
 
 type JobSummary = {
   id: string;
@@ -83,10 +84,12 @@ const CATEGORY_LABEL: Record<string, string> = {
   atp_models: "ATP 模型",
 };
 
+// 兜底：未知状态一律按 pending 展示，避免后端新增状态时整表渲染崩溃
+const STATUS_FALLBACK: { color: string; label: string } = { color: "default", label: "等待中" };
 const STATUS_META: Record<JobStatus, { color: string; label: string }> = {
-  pending: { color: "default", label: "等待中" },
+  pending: STATUS_FALLBACK,
   running: { color: "processing", label: "执行中" },
-  completed: { color: "success", label: "已完成" },
+  success: { color: "success", label: "已完成" },
   failed: { color: "error", label: "失败" },
 };
 
@@ -264,7 +267,7 @@ export default function PlatformDataPage() {
   const loadReuseJobs = useCallback(async () => {
     try {
       const response = await fetchWithAuth(
-        `/api/v1/admin/platform-data/jobs?kind=export&status=completed&limit=100&offset=0`,
+        `/api/v1/admin/platform-data/jobs?kind=export&status=success&limit=100&offset=0`,
       );
       if (!response.ok) return;
       const data = (await response.json()) as { items: JobSummary[] };
@@ -424,16 +427,19 @@ export default function PlatformDataPage() {
       title: t("状态"),
       dataIndex: "status",
       width: 150,
-      render: (status: JobStatus, record) => (
-        <div>
-          <Tag color={STATUS_META[status].color}>{STATUS_META[status].label}</Tag>
-          {status === "failed" && record.error_message ? (
-            <div style={{ color: "#cf1322", fontSize: 12, marginTop: 2, maxWidth: 280, wordBreak: "break-all" }}>
-              {record.error_message}
-            </div>
-          ) : null}
-        </div>
-      ),
+      render: (status: JobStatus, record) => {
+        const meta = STATUS_META[status] ?? STATUS_FALLBACK;
+        return (
+          <div>
+            <Tag color={meta.color}>{t(meta.label)}</Tag>
+            {status === "failed" && record.error_message ? (
+              <div style={{ color: "#cf1322", fontSize: 12, marginTop: 2, maxWidth: 280, wordBreak: "break-all" }}>
+                {record.error_message}
+              </div>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       title: t("类别"),
@@ -679,7 +685,7 @@ export default function PlatformDataPage() {
               }}
               options={(Object.keys(STATUS_META) as JobStatus[]).map((key) => ({
                 value: key,
-                label: STATUS_META[key].label,
+                label: t(STATUS_META[key].label),
               }))}
             />
             <Button icon={<ReloadOutlined />} onClick={() => void loadJobs()}>
