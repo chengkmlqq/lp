@@ -1167,7 +1167,9 @@ export default function AdminMatlabEnginePage() {
                               setPagination({ current: page, pageSize });
                             },
                           })}
-                          scroll={{ x: 770, y: tableScrollY }}
+                          // scroll.x 不小于各列宽之和（930），并与 .admin-matlab-table-anchor 的 min-width: 1080 保持一致；
+                          // 否则 antd 的 fixed:'right' 操作列定位偏移会算错，溢出表格容器。
+                          scroll={{ x: 1080, y: tableScrollY }}
                           locale={{
                             emptyText: (
                               <Empty
