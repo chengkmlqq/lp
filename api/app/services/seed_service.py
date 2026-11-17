@@ -445,16 +445,29 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "permission_code": "atp.read",
     },
     {
-        # LP-17：平台基础数据包工具入口（导出 / 导入 / 任务列表 / 轮询）。
-        # 必须随 seed-defaults 重跑注册，否则 /admin/platform-data 页面调接口时
-        # require_enabled_menu_route 因 menus 表无该路由节点而 403。
-        "code": "admin.platform_data",
-        "name": "基础数据包",
-        "path": "/admin/platform-data",
-        "icon": "InboxOutlined",
+        # 基础数据包「导出」页（交付人员用）：导出表单 + 任务列表。
+        # 与导入页共用一个权限码 platform_data.manage（方案 A）。
+        "code": "admin.platform_data.export",
+        "name": "基础数据包导出",
+        "path": "/admin/platform-data/export",
+        "icon": "DownloadOutlined",
         "parent_code": "admin.basic_data",
         "type": "menu",
         "sort_order": 30,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "platform_data.manage",
+    },
+    {
+        # 基础数据包「导入」页（部署人员用）：仅导入组件，无任务列表。
+        "code": "admin.platform_data.import",
+        "name": "基础数据包导入",
+        "path": "/admin/platform-data/import",
+        "icon": "InboxOutlined",
+        "parent_code": "admin.basic_data",
+        "type": "menu",
+        "sort_order": 31,
         "status": "enabled",
         "visible": True,
         "cacheable": False,
@@ -739,7 +752,8 @@ ROLE_MENU_BINDINGS: dict[str, list[str]] = {
         "admin.tower_models",
         "admin.atp_models",
         "admin.elevation",
-        "admin.platform_data",
+        "admin.platform_data.export",
+        "admin.platform_data.import",
         "admin.system_monitor",
         "admin.task_monitor",
         "admin.workers",
