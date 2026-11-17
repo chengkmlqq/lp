@@ -124,6 +124,9 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     "elevation.read": "Read elevation datasets and apply jobs",
     "elevation.manage": "Manage elevation datasets and run altitude apply jobs",
     "atp.read": "Read ATP models and versions",
+    # LP-28：atp_assets.py 的 require_permission("atp.view") 引用了此码但此前从未注册，
+    # 导致权限覆盖测试长期飘红；补齐注册（接口层鉴权已退化为仅登录，无运行时影响）。
+    "atp.view": "View ATP asset overview tree",
     "atp.manage": "Manage ATP models and version artifacts",
     "atp.run": "Run ATP simulations",
     "fl.create": "Create lightning analysis jobs",
@@ -182,6 +185,7 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
             "elevation.read",
             "elevation.manage",
             "atp.read",
+            "atp.view",
             "atp.manage",
             "atp.run",
             "celery.read",
@@ -671,55 +675,12 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "cacheable": False,
         "permission_code": "ai_chat.read",
     },
-    # ── 按钮（type=button，仅角色配置可见，侧边栏不渲染）─────────────
-    # 线路管理
-    {"code": "admin.power_lines:btn.create", "name": "新建线路", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "line.create"},
-    {"code": "admin.power_lines:btn.update", "name": "编辑线路", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "line.update"},
-    {"code": "admin.power_lines:btn.delete", "name": "删除线路", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 103, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "line.delete"},
-    {"code": "admin.power_lines:btn.import", "name": "导入杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 104, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.import"},
-    {"code": "admin.power_lines:btn.export", "name": "导出杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 105, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.export"},
-    {"code": "admin.power_lines:btn.map", "name": "地图预览", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 106, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "line.map"},
-    {"code": "admin.power_lines:btn.tower_add", "name": "新增杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 107, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.create"},
-    {"code": "admin.power_lines:btn.tower_edit", "name": "编辑杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 108, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.update"},
-    {"code": "admin.power_lines:btn.tower_delete", "name": "删除杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 109, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.delete"},
-    # 防雷分析
-    {"code": "admin.fl_analysis:btn.create", "name": "新建任务", "path": None, "icon": None, "parent_code": "admin.fl_analysis", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fl.create"},
-    {"code": "admin.fl_analysis:btn.start", "name": "启动任务", "path": None, "icon": None, "parent_code": "admin.fl_analysis", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fl.start"},
-    {"code": "admin.fl_analysis:btn.cancel", "name": "取消任务", "path": None, "icon": None, "parent_code": "admin.fl_analysis", "type": "button", "sort_order": 103, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fl.cancel"},
-    {"code": "admin.fl_analysis:btn.delete", "name": "删除任务", "path": None, "icon": None, "parent_code": "admin.fl_analysis", "type": "button", "sort_order": 104, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fl.delete"},
-    {"code": "admin.fl_analysis:btn.export", "name": "导出结果", "path": None, "icon": None, "parent_code": "admin.fl_analysis", "type": "button", "sort_order": 105, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fl.export"},
-    # 故障分析
-    {"code": "admin.fault_analysis:btn.create", "name": "新建分析", "path": None, "icon": None, "parent_code": "admin.fault_analysis", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fault.create"},
-    {"code": "admin.fault_analysis:btn.delete", "name": "删除分析", "path": None, "icon": None, "parent_code": "admin.fault_analysis", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fault.delete"},
-    # ── 2026-09-27 补齐：以下权限码此前【没有任何菜单出口】，非 admin 角色在角色管理里
-    #    完全勾不到（后端 require_*permission 却要求它们）。补齐后这些细粒度授权才可配置。
-    # 线路管理：杆塔读/管（此前只有 tower.create/update/delete/import/export）
-    {"code": "admin.power_lines:btn.tower_read", "name": "查看杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 110, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.read"},
-    {"code": "admin.power_lines:btn.tower_manage", "name": "管理杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 111, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.manage"},
-    # 杆塔模型管理
-    {"code": "admin.tower_models:btn.read", "name": "查看杆塔模型", "path": None, "icon": None, "parent_code": "admin.tower_models", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower_model.read"},
-    {"code": "admin.tower_models:btn.manage", "name": "管理杆塔模型", "path": None, "icon": None, "parent_code": "admin.tower_models", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower_model.manage"},
-    # ATP 模型
-    {"code": "admin.atp_models:btn.manage", "name": "管理ATP模型", "path": None, "icon": None, "parent_code": "admin.atp_models", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "atp.manage"},
-    {"code": "admin.atp_models:btn.run", "name": "运行ATP仿真", "path": None, "icon": None, "parent_code": "admin.atp_models", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "atp.run"},
-    # Celery / Worker 监控
-    {"code": "admin.workers:btn.manage", "name": "Worker控制", "path": None, "icon": None, "parent_code": "admin.workers", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "celery.manage"},
-    # 高程数据管理
-    {"code": "admin.elevation:btn.manage", "name": "管理高程数据", "path": None, "icon": None, "parent_code": "admin.elevation", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "elevation.manage"},
-    # 雷电数据（lightning.manage 此前仅靠库内漂移存在，全新部署拿不到）
-    {"code": "admin.lightning_currents:btn.manage", "name": "管理雷电数据", "path": None, "icon": None, "parent_code": "admin.lightning_currents", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "lightning.manage"},
-    # 文件管理
-    {"code": "admin.files:btn.manage", "name": "管理文件", "path": None, "icon": None, "parent_code": "admin.files", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "file.manage"},
-    # 菜单管理
-    {"code": "admin.menus:btn.manage", "name": "管理菜单", "path": None, "icon": None, "parent_code": "admin.menus", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "menu.manage"},
-    # 角色管理
-    {"code": "admin.roles:btn.manage", "name": "管理角色", "path": None, "icon": None, "parent_code": "admin.roles", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "role.manage"},
-    # 系统参数
-    {"code": "admin.system_params:btn.manage", "name": "管理系统参数", "path": None, "icon": None, "parent_code": "admin.system_params", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "system_param.manage"},
-    {"code": "admin.system_params:btn.runtime", "name": "运行时参数", "path": None, "icon": None, "parent_code": "admin.system_params", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "system_param.runtime"},
-    # 维度管理（dimension.* 此前连 permissions 表都没注册）
-    {"code": "admin.dimensions:btn.read", "name": "查看维度", "path": None, "icon": None, "parent_code": "admin.dimensions", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "dimension.read"},
-    {"code": "admin.dimensions:btn.manage", "name": "管理维度", "path": None, "icon": None, "parent_code": "admin.dimensions", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "dimension.manage"},
+    # ── 2026-11-09 权限策略调整后，type=button 菜单项已失效，LP-28 起不再种子写入 ──
+    # 原按钮菜单（约 32 条，如「新建线路」line.create）的三条作用链路均已断开：
+    #   1) 接口层 require_*permission 退化为仅登录校验，不再消费 permission_code；
+    #   2) 角色配置页只保留目录+页面，勾选页面即按模块前缀自动推导该模块全部权限码；
+    #   3) 按钮菜单 path=null / visible=false，侧边栏不渲染。
+    # 细粒度权限码仍注册在 DEFAULT_PERMISSIONS / DEFAULT_ROLES 中，不受影响。
     # 防雷改造（2026-09-27：并入种子，带图标；目录含主页路由 /admin/lightning-retrofit）
     # 2026-11-09：图标改为 ToolOutlined（改造施工），与雷电幅值统计的 Zap(ThunderboltOutlined) 区分
     {

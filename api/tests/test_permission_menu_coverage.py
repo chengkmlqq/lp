@@ -1,14 +1,18 @@
-"""权限出口覆盖度回归测试。
+"""权限码注册覆盖度回归测试。
 
-背景（2026-09-27 权限审计）：
-    权限码的唯一授予途径是「角色绑定菜单」（menus.permission_code → 权限码）。
-    但代码里存在大量 require_*permission(...) / hasPermission(...) 引用的权限码
-    在 DEFAULT_MENUS 里【没有任何菜单或按钮出口】，导致：
-      · 角色管理页面里勾不到该权限 → 非 admin 角色永远无法获得
-      · 页面/接口对非 admin 永久不可用（例：tower.read 导致线路详情列表空白）
+背景（2026-09-27 权限审计，2026-11-09 / LP-28 调整后修订）：
+    最初权限码的唯一授予途径是「角色绑定菜单」（menus.permission_code → 权限码），
+    细粒度权限码必须挂在 type=button 的菜单项上才能被非 admin 角色勾到。
+    2026-11-09 权限策略调整后：
+      · 后端 require_*permission / require_any_permission / require_enabled_menu_route
+        全部退化为「仅要求登录」，不再消费 permission_code；
+      · 角色配置页只保留目录 + 页面，勾选页面后按模块前缀自动推导该模块全部权限码，
+        button 行不再展示也无需逐个配置（web/src/app/admin/roles/page.tsx）；
+      · type=button 菜单项已作为失效遗留数据由 LP-28 清理，不再写入 DEFAULT_MENUS。
 
-本测试把「代码引用的权限码」与「菜单可授予的权限码」做全集比对：新增权限码却
-忘记加菜单出口时，测试阶段就会失败，而不是等用户反馈"页面打不开"。
+因此现在校验的契约是：代码中引用的权限码必须注册在 DEFAULT_PERMISSIONS（permissions 表
+种子）中，角色配置才能按模块前缀推导并分配给非 admin 角色；不再要求每个权限码都有
+一个 type=button 的菜单出口。
 
 注意：前端用例依赖仓库内的 web/src；在 api 镜像里运行（无 web 源码）会自动跳过。
 """
@@ -24,7 +28,7 @@ from app.services.legacy_authz_service import (
     MANAGE_IMPLIED_PERMISSIONS,
     MENU_CODE_PERMISSION_MAP,
 )
-from app.services.seed_service import DEFAULT_MENUS
+from app.services.seed_service import DEFAULT_MENUS, DEFAULT_PERMISSIONS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -61,9 +65,15 @@ _BE_CALL_RE = re.compile(r'require_(?:any_)?permission\s*\(([^)]*)\)')
 _ENABLED = {"enabled", "active", "1", "true"}
 
 
-def _grantable_from_seed_menus() -> set[str]:
-    """按 _permissions_for_menu 的优先级，算出 DEFAULT_MENUS 能授予的权限码全集。"""
-    codes: set[str] = set()
+def _grantable_permission_codes() -> set[str]:
+    """算出角色配置可授予的权限码全集。
+
+    - 页面菜单自带的 permission_code，以及静态映射/管理码推导出的码；
+    - DEFAULT_PERMISSIONS 中注册的全部权限码：角色配置勾选页面后按模块前缀
+      从 permissions 目录自动推导该模块的全部权限码，因此注册即代表可授予
+      （不再需要 type=button 菜单作为出口，LP-28 起按钮菜单已从种子移除）。
+    """
+    codes: set[str] = set(DEFAULT_PERMISSIONS)
     for menu in DEFAULT_MENUS:
         if str(menu.get("status") or "").strip().lower() not in _ENABLED:
             continue
@@ -78,11 +88,6 @@ def _grantable_from_seed_menus() -> set[str]:
         mapped = MENU_CODE_PERMISSION_MAP.get(menu_code)
         if mapped:
             codes |= set(mapped)
-            continue
-
-        # button 类型兜底：menu_code 本身即权限码
-        if str(menu.get("type") or "").strip().lower() == "button" and "." in menu_code:
-            codes.add(menu_code)
 
     for manage_code, implied in MANAGE_IMPLIED_PERMISSIONS.items():
         if manage_code in codes:
@@ -117,36 +122,36 @@ def _backend_permission_codes() -> set[str]:
     return codes
 
 
-def _assert_no_orphans(label: str, codes: set[str]) -> None:
-    grantable = _grantable_from_seed_menus()
+def _assert_unregistered(label: str, codes: set[str]) -> None:
+    grantable = _grantable_permission_codes()
     missing = sorted(codes - grantable)
     assert not missing, (
-        f"{label} 引用了以下权限码，但 DEFAULT_MENUS 里没有任何菜单/按钮能授予它们，"
-        f"非 admin 角色在角色管理页面永远勾不到：\n  "
+        f"{label} 引用了以下权限码，但 DEFAULT_PERMISSIONS 未注册、且没有菜单能授予它们，"
+        f"非 admin 角色在角色管理页面永远拿不到：\n  "
         + "\n  ".join(missing)
-        + "\n\n修法：在 seed_service.DEFAULT_MENUS 里为对应菜单补一个"
-          ' {"type": "button", "permission_code": "<缺失的码>"} 条目。'
+        + "\n\n修法：在 seed_service.DEFAULT_PERMISSIONS 里注册该权限码"
+          "（角色配置勾选页面后按模块前缀自动推导，无需再加 type=button 菜单）。"
     )
 
 
 def test_grantable_set_is_not_empty() -> None:
-    grantable = _grantable_from_seed_menus()
-    assert grantable, "DEFAULT_MENUS 未解析出任何权限码，测试自身可能已失效"
+    grantable = _grantable_permission_codes()
+    assert grantable, "DEFAULT_PERMISSIONS / DEFAULT_MENUS 未解析出任何权限码，测试自身可能已失效"
 
 
-def test_backend_permission_codes_have_menu_outlet() -> None:
-    """后端每个 require_*permission 引用的权限码都必须有菜单出口。"""
+def test_backend_permission_codes_are_registered() -> None:
+    """后端每个 require_*permission 引用的权限码都必须是已注册的权限码。"""
     codes = _backend_permission_codes()
     assert codes, "未从 api/app 解析到任何权限码，测试自身可能已失效"
-    _assert_no_orphans("后端 require_*permission", codes)
+    _assert_unregistered("后端 require_*permission", codes)
 
 
 @pytest.mark.skipif(WEB_SRC is None, reason="web/src 不在当前上下文（如 api 镜像内）")
-def test_frontend_permission_codes_have_menu_outlet() -> None:
-    """前端每个 hasPermission 引用的权限码都必须有菜单出口。"""
+def test_frontend_permission_codes_are_registered() -> None:
+    """前端每个 hasPermission 引用的权限码都必须是已注册的权限码。"""
     codes = _frontend_permission_codes()
     assert codes, "未从 web/src 解析到任何权限码，测试自身可能已失效"
-    _assert_no_orphans("前端 hasPermission", codes)
+    _assert_unregistered("前端 hasPermission", codes)
 
 
 @pytest.mark.skipif(WEB_SRC is None, reason="web/src 不在当前上下文（如 api 镜像内）")
