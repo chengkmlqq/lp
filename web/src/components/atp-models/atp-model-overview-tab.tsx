@@ -10,7 +10,6 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary } from "@/types/auth";
-import { resolveFormatMeta } from "./atp-model-format-tag";
 
 /** 列表接口单页上限 200（后端 Query le=200），全量分页抓取 */
 const PAGE_LIMIT = 200;
@@ -69,8 +68,8 @@ function dimLabel(asset: AtpAssetSummary, field: "voltage" | "tower" | "scene" |
  * - 概览带：资产总数 / 生效中 / 未启用 / 新版 / 旧版 / 待检测 六个读数，一眼看家底；
  * - 覆盖矩阵：电压 × 塔型 的资产分布，格子里的数字是资产数（角标为其中新版数），
  *   点击格子即筛选下方清单——空白的格子就是当前缺口；
- * - 资产清单：每行一个模型，带版本、生效状态、形态、测试结论，可按场景/避雷器/状态/
- *   形态/关键字筛，点「详情」直接跳到该模型的详情 Tab。
+ * - 资产清单：每行一个模型，带版本、生效状态，可按场景/避雷器/状态/关键字筛，
+ *   点「详情」直接跳到该模型的详情 Tab。
  */
 export function AtpModelOverviewTab({ onOpenDetail }: AtpModelOverviewTabProps = {}) {
   const { t } = useI18n();
@@ -81,7 +80,6 @@ export function AtpModelOverviewTab({ onOpenDetail }: AtpModelOverviewTabProps =
   const [sceneFilter, setSceneFilter] = useState<string>("all");
   const [arresterFilter, setArresterFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
   const [keyword, setKeyword] = useState("");
 
   const assetsQuery = useQuery({
@@ -155,12 +153,11 @@ export function AtpModelOverviewTab({ onOpenDetail }: AtpModelOverviewTabProps =
         if (arresterFilter !== "all" && dimKey(asset, "arrester") !== arresterFilter) return false;
         if (statusFilter === "active" && !isEffective(asset)) return false;
         if (statusFilter === "inactive" && isEffective(asset)) return false;
-        if (formatFilter !== "all" && formatKind(asset) !== formatFilter) return false;
         const kw = keyword.trim().toLowerCase();
         if (kw && !`${asset.name} ${asset.code}`.toLowerCase().includes(kw)) return false;
         return true;
       }),
-    [assets, sceneFilter, arresterFilter, statusFilter, formatFilter, keyword],
+    [assets, sceneFilter, arresterFilter, statusFilter, keyword],
   );
 
   const matrix = useMemo(() => {
@@ -269,21 +266,6 @@ export function AtpModelOverviewTab({ onOpenDetail }: AtpModelOverviewTabProps =
         ),
     },
     {
-      title: t("形态"),
-      key: "format",
-      width: 110,
-      render: (_value, asset) => {
-        const meta = resolveFormatMeta(asset);
-        return (
-          <Tooltip title={t(meta.hint)}>
-            <span className="admin-atp-models-overview-format" style={{ color: meta.color, background: meta.background }}>
-              {t(meta.short)}
-            </span>
-          </Tooltip>
-        );
-      },
-    },
-    {
       title: t("更新时间"),
       dataIndex: "update_date",
       key: "update_date",
@@ -309,14 +291,13 @@ export function AtpModelOverviewTab({ onOpenDetail }: AtpModelOverviewTabProps =
 
   const matrixFilterActive = Boolean(matrixPick);
   const filterActive =
-    statusFilter !== "all" || formatFilter !== "all" || sceneFilter !== "all" || arresterFilter !== "all" || keyword.trim() !== "";
+    statusFilter !== "all" || sceneFilter !== "all" || arresterFilter !== "all" || keyword.trim() !== "";
 
   const resetFilters = () => {
     setMatrixPick(null);
     setSceneFilter("all");
     setArresterFilter("all");
     setStatusFilter("all");
-    setFormatFilter("all");
     setKeyword("");
   };
 
@@ -487,18 +468,6 @@ export function AtpModelOverviewTab({ onOpenDetail }: AtpModelOverviewTabProps =
                 { value: "all", label: t("全部") },
                 { value: "active", label: t("生效中") },
                 { value: "inactive", label: t("未启用") },
-              ]}
-            />
-            <Select
-              size="small"
-              value={formatFilter}
-              style={{ width: 116 }}
-              onChange={(value) => setFormatFilter(value as FormatFilter)}
-              options={[
-                { value: "all", label: t("全部形态") },
-                { value: "insert", label: t("新版") },
-                { value: "legacy", label: t("旧版") },
-                { value: "unknown", label: t("待检测") },
               ]}
             />
             <Input

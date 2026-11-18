@@ -108,14 +108,15 @@ function runStatusMeta(status: AtpAssetRunStatus | null, t: (s: string) => strin
  *
  * 新版按「概览带 → 分区 Tabs → 干净表格」重排：
  * - 顶部概览带：图标锚点 + 模型名/编码 + 语义 chip（发布/状态）+ 刷新；
- *   下方一行紧凑读数（文件数）；
  * - 内容用 Tabs 分区：「基本信息」是无边框属性网格 + 参数槽位；「文件列表 (n)」
  *   带文件名筛选与分页，对齐知识构建页「概览 + 表格」的阅读节奏；
  * - 属性网格沿用卡片的两列 dl 视觉（标签灰 12px / 值深 13px），详情页放宽为四列。
  *
  * 2026-11-12 精简（信息过载反馈）：撤掉概览带里的「测试次数 / 最近结果」两格读数与
- * 形态 chip，统计行只留「文件数」并收敛为紧凑单格；「基本信息」去掉「模型形态 / 存储挂载」
- * 两项。形态与预检提示仍由「模型检查」Alert 呈现，最近运行结果保留在「基本信息」里。
+ * 形态 chip；「基本信息」去掉「模型形态 / 存储挂载」两项，最近运行结果保留在「基本信息」里。
+ * 形态与预检提示仍由「模型检查」Alert 呈现。
+ *
+ * 2026-11-18 精简：撤掉概览带顶部「文件数」统计格、版本历史与版本对比的「测试结论」列。
  */
 export function AtpModelDetailTab({
   assetId,
@@ -547,22 +548,6 @@ export function AtpModelDetailTab({
       render: (value: string | null) => value || <span className="admin-atp-models-file-none">-</span>,
     },
     {
-      title: t("测试结论"),
-      dataIndex: "test_status",
-      key: "test_status",
-      width: 100,
-      render: (value: AtpAssetSummary["test_status"], item) => {
-        if (value === "passed") return <span className="admin-atp-models-state-chip is-active">{t("通过")}</span>;
-        if (value === "failed") return <span className="admin-atp-models-state-chip is-danger">{t("未通过")}</span>;
-        if (value === "suspect") return <span className="admin-atp-models-state-chip is-warning">{t("可疑")}</span>;
-        return (
-          <Tooltip title={item.test_message || undefined}>
-            <span className="admin-atp-models-state-chip is-muted">{t("未测试")}</span>
-          </Tooltip>
-        );
-      },
-    },
-    {
       title: t("文件"),
       key: "files",
       width: 140,
@@ -759,13 +744,6 @@ export function AtpModelDetailTab({
               </Space>
             </div>
 
-            {/* 顶部统计行收敛为紧凑单格：只保留文件数（概览页仍复用同一套多格视觉） */}
-            <div className="admin-atp-models-detail-stats is-compact">
-              <div className="admin-atp-models-detail-stat">
-                <span className="admin-atp-models-detail-stat-value">{files.length}</span>
-                <span className="admin-atp-models-detail-stat-label">{t("文件数")}</span>
-              </div>
-            </div>
           </div>
 
           {/* 后台检测失败：单独一条 warning，说明重传可再次触发 */}
@@ -1140,12 +1118,6 @@ export function AtpModelDetailTab({
                       compareQuery.data.asset_b.file_count === null
                         ? "-"
                         : `${compareQuery.data.asset_b.file_count} · ${formatSize(compareQuery.data.asset_b.total_size ?? 0)}`,
-                  },
-                  {
-                    key: "test_status",
-                    label: t("测试结论"),
-                    a: compareQuery.data.asset_a.test_status || t("未测试"),
-                    b: compareQuery.data.asset_b.test_status || t("未测试"),
                   },
                   {
                     key: "update_date",

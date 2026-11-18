@@ -44,9 +44,7 @@ import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
-import { AtpModelFormatTag } from "@/components/atp-models/atp-model-format-tag";
 import { AtpModelOverviewTab } from "@/components/atp-models/atp-model-overview-tab";
-import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -252,8 +250,6 @@ export default function AtpModelsPage() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
-  // 模型测试页内 Tab：从操作列打开，以当前模型为上下文（参照详情 Tab）
-  const [testTabs, setTestTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
   // 模型总览：不在初始 Tab 中出现，点按钮才打开（同详情/测试 Tab 的动态选项卡）
@@ -267,7 +263,6 @@ export default function AtpModelsPage() {
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
   const canManage = hasPermission("atp.manage");
-  const canTest = hasPermission("atp.run") || hasPermission("atp.manage");
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
   // 表格数据源 = 服务端分页 + 服务端过滤（见下方 assetsQuery，需在 activeFilter 之后定义）。
@@ -1111,25 +1106,6 @@ export default function AtpModelsPage() {
     setActiveTabKey(id);
   }, [assetItems, openDetail, t]);
 
-  /** 从操作列打开模型测试 Tab（同一模型已开则直接切过去）。 */
-  const openTestTab = useCallback((asset: AtpAssetSummary) => {
-    const key = `test-${asset.id}`;
-    setTestTabs((previous) => {
-      if (previous.some((tab) => tab.key === key)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key,
-          label: <>{t("模型测试")} - {asset.name || asset.id}</>,
-          assetId: asset.id,
-        },
-      ];
-    });
-    setActiveTabKey(key);
-  }, []);
-
   /** 打开「模型总览」Tab（已打开则直接切过去）。 */
   const openOverviewTab = useCallback(() => {
     const key = "overview";
@@ -1174,33 +1150,6 @@ export default function AtpModelsPage() {
             <Typography.Text type="secondary" ellipsis className="block max-w-full">
               {parts.length > 0 ? parts.join(" · ") : "-"}
             </Typography.Text>
-          );
-        },
-      },
-      {
-        title: t("形态"),
-        key: "format",
-        width: 110,
-        render: (_, item) => <AtpModelFormatTag asset={item} compact />,
-      },
-      {
-        // 测试结论（2026-11-07）：通过/未通过/可疑/未测试，悬停看说明
-        title: t("测试结论"),
-        key: "test_status",
-        width: 100,
-        render: (_, item) => {
-          const meta =
-            item.test_status === "passed"
-              ? { text: t("通过"), className: "is-active" }
-              : item.test_status === "failed"
-                ? { text: t("未通过"), className: "is-danger" }
-                : item.test_status === "suspect"
-                  ? { text: t("可疑"), className: "is-warning" }
-                  : { text: t("未测试"), className: "is-muted" };
-          return (
-            <Tooltip title={item.test_message || undefined}>
-              <span className={`admin-atp-models-state-chip ${meta.className}`}>{meta.text}</span>
-            </Tooltip>
           );
         },
       },
@@ -1250,12 +1199,6 @@ export default function AtpModelsPage() {
               actions={[
                 { key: "detail", label: t("详情"), onClick: () => openDetailById(item.id) },
                 {
-                  key: "test",
-                  label: t("测试"),
-                  disabled: !canTest,
-                  onClick: () => openTestTab(item),
-                },
-                {
                   key: "edit",
                   label: t("编辑"),
                   icon: <EditOutlined />,
@@ -1286,7 +1229,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, canTest, deleteMutation, openDetailById, openEditModal, openTestTab],
+    [canManage, deleteMutation, openDetailById, openEditModal],
   );
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
@@ -1295,17 +1238,6 @@ export default function AtpModelsPage() {
     }
     const key = String(targetKey);
     setDetailTabs((previous) => {
-      const removedIndex = previous.findIndex((tab) => tab.key === key);
-      const next = previous.filter((tab) => tab.key !== key);
-      setActiveTabKey((current) => {
-        if (current !== key) {
-          return current;
-        }
-        return next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? "list";
-      });
-      return next;
-    });
-    setTestTabs((previous) => {
       const removedIndex = previous.findIndex((tab) => tab.key === key);
       const next = previous.filter((tab) => tab.key !== key);
       setActiveTabKey((current) => {
@@ -1626,16 +1558,6 @@ export default function AtpModelsPage() {
                 onDataChanged={() => {
                   void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
                 }}
-              />
-            ),
-          })),
-          ...testTabs.map((tab) => ({
-            key: tab.key,
-            label: tab.label,
-            closable: true,
-            children: (
-              <AtpModelTestTab
-                assetId={tab.assetId}
               />
             ),
           })),

@@ -2845,42 +2845,6 @@ body {
   white-space: nowrap;
 }
 
-/* 形态说明：原来的水印斜章收成一行灰字，悬停看完整链路说明与预检提示数 */
-.admin-atp-models-format-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--fquiz-theme-text-muted);
-  white-space: nowrap;
-  cursor: help;
-  user-select: none;
-}
-
-.admin-atp-models-format-note::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.55;
-}
-
-.admin-atp-models-format-note[data-tone="legacy"],
-.admin-atp-models-format-note[data-tone="insert"] {
-  color: var(--fquiz-theme-text-secondary);
-}
-
-.admin-atp-models-format-note-warn {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 2px;
-  color: #b45309;
-  font-variant-numeric: tabular-nums;
-}
-
 /* 卡片左下角标签（2026-11-10 起，2026-11-12 改配色）：接替原来的「新版/旧版」形态说明位置。
    低饱和主题主色（浅主色底 + 主色细边 + 主色字），与「已发布/处理中」等语义状态 chip 区分：
    标签是分类信息，沿用品牌主色而非语义色，既不灰也不抢状态色；溢出「+N」同步同色。
@@ -3564,8 +3528,7 @@ body {
   color: var(--fquiz-theme-border);
 }
 
-/* 统计行：大数字 + 小灰标签，与标题区用虚线分隔。
-   概览页复用这套多格读数；详情页收敛为单格时用 .is-compact 去掉整行虚线与多余留白。 */
+/* 统计行：大数字 + 小灰标签，与标题区用虚线分隔（概览页多格读数复用）。 */
 .admin-atp-models-detail-stats {
   display: flex;
   flex-wrap: wrap;
@@ -3573,13 +3536,6 @@ body {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px dashed var(--fquiz-theme-border);
-}
-
-/* 详情页统计行只保留「文件数」单格：紧凑贴合标题区，不留整行虚线与大片空白 */
-.admin-atp-models-detail-stats.is-compact {
-  margin-top: 10px;
-  padding-top: 0;
-  border-top: 0;
 }
 
 .admin-atp-models-detail-stat {
@@ -3896,17 +3852,7 @@ body {
   color: var(--fquiz-theme-text-secondary);
 }
 
-/* 形态小标签：与详情页/卡片的形态 chip 同一套受控色 */
-.admin-atp-models-overview-format {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 18px;
-  white-space: nowrap;
-}/* LP-246: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-246: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
+/* LP-246: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-246: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
    仅作用于外层主列表 Tabs（editable-card），避免误伤详情 Tab 内的 recharts/Descriptions；
    选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* LP-311: 默认选项卡标题样式：粗体 16px 标题色，与线路管理页保持一致 */
 .admin-lightning-currents-tab-title {
