@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.tasks.sync_matlab_engine_task",
         "app.tasks.worker_registry_tasks",
         "app.tasks.platform_data_tasks",
+        "app.tasks.wind_lightning_density_tasks",
     ],
 )
 

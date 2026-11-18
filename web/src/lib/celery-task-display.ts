@@ -21,6 +21,7 @@ const TASK_NAME_LABELS: Record<string, string> = {
   "app.tasks.sync_matlab_engine_task.sync_matlab_engine_module": "同步 MATLAB 引擎到 Worker",
   "app.tasks.worker_registry_tasks.sweep_worker_registry_offline": "执行节点离线巡检",
   "app.tasks.worker_registry_tasks.flush_task_log_buffers": "任务日志缓冲落库",
+  "app.tasks.wind_lightning_density_tasks.run_wind_lightning_density_job": "风电场地闪密度统计",
 };
 
 export function getTaskDisplayName(taskName: string | null | undefined, t: (s: string) => string): string {
