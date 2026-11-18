@@ -951,6 +951,63 @@ def _remap_english_csv_header(raw_header: list[str]) -> list[str]:
     return remapped
 
 
+_CIRCUIT_KEY_BY_NO: dict[int, str] = {1: "I", 2: "II", 3: "III", 4: "IV"}
+
+
+def _circuit_layer_has_geometry(layer: Any) -> bool:
+    """几何层是否带任一非空值（相间距 / 相高度）。
+
+    导入端为「只有相序、没有几何」的回路也会建 TowerCircuit 行，这类空层不参与
+    任何计算，导出时也不应把它当成该塔真实存在的回路。
+    """
+    if not isinstance(layer, dict):
+        return False
+    for group_name in ("phase_spacing_m", "phase_height_m"):
+        group = layer.get(group_name)
+        if isinstance(group, dict) and any(item is not None for item in group.values()):
+            return True
+    return False
+
+
+def _export_circuit_phase_sequence(
+    circuit_no: int,
+    *,
+    circuit_by_no: dict[int, Any],
+    circuit_geometry: dict[str, Any],
+    profile: TowerProfile | None,
+    line_phase_sequence: Any,
+) -> str:
+    """导出某回相序；该塔没有该回实际几何时输出空串。
+
+    历史问题：1 回线路导出时 II/III/IV 列会从 profile.phase_sequence_2/3/4（历史
+    遗留的 ABC）兜底填值，导入端只要相序非空就建回路 → 1 回被放大成 4 回，多出
+    3 条空几何回路（影响几何层数与前端展示）。
+    """
+    key = _CIRCUIT_KEY_BY_NO[circuit_no]
+    if circuit_no > 1 and circuit_by_no and not _circuit_layer_has_geometry(circuit_geometry.get(key)):
+        return ""
+    circuit = circuit_by_no.get(circuit_no)
+    value = _pick_export_value(
+        circuit.phase_sequence if circuit is not None else None,
+        getattr(profile, f"phase_sequence_{circuit_no}", None) if profile is not None else None,
+        _safe_dict(line_phase_sequence).get(key),
+    )
+    return _normalize_str(value) or ""
+
+
+def _pick_positive_float(*values: Any) -> float | None:
+    """导出物理距离时把 0 / 负数视为缺失。
+
+    避雷线中距为 0 会让 ATP 地线横担分布参数支路长度为 0（KILL=78）；留空反而能
+    触发引擎侧「丢弃非正、保留模型自带值」的兜底。
+    """
+    for value in values:
+        parsed = float(value) if isinstance(value, (int, float)) else _parse_float(value)
+        if parsed is not None and parsed > 0:
+            return parsed
+    return None
+
+
 def export_line_towers_to_csv(db: Session, *, line: Line, lang: str = "zh") -> tuple[str, bytes]:
     towers = db.execute(
         select(LineTower)
@@ -977,6 +1034,17 @@ def export_line_towers_to_csv(db: Session, *, line: Line, lang: str = "zh") -> t
         profile = profile_map.get(tower.id)
         circuit_by_no = {item.circuit_no: item for item in tower.circuits}
         circuit_geometry = _build_circuit_geometry_from_children(tower.circuits)
+        extra_profile = _safe_dict(profile.extra_profile_json) if profile is not None else {}
+        circuit_phase_sequence = [
+            _export_circuit_phase_sequence(
+                circuit_no,
+                circuit_by_no=circuit_by_no,
+                circuit_geometry=circuit_geometry,
+                profile=profile,
+                line_phase_sequence=line.phase_sequence_json,
+            )
+            for circuit_no in (1, 2, 3, 4)
+        ]
         lightning_result = tower.lightning_result
         analysis = tower.analysis
         row = [
@@ -989,16 +1057,28 @@ def export_line_towers_to_csv(db: Session, *, line: Line, lang: str = "zh") -> t
             tower.tower_type or "",
             _to_csv_number(tower.longitude),
             _to_csv_number(tower.latitude),
-            _normalize_str(_pick_export_value(circuit_by_no.get(1).phase_sequence if circuit_by_no.get(1) else None, profile.phase_sequence_1 if profile else None, _safe_dict(line.phase_sequence_json).get("I"))) or "",
-            _normalize_str(_pick_export_value(circuit_by_no.get(2).phase_sequence if circuit_by_no.get(2) else None, profile.phase_sequence_2 if profile else None, _safe_dict(line.phase_sequence_json).get("II"))) or "",
-            _normalize_str(_pick_export_value(circuit_by_no.get(3).phase_sequence if circuit_by_no.get(3) else None, profile.phase_sequence_3 if profile else None, _safe_dict(line.phase_sequence_json).get("III"))) or "",
-            _normalize_str(_pick_export_value(circuit_by_no.get(4).phase_sequence if circuit_by_no.get(4) else None, profile.phase_sequence_4 if profile else None, _safe_dict(line.phase_sequence_json).get("IV"))) or "",
+            circuit_phase_sequence[0],
+            circuit_phase_sequence[1],
+            circuit_phase_sequence[2],
+            circuit_phase_sequence[3],
             _normalize_str(_pick_export_value(profile.arrester_a if profile else None, _safe_dict(line.arrester_install_json).get("A"))) or "",
             _normalize_str(_pick_export_value(profile.arrester_b if profile else None, _safe_dict(line.arrester_install_json).get("B"))) or "",
             _normalize_str(_pick_export_value(profile.arrester_c if profile else None, _safe_dict(line.arrester_install_json).get("C"))) or "",
             _to_csv_number(tower.ground_resistance_ohm),
-            _to_csv_number(_pick_export_float(profile.protection_angle_left_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "left_mid_distance_m"))),
-            _to_csv_number(_pick_export_float(profile.protection_angle_right_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "right_mid_distance_m"))),
+            # 左/右避雷中距：以 extra_profile_json.lightning_wire 的真实值为准（LP-570 起
+            # 的存放位置）；protection_angle_*_deg 仅作历史数据兼容兜底，且 0 视为缺失。
+            _to_csv_number(
+                _pick_positive_float(
+                    _read_nested_value(extra_profile, "lightning_wire", "left_mid_distance_m"),
+                    profile.protection_angle_left_deg if profile else None,
+                )
+            ),
+            _to_csv_number(
+                _pick_positive_float(
+                    _read_nested_value(extra_profile, "lightning_wire", "right_mid_distance_m"),
+                    profile.protection_angle_right_deg if profile else None,
+                )
+            ),
             _to_csv_number(_pick_export_float(profile.shield_wire_height_m if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "height_m"))),
             _to_csv_number(_pick_export_float(profile.insulator_length_m if profile else None, _read_nested_value(circuit_geometry, "insulator_length_mm"))),
             _to_csv_number(_pick_export_float(profile.call_height_m if profile else None, _read_nested_value(circuit_geometry, "tower_height_m"))),
@@ -1345,8 +1425,9 @@ def _upsert_tower_profile_from_legacy_row(
     profile.arrester_a = _pick_optional_value(_normalize_str(row.get("A相是否安装避雷器")), profile.arrester_a)
     profile.arrester_b = _pick_optional_value(_normalize_str(row.get("B相是否安装避雷器")), profile.arrester_b)
     profile.arrester_c = _pick_optional_value(_normalize_str(row.get("C相是否安装避雷器")), profile.arrester_c)
-    profile.protection_angle_left_deg = _pick_optional_value(_parse_float(row.get("左避雷中距m")), profile.protection_angle_left_deg)
-    profile.protection_angle_right_deg = _pick_optional_value(_parse_float(row.get("右避雷中距m")), profile.protection_angle_right_deg)
+    # 注意：CSV 没有「保护角」列（1-63 列与 C# 表头严格对齐），「左/右避雷中距m」只
+    # 代表避雷线中距。此处曾把中距写进 protection_angle_*_deg，导致保护角被污染
+    # （且该值又是 ATP 中距缺失时的 x = h*tan(alpha) 兜底来源，会二次致错）。
     profile.shield_wire_height_m = _pick_optional_value(_parse_float(row.get("避雷线高度m")), profile.shield_wire_height_m)
     profile.insulator_length_m = _pick_optional_value(_parse_float(row.get("绝缘子串长度mm")), profile.insulator_length_m)
     profile.call_height_m = _pick_optional_value(_parse_float(row.get("杆塔呼高m")), profile.call_height_m)
@@ -1369,9 +1450,11 @@ def _upsert_tower_profile_from_legacy_row(
     _lw_left = _parse_float(row.get("左避雷中距m"))
     _lw_right = _parse_float(row.get("右避雷中距m"))
     _lw_height = _parse_float(row.get("避雷线高度m"))
-    if _lw_left is not None:
+    # 中距 0 / 负数无物理意义（ATP 地线横担支路长度 0 → KILL=78），按缺失处理，
+    # 避免旧导出的「0」再次污染计算链路。
+    if _lw_left is not None and _lw_left > 0:
         lightning_wire["left_mid_distance_m"] = _lw_left  # type: ignore[index]
-    if _lw_right is not None:
+    if _lw_right is not None and _lw_right > 0:
         lightning_wire["right_mid_distance_m"] = _lw_right  # type: ignore[index]
     if _lw_height is not None:
         lightning_wire["height_m"] = _lw_height  # type: ignore[index]
@@ -1413,9 +1496,16 @@ def _upsert_tower_circuits_from_legacy_row(
         )
         circuit_no = circuit_no_by_key[circuit_key]
         phase_sequence = _normalize_str(row.get(f"{circuit_key}回相序"))
-        if not has_value and not phase_sequence:
-            continue
         circuit = existing_by_no.get(circuit_no)
+        if not has_value:
+            # 无几何的行：不新建空回路（相序已写入 TowerProfile.phase_sequence_N 与线路级
+            # phase_sequence_json，新建无几何回路会让 1 回线路在导入/导出往返中放大成 4 回）；
+            # 对已有回路也只用它更新相序，绝不拿空值覆盖既有几何。
+            if circuit is None or not phase_sequence:
+                continue
+            circuit.phase_sequence = phase_sequence
+            circuit.update_date = now
+            continue
         if circuit is None:
             circuit = TowerCircuit(
                 tower_id=tower.id,

@@ -271,6 +271,159 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
         session.close()
 
 
+def test_export_line_towers_uses_lightning_wire_mid_distance_and_skips_absent_circuits() -> None:
+    """1 回线路导出：II/III/IV 相序留空，左/右避雷中距取 lightning_wire 真实值。
+
+    回归：曾把「左/右避雷中距m」按 protection_angle_*_deg 优先导出（值为 0），
+    再把历史遗留的 profile.phase_sequence_2/3/4（ABC）写进 II/III/IV 列，
+    导入后 1 回线路被放大成 4 回、避雷线中距变成 0 → ATP KILL=78。
+    """
+    session = _build_session()
+    try:
+        line = Line(
+            code="PL-FIX-001",
+            name="单回导出线路",
+            voltage_kv=115,
+            phase_sequence_json={"I": "ABC"},
+            status="enabled",
+        )
+        session.add(line)
+        session.flush()
+
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="ganzi")
+        session.add(tower)
+        session.flush()
+        session.add(
+            TowerCircuit(
+                tower_id=tower.id,
+                circuit_no=1,
+                phase_sequence="ABC",
+                spacing_upper_m=6.0,
+                spacing_middle_m=5.6,
+                spacing_lower_m=5.0,
+                height_upper_m=30.0,
+                height_middle_m=28.0,
+                height_lower_m=26.0,
+            )
+        )
+        # 历史污染：1 回线路的 profile 里 II/III/IV 相序都是 ABC，保护角是 0
+        session.add(
+            TowerProfile(
+                tower_id=tower.id,
+                phase_sequence_1="ABC",
+                phase_sequence_2="ABC",
+                phase_sequence_3="ABC",
+                phase_sequence_4="ABC",
+                protection_angle_left_deg=0.0,
+                protection_angle_right_deg=0.0,
+                shield_wire_height_m=20.0,
+                extra_profile_json={"lightning_wire": {"left_mid_distance_m": 5.6, "right_mid_distance_m": 5.6}},
+            )
+        )
+        session.commit()
+
+        _, content = line_service.export_line_towers_to_csv(session, line=line)
+        row = next(iter(csv.DictReader(io.StringIO(content.decode("utf-8")))))
+
+        assert row["I回相序"] == "ABC"
+        assert row["II回相序"] == ""
+        assert row["III回相序"] == ""
+        assert row["IV回相序"] == ""
+        assert row["左避雷中距m"] == "5.6"
+        assert row["右避雷中距m"] == "5.6"
+    finally:
+        session.close()
+
+
+def test_import_legacy_row_drops_zero_mid_distance_and_keeps_protection_angle() -> None:
+    """导入：中距 0 按缺失处理，且不得写进 protection_angle_*_deg，也不新建空回路。"""
+    session = _build_session()
+    try:
+        line = Line(code="PL-FIX-002", name="单回导入线路", voltage_kv=115, status="enabled")
+        session.add(line)
+        session.flush()
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="ganzi")
+        session.add(tower)
+        session.flush()
+        session.add(
+            TowerCircuit(
+                tower_id=tower.id,
+                circuit_no=1,
+                phase_sequence="ABC",
+                spacing_upper_m=6.0,
+                spacing_middle_m=5.6,
+                spacing_lower_m=5.0,
+                height_upper_m=30.0,
+                height_middle_m=28.0,
+                height_lower_m=26.0,
+            )
+        )
+        session.add(TowerProfile(tower_id=tower.id, protection_angle_left_deg=0.0, protection_angle_right_deg=0.0))
+        session.commit()
+
+        import_row = {
+            "I回相序": "ABC",
+            "II回相序": "ABC",
+            "III回相序": "ABC",
+            "IV回相序": "ABC",
+            "左避雷中距m": "0",
+            "右避雷中距m": "0",
+            "避雷线高度m": "20",
+        }
+        line_service._upsert_tower_profile_from_legacy_row(
+            session, tower=tower, row=import_row, actor_user_id="tester"
+        )
+        line_service._upsert_tower_circuits_from_legacy_row(
+            session, tower=tower, row=import_row, actor_user_id="tester"
+        )
+        session.commit()
+
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        lightning_wire = (profile.extra_profile_json or {}).get("lightning_wire") or {}
+        circuits = session.execute(select(TowerCircuit).where(TowerCircuit.tower_id == tower.id)).scalars().all()
+
+        assert "left_mid_distance_m" not in lightning_wire
+        assert "right_mid_distance_m" not in lightning_wire
+        assert profile.protection_angle_left_deg == 0.0
+        assert profile.protection_angle_right_deg == 0.0
+        # 空回路不新建、已有回路的几何不被空值覆盖
+        assert sorted(circuit.circuit_no for circuit in circuits) == [1]
+        assert circuits[0].spacing_middle_m == 5.6
+    finally:
+        session.close()
+
+
+def test_import_legacy_row_writes_real_mid_distance_to_lightning_wire() -> None:
+    session = _build_session()
+    try:
+        line = Line(code="PL-FIX-003", name="中距导入线路", voltage_kv=115, status="enabled")
+        session.add(line)
+        session.flush()
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="ganzi")
+        session.add(tower)
+        session.flush()
+        session.add(TowerProfile(tower_id=tower.id, protection_angle_left_deg=0.0))
+        session.commit()
+
+        line_service._upsert_tower_profile_from_legacy_row(
+            session,
+            tower=tower,
+            row={"左避雷中距m": "5.6", "右避雷中距m": "5.7"},
+            actor_user_id="tester",
+        )
+        session.commit()
+
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        lightning_wire = (profile.extra_profile_json or {}).get("lightning_wire") or {}
+        assert lightning_wire.get("left_mid_distance_m") == 5.6
+        assert lightning_wire.get("right_mid_distance_m") == 5.7
+        # 保护角不被中距污染
+        assert profile.protection_angle_left_deg == 0.0
+    finally:
+        session.close()
+
+
+
 def test_list_lines_returns_estimated_length_from_tower_coordinates(monkeypatch) -> None:
     session = _build_session()
     try:
