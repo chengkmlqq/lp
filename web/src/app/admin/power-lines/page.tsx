@@ -50,6 +50,7 @@ import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
+import { useDimensionOptions } from "@/hooks/use-dimension-options";
 import { readApiError } from "@/lib/api";
 import { Alert } from "antd";
 import type { LineListResponse, LineSummary } from "@/types/auth";
@@ -59,49 +60,6 @@ type LineFormValues = {
   voltage_level: string | null;
 };
 
-const LINE_VOLTAGE_OPTIONS = [
-  { value: "dc_500", label: "直流500kV", voltage_kv: 500 },
-  { value: "dc_800", label: "直流800kV", voltage_kv: 800 },
-  { value: "dc_1000", label: "直流1000kV", voltage_kv: 1000 },
-  { value: "ac_35", label: "交流35kV", voltage_kv: 35 },
-  { value: "ac_66", label: "交流66kV", voltage_kv: 66 },
-  { value: "ac_110", label: "交流110kV", voltage_kv: 110 },
-  { value: "ac_220", label: "交流220kV", voltage_kv: 220 },
-  { value: "ac_330", label: "交流330kV", voltage_kv: 330 },
-  { value: "ac_500", label: "交流500kV", voltage_kv: 500 },
-  { value: "ac_750", label: "交流750kV", voltage_kv: 750 },
-  { value: "ac_800", label: "交流800kV", voltage_kv: 800 },
-  { value: "ac_1000", label: "交流1000kV", voltage_kv: 1000 },
-  { value: "ac_110_x4", label: "交流110kV|交流110kV|交流110kV|交流110kV", voltage_kv: 110 },
-  { value: "ac_220_x4", label: "交流220kV|交流220kV|交流220kV|交流220kV", voltage_kv: 220 },
-] as const;
-const LINE_VOLTAGE_VALUE_TO_KV: Record<(typeof LINE_VOLTAGE_OPTIONS)[number]["value"], number> = {
-  dc_500: 500,
-  dc_800: 800,
-  dc_1000: 1000,
-  ac_35: 35,
-  ac_66: 66,
-  ac_110: 110,
-  ac_220: 220,
-  ac_330: 330,
-  ac_500: 500,
-  ac_750: 750,
-  ac_800: 800,
-  ac_1000: 1000,
-  ac_110_x4: 110,
-  ac_220_x4: 220,
-};
-const LINE_VOLTAGE_KV_TO_DEFAULT_OPTION: Partial<Record<number, (typeof LINE_VOLTAGE_OPTIONS)[number]["value"]>> = {
-  35: "ac_35",
-  66: "ac_66",
-  110: "ac_110",
-  220: "ac_220",
-  330: "ac_330",
-  500: "dc_500",
-  750: "ac_750",
-  800: "dc_800",
-  1000: "dc_1000",
-};
 const EMPTY_LINE_FORM: LineFormValues = {
   name: "",
   voltage_level: null,
@@ -132,13 +90,6 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.format("YYYY-MM-DD HH:mm:ss");
 }
 
-function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["voltage_level"] {
-  if (voltageKv === null) {
-    return null;
-  }
-  return LINE_VOLTAGE_KV_TO_DEFAULT_OPTION[voltageKv] ?? null;
-}
-
 export default function AdminPowerLinesPage() {
   const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
@@ -161,6 +112,26 @@ export default function AdminPowerLinesPage() {
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [tableScrollY, setTableScrollY] = useState(POWER_LINES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  // 电压等级选项来自维度管理的 voltage_level 类型，弹窗打开时才拉取字典（与 ATP 模型页一致）。
+  // 维度接口不可用或类型未 seed 时 optionMap 为空，Select 走空态提示，不再回退到硬编码常量。
+  const { optionMap: dimensionOptionMap, isLoading: dimensionOptionsLoading } = useDimensionOptions(
+    { voltage_level: "voltage_level" },
+    { enabled: lineModalOpen },
+  );
+  const voltageKvOptions = dimensionOptionMap.voltage_level;
+  const editingVoltageKv = editingLine?.voltage_kv;
+  const editingVoltageValue = editingVoltageKv != null ? String(editingVoltageKv) : null;
+  const voltageOptions = useMemo(() => {
+    const options = voltageKvOptions.map((item) => ({ value: item.value, label: item.label }));
+    // 兼容历史数据：维度表中不存在的非标 kV 追加一次性选项，保证编辑时原值可回显且不被清空；
+    // 保存仍按 Number(value) 提交，数值语义不变。
+    if (editingVoltageValue !== null && !voltageKvOptions.some((item) => item.value === editingVoltageValue)) {
+      options.unshift({ value: editingVoltageValue, label: `${editingVoltageValue} kV（历史值）` });
+    }
+    return options;
+  }, [voltageKvOptions, editingVoltageValue]);
+
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   // 按钮级：manage 隐含全部细码（后端同样展开，老角色免重配）
   const canLineManage = hasPermission("line.manage");
@@ -305,7 +276,8 @@ export default function AdminPowerLinesPage() {
       }
       const payload = {
         name: values.name.trim(),
-        voltage_kv: values.voltage_level ? LINE_VOLTAGE_VALUE_TO_KV[values.voltage_level] : null,
+        // 维度项 code 为 kV 数值字符串（如 "110"），直接 Number 转换，提交语义不变
+        voltage_kv: values.voltage_level ? Number(values.voltage_level) : null,
       };
       if (editingLine) {
         const response = await fetchWithAuth(`/api/v1/lines/${editingLine.id}`, {
@@ -437,7 +409,8 @@ export default function AdminPowerLinesPage() {
     setEditingLine(line);
     lineForm.setFieldsValue({
       name: line.name,
-      voltage_level: resolveVoltageOptionFromKv(line.voltage_kv),
+      // voltage_kv 即维度项 code（kV 数值字符串），直接 String 映射回下拉 value
+      voltage_level: line.voltage_kv != null ? String(line.voltage_kv) : null,
     });
     setLineModalOpen(true);
   };
@@ -658,9 +631,16 @@ export default function AdminPowerLinesPage() {
             <Select
               showSearch
               placeholder={t("请选择电压等级")}
-              options={[...LINE_VOLTAGE_OPTIONS].map((item) => ({ value: item.value, label: t(item.label) }))}
+              options={voltageOptions}
               filterOption={(input, option) =>
                 String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+              notFoundContent={
+                dimensionOptionsLoading
+                  ? <Spin size="small" />
+                  : voltageOptions.length === 0
+                    ? t("暂无可用电压等级，请在维度管理中配置")
+                    : undefined
+              }
             />
           </Form.Item>
         </Form>
