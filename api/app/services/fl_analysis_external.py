@@ -2030,10 +2030,6 @@ def execute_external_waveform_tower_analysis(
         subdir=str(execution_options.get("_run_subdir") or ""),
     )
     input_path = run_dir / resolved_job.entry_file
-    # 资产 entry_file 可能带模型目录前缀（如 ATP115-ganzi-fanji-noM_v1/work.atp），
-    # _prepare_run_directory 只建到 run_dir，需为 entry_file 的父目录补建，
-    # 否则 write_text 报 FileNotFoundError（115/230 资产实测）。
-    input_path.parent.mkdir(parents=True, exist_ok=True)
     input_path.write_text(rendered_text, encoding="gbk", errors="replace")
     logger.info("[ATP] 输入文件已写入：%s", input_path)
     # 诊断开关（默认关）：ATP_DEBUG_DUMP=1 时把渲染后的 work.atp 与覆写说明落到
