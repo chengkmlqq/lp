@@ -34,7 +34,7 @@ function toWebSocketUrl(path: string): string {
     if (typeof window !== "undefined") {
       url = new URL(path, window.location.origin);
     } else {
-      url = new URL(path, "http://127.0.0.1:8000");
+      url = new URL(path, window.location.origin);
     }
   }
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

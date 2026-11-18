@@ -15,7 +15,7 @@ export function getApiBaseUrl(): string {
     process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 
   if (typeof window === "undefined") {
-    return trimTrailingSlash(configured || "http://127.0.0.1:8000");
+    return trimTrailingSlash(configured);
   }
 
   let parsed: URL;
@@ -25,7 +25,7 @@ export function getApiBaseUrl(): string {
     if (typeof window !== "undefined") {
       return trimTrailingSlash(window.location.origin);
     }
-    return "http://127.0.0.1:8000";
+    return "";
   }
 
   const browserHost = window.location.hostname;
