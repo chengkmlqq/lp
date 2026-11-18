@@ -23,7 +23,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 PARAM_KEY = "app.language"
-DEFAULT_LANG = "en"
+DEFAULT_LANG = "zh"
 VALID_LANGS = frozenset({"zh", "en"})
 # 参数变更跨进程可见的兜底窗口（秒）；同进程由 system_params.changed 立即失效。
 CACHE_TTL_SECONDS = 30.0
