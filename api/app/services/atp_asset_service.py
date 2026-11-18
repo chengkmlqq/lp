@@ -829,6 +829,18 @@ def _write_archive_to_storage(
             # 2026-11-12：包内夹带的 .pch（旧版 LCC 中间产物 / 新版几何载体）一律
             # 静默丢弃，不写入资产目录；新版（$INSERT）模型已在预检阶段按形态拒收。
             members = [m for m in members if not m[0].lower().endswith(_IGNORED_ATP_MODEL_EXTENSIONS)]
+            # 2026-11-18：部分 ATP 模型 zip 自带统一顶层目录（如 ATP115-ganzi-fanji-noM_v1/
+            # work.atp）。若所有成员都在同一顶层目录下，且剥掉后仍有 .atp 文件，
+            # 则剥掉该层写入，使 work.atp/.dat 直接落在 storage_root 下，与计算侧
+            # （entry_file / 几何重生成在 root 找 .dat）的路径约定一致。
+            # 仅当"所有成员共享同一顶层"时才剥，避免误伤平铺包（work.atp 直接在根）。
+            if members:
+                first_segments = [path.split("/", 1) for path, _ in members]
+                tops = {seg[0] for seg in first_segments if len(seg) == 2 and seg[0]}
+                if len(tops) == 1:
+                    stripped = [(seg[1], info) for seg, (_, info) in zip(first_segments, members) if len(seg) == 2]
+                    if len(stripped) == len(members) and any(path.lower().endswith(".atp") for path, _ in stripped):
+                        members = stripped
             _validate_atp_model_members([path for path, _ in members])
             # 内容级预检（形态判定 + 参数段可解析性）已由 upload_asset_archive
             # 在写盘前完成，此处只做清单校验，避免同一份 zip 解析两遍。
