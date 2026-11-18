@@ -54,6 +54,26 @@ class LineContractTest(unittest.TestCase):
         self.assertIn("list_lines(db,", source)
         self.assertIn("bbox=parsed_bbox", source)
 
+    def test_line_list_endpoint_accepts_voltage_kv_filter(self) -> None:
+        """线路列表接口新增可选 voltage_kv 查询参数并透传到 list_lines。"""
+        module = _load_module(API_FILE)
+        function = _function_node(module, "get_line_list")
+        arg_names = [arg.arg for arg in function.args.args]
+
+        self.assertIn("voltage_kv", arg_names)
+        self.assertIn("voltage_kv=voltage_kv", ast.unparse(function))
+
+    def test_line_service_list_lines_filters_by_voltage_kv(self) -> None:
+        """list_lines 按 voltage_kv 同时过滤 list 与 total 语句。"""
+        module = _load_module(SERVICE_FILE)
+        function = _function_node(module, "list_lines")
+        arg_names = [arg.arg for arg in function.args.args] + [arg.arg for arg in function.args.kwonlyargs]
+
+        self.assertIn("voltage_kv", arg_names)
+        source = ast.unparse(function)
+        self.assertIn("Line.voltage_kv == voltage_kv", source)
+        self.assertEqual(source.count("Line.voltage_kv == voltage_kv"), 2)
+
     def test_line_service_drops_removed_fields_from_public_contract(self) -> None:
         module = _load_module(SERVICE_FILE)
         serialize_line = _function_node(module, "serialize_line")

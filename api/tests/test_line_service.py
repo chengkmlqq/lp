@@ -584,3 +584,55 @@ def test_list_lines_pagination_keyword_keeps_total_scoped(monkeypatch) -> None:
         assert len(response_all.items) == 4
     finally:
         session.close()
+
+
+def test_list_lines_voltage_kv_filter_combines_with_keyword_and_pagination(monkeypatch) -> None:
+    """电压等级过滤：精确匹配 voltage_kv，与 keyword/分页叠加且 total 为筛选后全量。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        from datetime import datetime, timezone
+
+        fixed_date = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        rows = [
+            ("PL-VOL-001", "目标110线路一", 110),
+            ("PL-VOL-002", "目标110线路二", 110),
+            ("PL-VOL-003", "目标220线路", 220),
+            ("PL-VOL-004", "无关110线路", 110),
+            ("PL-VOL-005", "目标500线路", 500),
+        ]
+        for code, name, voltage_kv in rows:
+            session.add(
+                Line(
+                    code=code,
+                    name=name,
+                    voltage_kv=voltage_kv,
+                    status="enabled",
+                    create_date=fixed_date,
+                    update_date=fixed_date,
+                )
+            )
+        session.commit()
+
+        # 仅按电压等级：total 与 items 都只含 110kV
+        only_voltage = line_service.list_lines(session, keyword=None, voltage_kv=110)
+        assert only_voltage.total == 3
+        assert {item.code for item in only_voltage.items} == {"PL-VOL-001", "PL-VOL-002", "PL-VOL-004"}
+
+        # 电压等级 + 关键词：条件叠加，total 为筛选后全量
+        combined = line_service.list_lines(session, keyword="目标", voltage_kv=110)
+        assert combined.total == 2
+        assert {item.code for item in combined.items} == {"PL-VOL-001", "PL-VOL-002"}
+
+        # 叠加分页：items 截断但 total 保持筛选后全量
+        page = line_service.list_lines(session, keyword="目标", voltage_kv=110, limit=1, offset=0)
+        assert page.total == 2
+        assert len(page.items) == 1
+        assert page.items[0].code == "PL-VOL-001"
+
+        # 未指定电压等级时不过滤（缺省向后兼容）
+        without_filter = line_service.list_lines(session, keyword=None)
+        assert without_filter.total == 5
+    finally:
+        session.close()

@@ -43,6 +43,7 @@ router = APIRouter(prefix="/lines", tags=["lines"], dependencies=[Depends(requir
 @router.get("", response_model=LineListResponse)
 def get_line_list(
     keyword: str | None = Query(default=None),
+    voltage_kv: int | None = Query(default=None),
     bbox: str | None = Query(default=None),
     bbox_mode: str | None = Query(default=None, pattern="^(filter|mark)$"),
     limit: int | None = Query(default=None, ge=1, le=1000),
@@ -54,6 +55,7 @@ def get_line_list(
     return list_lines(
         db,
         keyword=keyword,
+        voltage_kv=voltage_kv,
         bbox=parsed_bbox,
         bbox_mode=bbox_mode or "filter",
         limit=limit,

@@ -98,6 +98,10 @@ export default function AdminPowerLinesPage() {
   const [lineForm] = Form.useForm<LineFormValues>();
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
+  // 筛选栏电压等级：Input 为下拉当前选中值（维度 code，即 kV 数值字符串），
+  // Filter 为点「查询」后实际生效的过滤值，未选择时为 null（不过滤）
+  const [voltageFilterInput, setVoltageFilterInput] = useState<string | undefined>(undefined);
+  const [voltageFilter, setVoltageFilter] = useState<number | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [lineModalOpen, setLineModalOpen] = useState(false);
@@ -113,11 +117,12 @@ export default function AdminPowerLinesPage() {
   const [tableScrollY, setTableScrollY] = useState(POWER_LINES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  // 电压等级选项来自维度管理的 voltage_level 类型，弹窗打开时才拉取字典（与 ATP 模型页一致）。
+  // 电压等级选项来自维度管理的 voltage_level 类型。筛选栏与新建/编辑弹窗共用同一份选项，
+  // 因此页面可见即拉取（React Query 按 queryKey 去重，弹窗开关不会触发重复请求）。
   // 维度接口不可用或类型未 seed 时 optionMap 为空，Select 走空态提示，不再回退到硬编码常量。
   const { optionMap: dimensionOptionMap, isLoading: dimensionOptionsLoading } = useDimensionOptions(
     { voltage_level: "voltage_level" },
-    { enabled: lineModalOpen },
+    { enabled: true },
   );
   const voltageKvOptions = dimensionOptionMap.voltage_level;
   const editingVoltageKv = editingLine?.voltage_kv;
@@ -192,9 +197,12 @@ export default function AdminPowerLinesPage() {
     if (keyword.trim()) {
       params.set("keyword", keyword.trim());
     }
+    if (voltageFilter != null) {
+      params.set("voltage_kv", String(voltageFilter));
+    }
     const query = params.toString();
     return `/api/v1/lines${query ? `?${query}` : ""}`;
-  }, [keyword, paginationCurrent, paginationPageSize]);
+  }, [keyword, voltageFilter, paginationCurrent, paginationPageSize]);
   const linesQuery = useQuery({
     queryKey: [lineListPath, searchNonce],
     enabled: !!user && canRead,
@@ -266,6 +274,7 @@ export default function AdminPowerLinesPage() {
     // 每次点击「查询」都触发一次接口请求（searchNonce 变化 → 新 queryKey）；
     // 连点防堆叠由查询按钮 loading 承担：在途期间按钮禁用，结果返回后才恢复可点
     setKeyword(keywordInput);
+    setVoltageFilter(voltageFilterInput ? Number(voltageFilterInput) : null);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setSearchNonce((n) => n + 1);
   };
@@ -473,6 +482,19 @@ export default function AdminPowerLinesPage() {
                         onChange={(event) => setKeywordInput(event.target.value)}
                         placeholder={t("按线路名称筛选")}
                         onPressEnter={handleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("电压等级")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Select<string | undefined>
+                        value={voltageFilterInput}
+                        allowClear
+                        showSearch
+                        placeholder={t("请选择电压等级")}
+                        options={voltageOptions}
+                        onChange={(value) => setVoltageFilterInput(value)}
+                        filterOption={(input, option) =>
+                          String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+                        notFoundContent={dimensionOptionsLoading ? <Spin size="small" /> : undefined}
                       />
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>

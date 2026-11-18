@@ -202,6 +202,7 @@ def list_lines(
     db: Session,
     *,
     keyword: str | None,
+    voltage_kv: int | None = None,
     bbox: tuple[float, float, float, float] | None = None,
     bbox_mode: str = "filter",
     limit: int | None = None,
@@ -224,6 +225,11 @@ def list_lines(
         predicate = or_(Line.code.ilike(like), Line.name.ilike(like))
         stmt = stmt.where(predicate)
         total_stmt = total_stmt.where(predicate)
+
+    # 电压等级（kV）精确匹配，与 keyword / bbox 过滤可叠加；同时作用于 total 保证分页总数正确
+    if voltage_kv is not None:
+        stmt = stmt.where(Line.voltage_kv == voltage_kv)
+        total_stmt = total_stmt.where(Line.voltage_kv == voltage_kv)
 
     # bbox 过滤：仅保留杆塔经纬度范围与给定 bbox（min_lat,min_lon,max_lat,max_lon）
     # 有矩形重叠的线路（包含端点，max(min) <= min(max)）。与绘图任务的 bbox 裁剪判定一致。
