@@ -3,6 +3,8 @@ services:
     image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest
     container_name: lp-api
     environment:
+      # 系统语言（zh / en）：后端产物与前端默认界面语言；api 与 worker 必须一致
+      APP_LANGUAGE: ${APP_LANGUAGE:-zh}
       API_HOST: 0.0.0.0
       API_PORT: 8000
       DB_HOST: db
@@ -64,6 +66,8 @@ services:
       - --concurrency=2
       - --queues=default,celery
     environment:
+      # 系统语言（zh / en）：后端产物与前端默认界面语言；api 与 worker 必须一致
+      APP_LANGUAGE: ${APP_LANGUAGE:-zh}
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: lp

@@ -1,20 +1,54 @@
-"""LP-22 后端语言解析单测：参数取值 / 非法回落 / 任务级优先 / 缓存 / 失效 / 任务快照。"""
+"""LP-34 后端语言解析单测：APP_LANGUAGE 配置 / 别名归一化 / 任务级优先 / 存量参数清理。"""
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
+from app.core.config import Settings
 from app.services import backend_lang
 
 
-@pytest.fixture(autouse=True)
-def _reset_cache():
-    backend_lang.invalidate_default_lang_cache()
-    yield
-    backend_lang.invalidate_default_lang_cache()
+@pytest.fixture
+def app_language(monkeypatch):
+    """把 ``APP_LANGUAGE``（Settings 读取结果）打桩到指定值。"""
+
+    def _set(value: str) -> None:
+        monkeypatch.setattr(
+            backend_lang,
+            "get_settings",
+            lambda: SimpleNamespace(app_language=value),
+        )
+
+    return _set
+
+
+class TestSettingsAppLanguage:
+    def test_explicit_en(self):
+        assert Settings(_env_file=None, app_language="en").app_language == "en"
+
+    def test_unset_defaults_to_zh(self):
+        assert Settings(_env_file=None).app_language == "zh"
+
+    def test_aliases_are_normalized(self):
+        assert Settings(_env_file=None, app_language="zh-CN").app_language == "zh"
+        assert Settings(_env_file=None, app_language="cn").app_language == "zh"
+        assert Settings(_env_file=None, app_language="chinese").app_language == "zh"
+        assert Settings(_env_file=None, app_language="en-US").app_language == "en"
+        assert Settings(_env_file=None, app_language="english").app_language == "en"
+
+    def test_invalid_value_falls_back_to_zh_with_warning(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            settings = Settings(_env_file=None, app_language="fr")
+        assert settings.app_language == "zh"
+        assert "APP_LANGUAGE" in caplog.text
+
+    def test_env_var_is_picked_up(self, monkeypatch):
+        monkeypatch.setenv("APP_LANGUAGE", "en")
+        assert Settings(_env_file=None).app_language == "en"
 
 
 class TestNormalizeLang:
@@ -33,78 +67,40 @@ class TestNormalizeLang:
             assert backend_lang.normalize_lang(value) is None
 
 
-def _patch_param(value):
-    """把 app.language 的读取打桩到指定明文值。"""
-    session = MagicMock()
-    return (
-        patch("app.core.database.SessionLocal", return_value=session),
-        patch("app.services.system_param_service.get_system_param_decrypted", return_value=value),
-    )
-
-
 class TestDefaultLang:
-    def test_en_param(self):
-        sl, gspd = _patch_param("en")
-        with sl, gspd:
-            assert backend_lang.get_default_lang() == "en"
+    def test_en_config(self, app_language):
+        app_language("en")
+        assert backend_lang.get_default_lang() == "en"
 
-    def test_zh_param(self):
-        sl, gspd = _patch_param("zh")
-        with sl, gspd:
-            assert backend_lang.get_default_lang() == "zh"
+    def test_zh_config(self, app_language):
+        app_language("zh")
+        assert backend_lang.get_default_lang() == "zh"
 
-    def test_invalid_param_falls_back_to_zh(self):
-        sl, gspd = _patch_param("fr")
-        with sl, gspd:
-            assert backend_lang.get_default_lang() == "zh"
-
-    def test_missing_or_disabled_param_falls_back_to_zh(self):
-        sl, gspd = _patch_param(None)
-        with sl, gspd:
-            assert backend_lang.get_default_lang() == "zh"
-
-    def test_db_error_falls_back_to_zh(self):
-        with patch("app.core.database.SessionLocal", side_effect=RuntimeError("db down")):
-            assert backend_lang.get_default_lang() == "zh"
-
-    def test_cache_reads_db_only_once(self):
-        sl, gspd = _patch_param("en")
-        with sl, gspd as mocked:
+    def test_never_reads_db(self, app_language):
+        """配置驱动：解析默认语言不应触碰数据库。"""
+        app_language("en")
+        with patch("app.core.database.SessionLocal", side_effect=AssertionError("db accessed")):
             assert backend_lang.get_default_lang() == "en"
-            assert backend_lang.get_default_lang() == "en"
-            assert backend_lang.get_default_lang() == "en"
-            assert mocked.call_count == 1
-
-    def test_invalidation_forces_reread(self):
-        sl, gspd = _patch_param("en")
-        with sl, gspd as mocked:
-            assert backend_lang.get_default_lang() == "en"
-            backend_lang.invalidate_default_lang_cache()
-            assert backend_lang.get_default_lang() == "en"
-            assert mocked.call_count == 2
 
 
 class TestResolveBackendLang:
-    def test_task_lang_takes_priority_and_skips_global_read(self):
-        sl, gspd = _patch_param("zh")
-        with sl, gspd as mocked:
-            assert backend_lang.resolve_backend_lang("en") == "en"
-            assert mocked.call_count == 0
+    def test_task_lang_takes_priority(self, app_language):
+        app_language("zh")
+        assert backend_lang.resolve_backend_lang("en") == "en"
 
-    def test_invalid_task_lang_falls_back_to_global(self):
-        sl, gspd = _patch_param("en")
-        with sl, gspd:
-            assert backend_lang.resolve_backend_lang("fr") == "en"
-            assert backend_lang.resolve_backend_lang(None) == "en"
+    def test_invalid_task_lang_falls_back_to_config(self, app_language):
+        app_language("en")
+        assert backend_lang.resolve_backend_lang("fr") == "en"
+        assert backend_lang.resolve_backend_lang(None) == "en"
 
-    def test_no_task_lang_uses_global(self):
-        sl, gspd = _patch_param("zh")
-        with sl, gspd:
-            assert backend_lang.resolve_backend_lang() == "zh"
+    def test_no_task_lang_uses_config(self, app_language):
+        app_language("zh")
+        assert backend_lang.resolve_backend_lang() == "zh"
 
 
 class TestRequestLangContext:
-    def test_bind_and_reset(self):
+    def test_bind_and_reset(self, app_language):
+        app_language("zh")
         token = backend_lang.bind_request_lang("en")
         try:
             assert backend_lang.get_request_lang() == "en"
@@ -146,35 +142,80 @@ class TestMiddleware:
         asyncio.run(mw({"type": "websocket", "headers": []}, None, None))
 
 
-class TestEnsureAppLanguageParam:
-    def test_creates_and_is_idempotent(self):
-        from sqlalchemy import create_engine, select
-        from sqlalchemy.orm import sessionmaker
-        from sqlalchemy.pool import StaticPool
+def _sqlite_session_factory():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
 
-        from app.core.database import Base
+    from app.core.database import Base
+
+    engine = create_engine(
+        "sqlite+pysqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(bind=engine)
+    return engine, sessionmaker(bind=engine)
+
+
+class TestPurgeLegacyAppLanguageParam:
+    def test_removes_existing_row(self):
+        from sqlalchemy import select
+
+        from app.core.database import Base, purge_legacy_app_language_param
         from app.models.system_param import SystemParam
 
-        engine = create_engine(
-            "sqlite+pysqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-        )
-        Base.metadata.create_all(bind=engine)
-        Session = sessionmaker(bind=engine)
+        engine, Session = _sqlite_session_factory()
         try:
             with Session() as db:
-                assert backend_lang.ensure_app_language_param(db) is True
+                db.add(
+                    SystemParam(
+                        param_key="app.language",
+                        param_name="系统语言",
+                        param_value="en",
+                        is_encrypted=False,
+                        status="enabled",
+                    )
+                )
+                db.add(
+                    SystemParam(
+                        param_key="app.other",
+                        param_name="其它参数",
+                        param_value="1",
+                        is_encrypted=False,
+                        status="enabled",
+                    )
+                )
                 db.commit()
+
             with Session() as db:
-                assert backend_lang.ensure_app_language_param(db) is False
-                row = db.execute(
-                    select(SystemParam).where(SystemParam.param_key == "app.language")
-                ).scalar_one()
-                assert row.param_value == "zh"
-                assert row.status == "enabled"
-                assert row.is_encrypted is False
+                assert purge_legacy_app_language_param(db) is True
+                db.commit()
+
+            with Session() as db:
+                keys = {row.param_key for row in db.execute(select(SystemParam)).scalars()}
+                assert "app.language" not in keys
+                assert "app.other" in keys
         finally:
             Base.metadata.drop_all(bind=engine)
             engine.dispose()
+
+    def test_no_row_is_a_noop(self):
+        from app.core.database import Base, purge_legacy_app_language_param
+
+        engine, Session = _sqlite_session_factory()
+        try:
+            with Session() as db:
+                assert purge_legacy_app_language_param(db) is False
+        finally:
+            Base.metadata.drop_all(bind=engine)
+            engine.dispose()
+
+
+class TestBootstrapEndpoint:
+    def test_public_endpoint_returns_configured_lang(self, monkeypatch):
+        from app.api.v1 import system as system_api
+
+        monkeypatch.setattr(system_api, "get_settings", lambda: SimpleNamespace(app_language="en"))
+        assert system_api.get_bootstrap().default_lang == "en"
 
 
 class TestTaskLangSnapshot:

@@ -37,6 +37,8 @@ services:
     env_file:
       - .env
     environment:
+      # 系统语言（zh / en）：后端产物与前端默认界面语言；api 与 worker 必须一致
+      APP_LANGUAGE: ${APP_LANGUAGE:-zh}
       TZ: Asia/Shanghai
 
       # ── 数据库（走隧道）。不设 DATABASE_URL，交给应用按 DB_* 组装，

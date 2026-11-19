@@ -1423,15 +1423,29 @@ def init_db() -> None:
     _auto_seed_baseline()
 
 
-def _auto_seed_baseline() -> None:
-    """启动时自动播种基线数据（维度枚举 + 参数分类）。幂等、守卫异常，不阻断服务启动。
+def purge_legacy_app_language_param(db) -> bool:  # noqa: ANN001
+    """删除历史遗留的 ``app.language`` 系统参数行（LP-34 已迁到 ``APP_LANGUAGE``）。
 
-    多 uvicorn worker 并发启动时各自跑 lifespan，会同时读到"缺失"而各插一条
-    （2026-11-09 线上 voltage_level 115/230 双写重复的根因）。用 MySQL advisory
-    lock 抢进程级互斥：抢到的 worker 执行播种，其余直接跳过（幂等，缺失由下次
-    启动或 seed-defaults 端点兜底）。
+    幂等：行不存在返回 False。表缺失/库未就绪等异常由调用方守卫，不阻断启动。
+    不用数据库迁移写死这一步——多环境手动迁移容易漏，启动清理天然幂等。
     """
-    from ..services.backend_lang import ensure_app_language_param  # noqa: PLC0415
+    from sqlalchemy import delete  # noqa: PLC0415
+
+    from ..models.system_param import SystemParam  # noqa: PLC0415
+
+    result = db.execute(delete(SystemParam).where(SystemParam.param_key == "app.language"))
+    return bool(result.rowcount)
+
+
+def _auto_seed_baseline() -> None:
+    """启动时自动播种基线数据（维度枚举 + 参数分类）并清理废弃参数。
+
+    幂等、守卫异常，不阻断服务启动。多 uvicorn worker 并发启动时各自跑
+    lifespan，会同时读到"缺失"而各插一条（2026-11-09 线上 voltage_level
+    115/230 双写重复的根因）。用 MySQL advisory lock 抢进程级互斥：抢到的
+    worker 执行播种，其余直接跳过（幂等，缺失由下次启动或 seed-defaults 端点兜底）。
+    legacy ``app.language`` 参数行的删除也放在同一把锁内。
+    """
     from ..services.dimension_seed import seed_dimensions  # noqa: PLC0415
     from ..services.param_category_seed import seed_param_categories  # noqa: PLC0415
 
@@ -1452,9 +1466,19 @@ def _auto_seed_baseline() -> None:
                 return
             try:
                 seed_dimensions(db, force=False, operator="system")
-                ensure_app_language_param(db)
                 seed_param_categories(db, force=False, operator="system")
                 db.commit()
+                # 存量 app.language 行清理：表缺失/库未就绪时静默跳过，不阻断启动。
+                try:
+                    if purge_legacy_app_language_param(db):
+                        db.commit()
+                        logger.info(
+                            "removed legacy system param 'app.language'; "
+                            "language is now configured by APP_LANGUAGE and requires a restart"
+                        )
+                except Exception:  # noqa: BLE001
+                    db.rollback()
+                    logger.debug("purge legacy app.language param skipped", exc_info=True)
             finally:
                 if lock_acquired:
                     try:

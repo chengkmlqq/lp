@@ -1,11 +1,40 @@
 from functools import lru_cache
+import logging
 from pathlib import Path
 import re
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import quote_plus
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+VALID_LANGS: tuple[str, ...] = ("zh", "en")
+DEFAULT_APP_LANGUAGE = "zh"
+
+# 常见语言写法 → 规范值（LP-34：APP_LANGUAGE 与 X-Lang 共用同一套别名）。
+_LANG_ALIASES: dict[str, str] = {
+    "zh-cn": "zh",
+    "zh_cn": "zh",
+    "zh-hans": "zh",
+    "cn": "zh",
+    "chinese": "zh",
+    "en-us": "en",
+    "en_us": "en",
+    "en-gb": "en",
+    "english": "en",
+}
+
+
+def normalize_lang(value: Any) -> str | None:
+    """把任意输入规整成 ``zh`` / ``en``；无法识别返回 None。"""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in VALID_LANGS:
+        return normalized
+    return _LANG_ALIASES.get(normalized)
 
 
 class Settings(BaseSettings):
@@ -15,6 +44,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     api_cors_origin_regex: str | None = None
+    # 系统语言（LP-34）：决定后端产物（任务日志 / WS 阶段文案 / Word 报告）与
+    # 前端首次访问的默认界面语言。进程启动时读取一次，改配置需重启 api 与 worker。
+    app_language: Literal["zh", "en"] = DEFAULT_APP_LANGUAGE
 
     database_url: str | None = None
     db_dialect: Literal["postgresql", "mysql"] = "postgresql"
@@ -155,6 +187,23 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @field_validator("app_language", mode="before")
+    @classmethod
+    def normalize_app_language(cls, value: Any) -> str:
+        """别名归一化（zh-CN/cn → zh，en-US/english → en）；非法值回落 zh 并告警。
+
+        不抛异常：语言配置写错不应阻断服务启动。
+        """
+        normalized = normalize_lang(value)
+        if normalized is None:
+            logger.warning(
+                "invalid APP_LANGUAGE=%r; falling back to %s",
+                value,
+                DEFAULT_APP_LANGUAGE,
+            )
+            return DEFAULT_APP_LANGUAGE
+        return normalized
 
     @field_validator(
         "access_token_expire_minutes",

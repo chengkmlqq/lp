@@ -28,16 +28,25 @@ python -m uvicorn api.app.main:app --reload --host 0.0.0.0 --port 8000
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
 - `GET /api/v1/users`
+- `GET /api/v1/system/bootstrap`（公开，返回 `default_lang`）
 
-## 后端产物语言（app.language）
+## 系统语言（APP_LANGUAGE）
 
-系统参数 `app.language`（`zh` / `en`，默认 `zh`，仅 `status=enabled` 生效，非法值回落 `zh`）
-决定**后端产物**的默认语言：任务日志正文、故障判别 WS `step` 阶段文案、Word 报告。
-在「系统参数」页修改后，新任务生效；运行中的任务语言在启动时已快照，不会中途变化。
+环境变量 `APP_LANGUAGE`（`zh` / `en`，默认 `zh`，别名 `zh-CN`/`cn`/`chinese`、`en-US`/`english`
+自动归一化，非法值回落 `zh` 并打 warning）是**唯一的语言配置源**：
 
-前端 `fetchWithAuth` 统一携带 `X-Lang`（读 localStorage 的 `lp.lang`），任务发布时把
-发起者语言快照进 Celery 消息头，worker 优先使用任务级语言、缺省回落 `app.language`。
-因此英文界面用户创建的任务日志为英文，中文界面用户仍为中文。
+- 决定**后端产物**的默认语言：任务日志正文、故障判别 WS `step` 阶段文案、Word 报告；
+- 决定**前端首次访问的默认界面语言**（`GET /api/v1/system/bootstrap` 下发，无需鉴权）；
+- 进程启动时读取一次，运行期不再查库、不热更新 —— **修改后需重启 api 与 worker**，
+  且两者必须配置为同一值，否则任务日志语言会与 api 不一致。
+
+页面上的语言切换按钮仍然保留：用户手动选择写入 `localStorage`，后续访问以用户选择优先；
+页面切换**不再**影响后端产物语言（原 `X-Lang` 自动附带已移除）。若某个调用方仍需要
+按当次请求覆盖语言，显式传 `X-Lang` 依然有效，任务发布时会把发起者语言快照进
+Celery 消息头，worker 优先使用任务级语言、缺省回落 `APP_LANGUAGE`。
+
+历史遗留的系统参数 `app.language` 已废弃：启动时（`_auto_seed_baseline` 的同一把锁内）
+幂等删除存量行，参数配置表中不再出现「系统语言」。
 
 明确不翻译、原样保留：
 

@@ -196,8 +196,8 @@ def on_task_prerun(task_id=None, task=None, **kwargs):  # type: ignore[no-untype
         started_at=started_at,
     )
     # 任务级语言快照（LP-22）：发布侧把发起请求的 X-Lang 注入 Celery 消息头，
-    # 这里在任务启动时读一次并固定；缺省回落全局 app.language 系统参数。
-    # 运行中改参数不影响本任务，新任务才生效。
+    # 这里在任务启动时读一次并固定；缺省回落全局 APP_LANGUAGE 环境变量（LP-34）。
+    # 运行中改配置不影响本任务，新任务且重启后才生效。
     from ..services.backend_lang import resolve_backend_lang  # noqa: PLC0415
 
     header_lang = getattr(request, "lp_lang", None) if request is not None else None
@@ -323,7 +323,7 @@ def on_before_task_publish(sender=None, headers=None, body=None, **kwargs):  # t
     在生产者（API）进程执行：请求语言由 BackendLangMiddleware 写入上下文变量。
     Celery 会把消息头原样带进 worker 的 ``task.request``，``task_prerun`` 据此
     做任务级语言快照。非 HTTP 触发的任务（beat / worker 内二次派发）读不到
-    上下文变量，不注入，worker 回落全局 app.language。
+    上下文变量，不注入，worker 回落全局 APP_LANGUAGE。
     """
     if not headers:
         return

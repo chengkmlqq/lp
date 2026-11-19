@@ -120,6 +120,7 @@
    ```
 
 说明：
+- `APP_LANGUAGE`（`zh` / `en`，默认 `zh`）决定后端产物（任务日志 / WS 阶段文案 / Word 报告）与前端首次访问的默认界面语言，由 `GET /api/v1/system/bootstrap` 下发给前端。进程启动时读取一次，**修改后必须重启 api 与 worker 才生效**；两侧必须配置成同一值，否则任务日志语言会与 api 不一致。
 - `NEXT_PUBLIC_API_BASE_URL` 在 Next.js 中是构建期注入；如果修改该值，需要重新执行 `docker compose --env-file deploy/dev-deploy/.env -f deploy/dev-deploy/compose.yml up --build`。
 - 若未显式设置 `DATABASE_URL`，API 会使用 `DB_*` 变量自动组装 PostgreSQL 连接，并将 `DB_SCHEMA` 作为 `search_path`（等价 JDBC 的 `currentSchema` 语义）。
 - 若出现跨域（CORS）错误，请在 `.env` 配置：

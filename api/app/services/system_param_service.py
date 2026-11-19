@@ -22,20 +22,6 @@ from .user_service import serialize_user
 SYSTEM_PARAM_TOPIC = "admin.system-params"
 
 
-def _invalidate_backend_lang_cache() -> None:
-    """``system_params.changed``（同进程侧）立即失效 app.language 缓存。
-
-    worker 是独立进程，收不到这里的失效，由 backend_lang 的 TTL 兜底；
-    任务级 X-Lang 不依赖缓存，按请求即时生效。
-    """
-    try:
-        from .backend_lang import invalidate_default_lang_cache  # noqa: PLC0415
-
-        invalidate_default_lang_cache()
-    except Exception:  # noqa: BLE001 —— 失效失败不影响参数 CRUD
-        pass
-
-
 def _system_param_stmt():
     return select(SystemParam).options(
         selectinload(SystemParam.created_by),
@@ -199,7 +185,6 @@ def create_system_param(db: Session, payload: SystemParamCreateRequest, *, actor
         output=json.dumps({"param_id": item.id, "param_key": item.param_key, "status": item.status}),
     )
     db.commit()
-    _invalidate_backend_lang_cache()
 
     saved = get_system_param_by_id(db, item.id)
     if not saved:
@@ -303,7 +288,6 @@ def update_system_param(
             }),
         )
     db.commit()
-    _invalidate_backend_lang_cache()
 
     saved = get_system_param_by_id(db, param_id)
     if not saved:
@@ -345,7 +329,6 @@ def delete_system_param(db: Session, param_id: int, *, actor_user_id: str) -> bo
     )
     db.delete(item)
     db.commit()
-    _invalidate_backend_lang_cache()
 
     _fire_and_forget(
         publish_topic(

@@ -291,7 +291,7 @@ class TaskLogCapture:
         """创建（或复用）task_id 对应的缓冲，并快照任务语言。
 
         ``lang`` 由任务启动信号（``task_prerun``）解析后传入：任务级 lang 优先，
-        缺省回落全局 ``app.language``。其余 Tee / root handler 在进程启动时已安装。
+        缺省回落全局 ``APP_LANGUAGE``。其余 Tee / root handler 在进程启动时已安装。
         """
         if not task_id:
             return

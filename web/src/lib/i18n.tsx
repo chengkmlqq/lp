@@ -7,7 +7,9 @@
  * 改造时只需把文案包一层 t("原文")，英文词典里加一条映射；查不到映射的
  * 原文在英文环境下原样回落（保持中文），保证增量接入时界面不出现空洞。
  *
- * - 语言存 localStorage（键 lp.lang），默认跟随浏览器语言（zh 开头→中文）。
+ * - 语言存 localStorage（键 lp.lang）；未选择过时取后端启动配置
+ *   `GET /api/v1/system/bootstrap` 的 default_lang（来自 APP_LANGUAGE），
+ *   不再按浏览器语言兜底（LP-34）。
  * - 菜单名来自后端 DB（中文 name）：前端按菜单 code 查 MENU_LABELS_EN，
  *   查不到再按中文 name 查翻译表，最后回落原 name。
  * - antd ConfigProvider 的 locale（zhCN/enUS）由 useI18n 提供，随语言切换。
@@ -25,9 +27,17 @@ import type { Locale } from "antd/es/locale";
 import enUS from "antd/locale/en_US";
 import zhCN from "antd/locale/zh_CN";
 
-export type AppLang = "zh" | "en";
+import { DEFAULT_APP_LANG, resolveInitialLang, type AppLang } from "@/lib/lang";
+
+export type { AppLang };
 
 const LANG_STORAGE_KEY = "lp.lang";
+
+const BOOTSTRAP_PATH = "/api/v1/system/bootstrap";
+
+/** 后端启动配置的语言，首次拿到后缓存在内存（同一会话不再请求）。 */
+let bootstrapLang: AppLang | null = null;
+let bootstrapPromise: Promise<AppLang> | null = null;
 
 // ─────────────────────────── 翻译表 ───────────────────────────
 
@@ -3893,12 +3903,57 @@ type I18nContextValue = {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-export function detectBrowserLang(): AppLang {
-  const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
-  if (stored === "zh" || stored === "en") {
-    return stored;
+/** 用户手动选择的语言（localStorage）；未选择过返回 null。 */
+function readStoredLang(): AppLang | null {
+  if (typeof window === "undefined") {
+    return null;
   }
-  return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+  try {
+    const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
+    return stored === "zh" || stored === "en" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 请求后端启动配置（默认语言）。同一会话只请求一次，结果缓存在内存；
+ * 失败回落 zh，不阻塞页面渲染。
+ *
+ * 用动态 import 取 `withApiPath`：lib/api 静态依赖本模块的 translatePlainText，
+ * 静态引入会形成循环依赖。
+ */
+export function loadBootstrapLang(): Promise<AppLang> {
+  if (bootstrapPromise) {
+    return bootstrapPromise;
+  }
+  bootstrapPromise = (async () => {
+    try {
+      const { withApiPath } = await import("@/lib/api");
+      const response = await fetch(withApiPath(BOOTSTRAP_PATH), {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        return DEFAULT_APP_LANG;
+      }
+      const data = (await response.json()) as { default_lang?: unknown };
+      const value = resolveInitialLang(
+        null,
+        typeof data.default_lang === "string" ? data.default_lang : null,
+      );
+      bootstrapLang = value;
+      return value;
+    } catch {
+      return DEFAULT_APP_LANG;
+    }
+  })();
+  return bootstrapPromise;
+}
+
+/** 当前应使用的界面语言：用户选择 > 启动配置 > zh。 */
+export function detectBrowserLang(): AppLang {
+  return resolveInitialLang(readStoredLang(), bootstrapLang);
 }
 
 /**
@@ -3926,10 +3981,21 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       return;
     }
     let active = true;
+    // 先按已有选择 / 默认值渲染，避免等网络白屏。
     queueMicrotask(() => {
       if (active) {
         setLangState(detectBrowserLang());
       }
+    });
+    void loadBootstrapLang().then((bootLang) => {
+      if (!active) {
+        return;
+      }
+      // 用户已手动选择（含等待期间切换）时，配置不覆盖用户选择。
+      if (readStoredLang() !== null) {
+        return;
+      }
+      setLangState(bootLang);
     });
     return () => {
       active = false;
