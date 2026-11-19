@@ -1,0 +1,33 @@
+# fquiz-matlab-wind-worker image: Linux 版 MATLAB Runtime + 单风机计算 celery worker
+#
+# LP-36：单风机计算（main_angle）的编译产物基于**与故障判别不同版本**的 MATLAB Runtime，
+# 因此不能复用 fquiz-matlab-worker（r2023a 镜像 / matlab-diagnostics 队列）。
+#
+# ⚠️ 阻塞项（需项目方提供，见 issue LP-36 §十）：
+#   1) 该 MATLAB Runtime 版本的基础镜像 / tag —— 通过 --build-arg MCR_WIND_BASE_IMAGE 指定；
+#      下方默认值仅为占位（按命名约定推定的 r2022b），构建前必须替换为项目方确认的 tag。
+#   2) 编译产物文件名与启动脚本（默认 main_angle + run_main_angle.sh）。
+#   3) 参数接口格式（默认 params.json）。
+#
+# - MCR：来自 MCR_WIND_BASE_IMAGE 基础镜像（构建期安装）
+# - 引擎：外部卷挂载到 /app/matlab-wind（含 main_angle.exe + run_main_angle.sh），
+#         产物改动无需重建镜像，替换部署机卷内文件即可
+# - 队列：matlab-wind（仅本镜像消费，禁止与 matlab-diagnostics 串队列）
+
+ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
+ARG REGISTRY_NAMESPACE=ck-registry
+ARG MCR_WIND_BASE_IMAGE=${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:r2022b
+FROM ${MCR_WIND_BASE_IMAGE}
+
+ENV TZ=Asia/Shanghai
+
+# Linux 编译的单风机引擎：外部卷挂载到 /app/matlab-wind
+RUN mkdir -p /app/matlab-wind
+
+WORKDIR /app
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+COPY app ./app
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["celery", "-A", "app.core.celery_app.celery_app", "worker", "-Q", "matlab-wind", "--loglevel=info", "--concurrency=1"]

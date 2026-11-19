@@ -14,6 +14,24 @@ logger = logging.getLogger(__name__)
 MATLAB_ENGINE_TOPIC = "admin.matlab-engine"
 LEGACY_DEFAULT_SLUG = "waveform_diagnosis"
 
+# 各编译产物的可执行入口名（部署后 chmod + 日志探测用）。新增模块时在此登记即可，
+# 同步任务本身与具体模块解耦。
+KNOWN_EXE_NAMES = (
+    "RunWaveAnalysisModule",       # 故障判别（matlab-wave）
+    "waveform_engine_v2.exe",
+    "waveform_engine.exe",
+    "main_angle",                  # 单风机计算（matlab-wind）
+    "main_angle.exe",
+    "run_main_angle.sh",
+)
+KNOWN_EXECUTABLES = (
+    "RunWaveAnalysisModule",
+    "waveform_engine_v2.exe",
+    "waveform_engine.exe",
+    "main_angle",
+    "main_angle.exe",
+)
+
 
 def _publish_sync_event(event_name: str, payload: dict) -> None:
     try:
@@ -45,8 +63,7 @@ def _flatten_wrapper_dir(target_dir: Path, log_parts: list[str]) -> None:
     上传 zip 常以 `RunWaveAnalysisModule_linux_R2023a/` 之类的目录包裹全部文件，
     而判别服务按 FAULT_DIAG_MATLAB_COMPILED_DIR 根目录查找可执行文件。
     """
-    exe_names = ("RunWaveAnalysisModule", "waveform_engine_v2.exe", "waveform_engine.exe")
-    if any((target_dir / n).is_file() for n in exe_names):
+    if any((target_dir / n).is_file() for n in KNOWN_EXECUTABLES):
         return
     subdirs = [p for p in target_dir.iterdir() if p.is_dir()]
     if len(subdirs) != 1:
@@ -129,7 +146,7 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
 
         # LP-530：Windows 打的 zip 不带 Unix 权限位，解压后可执行文件无 x 位，
         # 判别任务（非 root 用户）直接 exec 会 PermissionError，需显式补可执行位。
-        for exe_name in ("RunWaveAnalysisModule", "run_RunWaveAnalysisModule.sh"):
+        for exe_name in KNOWN_EXE_NAMES:
             exe_path = target_dir / exe_name
             if exe_path.is_file():
                 exe_path.chmod(0o755)
@@ -137,8 +154,7 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
 
         log_parts.append(f"[{task_id}] Extracted engine files to {target_dir}")
 
-        exe_names = ("RunWaveAnalysisModule", "waveform_engine_v2.exe", "waveform_engine.exe")
-        found = [n for n in exe_names if (target_dir / n).is_file()]
+        found = [n for n in KNOWN_EXECUTABLES if (target_dir / n).is_file()]
         if not found:
             log_parts.append(f"[{task_id}] WARNING: No known executable found in {target_dir}")
         else:

@@ -268,6 +268,48 @@ services:
       - ./data/matlab-worker/matlab-wave:/app/matlab-wave
     restart: unless-stopped
     logging: *default-logging
+
+  matlab-wind-worker:
+    # LP-36 单风机计算专用 worker：独占 matlab-wind 队列（并发 1，避免抢占同一个
+    # 编译产物目录）。Runtime 版本与故障判别不同，使用独立镜像与独立卷。
+    image: ${MATLAB_WIND_WORKER_IMAGE}
+    depends_on:
+      - api
+      - redis
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - matlab-wind
+      - --hostname=matlab-wind@lp
+      - --loglevel=info
+      - --concurrency=1
+    env_file:
+      - ./.env.prod
+    environment:
+      APP_LANGUAGE: ${APP_LANGUAGE:-zh}
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+      OBJECT_STORAGE_BACKEND: s3
+      OBJECT_STORE_ENABLED: "true"
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      OBJECT_STORE_SECRET_KEY: ${MINIO_SECRET_KEY}
+      OBJECT_STORE_BUCKET: ${LP_MINIO_BUCKET:-lp-files}
+      OBJECT_STORE_REGION: ${MINIO_REGION:-us-east-1}
+      OBJECT_STORE_ADDRESSING_STYLE: path
+      WIND_TURBINE_CALC_COMPILED_DIR: ${WIND_TURBINE_CALC_COMPILED_DIR:-/app/matlab-wind}
+      WIND_TURBINE_CALC_QUEUE: matlab-wind
+      WIND_TURBINE_CALC_RUNTIME_VERSION: ${WIND_TURBINE_CALC_RUNTIME_VERSION:-}
+    volumes:
+      - ./data/app:/app/data
+      - ./data/matlab-wind:/app/matlab-wind
+    restart: unless-stopped
+    logging: *default-logging
   # ctb-worker 已下线：地形瓦片不再自动构建，代码目录 services/ctb-worker/ 仅保留存档。
 
   celery-beat:

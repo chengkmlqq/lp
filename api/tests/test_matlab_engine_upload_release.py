@@ -107,8 +107,8 @@ class MatlabEngineUploadReleaseTest(unittest.TestCase):
                 self.db, MODULE_SLUG, data, version_tag="v1.0.1", changelog="", uploaded_by="u1",
             )
 
-    @patch("app.tasks.sync_matlab_engine_task.sync_matlab_engine_module.delay")
-    def test_trigger_sync_for_version_dispatches_target_version(self, delay) -> None:
+    @patch("app.tasks.sync_matlab_engine_task.sync_matlab_engine_module.apply_async")
+    def test_trigger_sync_for_version_dispatches_target_version(self, apply_async) -> None:
         svc.upload_release(
             self.db, MODULE_SLUG, _make_zip("x"), version_tag="v1.0.0", changelog="", uploaded_by="u1",
         )
@@ -118,16 +118,20 @@ class MatlabEngineUploadReleaseTest(unittest.TestCase):
         releases = svc._load_versions(self.db, MODULE_SLUG)["releases"]
         # 生效旧版本（v1.0.0）
         target = releases[1]
-        delay.return_value.id = "task-123"
+        apply_async.return_value.id = "task-123"
         task_id = svc.trigger_sync_for_version(
             self.db, MODULE_SLUG, target["version_hash"], actor_user_id="u1",
         )
         self.assertEqual(task_id, "task-123")
-        delay.assert_called_once_with(
-            MODULE_SLUG,
-            target["version_hash"],
-            "/app/matlab-wave",
-            "u1",
+        # LP-36：按模块 worker_queue 动态路由（默认判别队列），参数以 args 传入
+        apply_async.assert_called_once_with(
+            args=(
+                MODULE_SLUG,
+                target["version_hash"],
+                "/app/matlab-wave",
+                "u1",
+            ),
+            queue="matlab-diagnostics",
         )
 
     def test_trigger_sync_for_version_unknown_version_raises(self) -> None:

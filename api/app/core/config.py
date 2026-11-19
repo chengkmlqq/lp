@@ -156,6 +156,20 @@ class Settings(BaseSettings):
     wind_farm_calc_celery_soft_time_limit: int = 7 * 3600
     wind_farm_calc_celery_time_limit: int = 13 * 3600
 
+    # LP-36 单风机计算：独立 MATLAB Runtime 编译产物（main_angle），部署在 matlab-wind
+    # worker 的 /app/matlab-wind，禁止复用故障判别 worker（Runtime 版本不同）。
+    # 超时与风电场计算同款：exe 软 6h / 硬 12h，Celery 软 7h / 硬 13h。
+    wind_turbine_calc_compiled_dir: str = "/app/matlab-wind"
+    wind_turbine_calc_exe: str = "main_angle"
+    wind_turbine_calc_launch_script: str = "run_main_angle.sh"
+    wind_turbine_calc_queue: str = "matlab-wind"
+    wind_turbine_calc_runtime_version: str = ""
+    wind_turbine_calc_work_root: str = "./data/wind-turbine-calc"
+    wind_turbine_calc_exe_soft_timeout_seconds: int = 6 * 3600
+    wind_turbine_calc_exe_hard_timeout_seconds: int = 12 * 3600
+    wind_turbine_calc_celery_soft_time_limit: int = 7 * 3600
+    wind_turbine_calc_celery_time_limit: int = 13 * 3600
+
     atp_engine_mode: Literal["wine", "native"] = "wine"
     # EGM 绕击跳闸率引擎：native=原生 numpy 直译（rjtzl_egm*.exe 的 C 源码），
     # wine=沿用 rjtzl_egm*.exe。native 只覆盖已用黄金样本对拍验证的（电压,塔型程序）组合，
@@ -228,6 +242,10 @@ class Settings(BaseSettings):
         "wind_farm_calc_exe_hard_timeout_seconds",
         "wind_farm_calc_celery_soft_time_limit",
         "wind_farm_calc_celery_time_limit",
+        "wind_turbine_calc_exe_soft_timeout_seconds",
+        "wind_turbine_calc_exe_hard_timeout_seconds",
+        "wind_turbine_calc_celery_soft_time_limit",
+        "wind_turbine_calc_celery_time_limit",
         "atp_engine_default_timeout_seconds",
         "atp_engine_max_timeout_seconds",
         "task_log_redis_ttl_seconds",

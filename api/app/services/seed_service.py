@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from ..core.security import hash_password
 from ..models.file_storage import FileStorageBackend, FileStorageMount
 from ..models.menu import Menu
 from ..models.rbac import Permission, Role
+from ..models.system_param import SystemParam
 from ..models.tower_model import TowerModel
 from ..models.user import User
 from .scheduled_task_service import seed_default_scheduled_tasks
@@ -28,6 +30,7 @@ SEED_RESULT_CATEGORIES = (
     "atp_param_definitions",
     "dimensions",
     "param_categories",
+    "matlab_engine_modules",
 )
 
 
@@ -130,6 +133,9 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     # LP-35：风电场计算（依赖 LP-33 批次，独立菜单与权限点）
     "wind_farm_calc.read": "Read wind-farm calculation jobs",
     "wind_farm_calc.manage": "Create and manage wind-farm calculation jobs",
+    # LP-36：单风机计算（独立 matlab-wind worker + 编译产物引擎管理）
+    "wind_turbine_calc.read": "Read single wind-turbine calculation jobs",
+    "wind_turbine_calc.manage": "Create and manage single wind-turbine calculation jobs",
     "elevation.read": "Read elevation datasets and apply jobs",
     "elevation.manage": "Manage elevation datasets and run altitude apply jobs",
     "atp.read": "Read ATP models and versions",
@@ -197,6 +203,8 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
             "wind_data_prep.manage",
             "wind_farm_calc.read",
             "wind_farm_calc.manage",
+            "wind_turbine_calc.read",
+            "wind_turbine_calc.manage",
             "elevation.read",
             "elevation.manage",
             "atp.read",
@@ -532,6 +540,19 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "permission_code": "platform_data.manage",
     },
     {
+        "code": "admin.wind_turbine_calc",
+        "name": "单风机计算",
+        "path": "/admin/wind-turbine-calc",
+        "icon": "ThunderboltFilled",
+        "parent_code": None,
+        "type": "menu",
+        "sort_order": 48,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "wind_turbine_calc.read",
+    },
+    {
         "code": "admin.elevation",
         "name": "高程数据管理",
         "path": "/admin/elevation",
@@ -765,6 +786,7 @@ ROLE_MENU_BINDINGS: dict[str, list[str]] = {
         "admin.wind_lightning_density",
         "admin.wind_data_prep",
         "admin.wind_farm_calc",
+        "admin.wind_turbine_calc",
         "admin.docs_view",
         "admin.basic_data",
         "admin.tower_models",
@@ -873,7 +895,57 @@ def seed_defaults(db: Session, *, force: bool = False) -> SeedDefaultsResult:
     _seed_param_categories(db, result=result, force=force)
     db.commit()
 
+    # LP-36：单风机计算 MATLAB 引擎模块种子（幂等补齐，已存在则不覆盖用户的编辑）
+    _seed_matlab_engine_modules(db, result=result)
+    db.commit()
+
     return result
+
+def _seed_matlab_engine_modules(db: Session, *, result: SeedDefaultsResult) -> None:
+    """确保 matlab_engine.modules 中含单风机计算模块（幂等，不覆盖已有配置）。"""
+    from datetime import datetime, timezone
+
+    key = "matlab_engine.modules"
+    param = db.execute(select(SystemParam).where(SystemParam.param_key == key)).scalar_one_or_none()
+    if param is None:
+        param = SystemParam(
+            param_key=key,
+            param_name="MATLAB 引擎模块",
+            param_value="[]",
+            is_encrypted=False,
+            description="MATLAB 编译产物引擎模块清单（引擎管理页自动维护）",
+            status="enabled",
+        )
+        db.add(param)
+        db.flush()
+    modules: list[dict[str, object]] = []
+    raw = (param.param_value or "").strip()
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, list):
+                modules = loaded
+        except (json.JSONDecodeError, TypeError):
+            modules = []
+    if any(isinstance(item, dict) and item.get("slug") == "wind_turbine_calc" for item in modules):
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    modules.append(
+        {
+            "slug": "wind_turbine_calc",
+            "name": "单风机计算",
+            "description": "单风机各旋转角屏蔽失效率计算（独立 MATLAB Runtime，matlab-wind 队列）",
+            "required_files": ["main_angle.exe", "run_main_angle.sh"],
+            "worker_deploy_path": "/app/matlab-wind",
+            "worker_queue": "matlab-wind",
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    param.param_value = json.dumps(modules, ensure_ascii=False)
+    summary = result.summary.get("matlab_engine_modules")
+    if summary is not None:
+        summary.created += 1
 
 
 def _seed_atp_param_definitions(

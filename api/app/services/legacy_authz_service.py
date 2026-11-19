@@ -40,6 +40,8 @@ DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "lightning.manage",
     "wind_farm_calc.read",
     "wind_farm_calc.manage",
+    "wind_turbine_calc.read",
+    "wind_turbine_calc.manage",
     "elevation.read",
     "elevation.manage",
     "atp.read",

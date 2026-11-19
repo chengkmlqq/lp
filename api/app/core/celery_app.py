@@ -25,6 +25,7 @@ celery_app = Celery(
         "app.tasks.wind_data_prep_tasks",
         "app.tasks.wind_farm_calc_tasks",
         "app.tasks.wind_lightning_density_tasks",
+        "app.tasks.wind_turbine_calc_tasks",
     ],
 )
 

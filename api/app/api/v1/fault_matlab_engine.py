@@ -47,6 +47,7 @@ class ModuleCreateRequest(BaseModel):
     description: str = Field(default="", description="模块描述")
     required_files: list[str] | None = Field(default=None, description="必需文件列表")
     worker_deploy_path: str = Field(default="", description="Worker 部署路径")
+    worker_queue: str = Field(default="", description="同步任务目标队列（默认 matlab-diagnostics）")
 
 
 class ModuleUpdateRequest(BaseModel):
@@ -54,6 +55,7 @@ class ModuleUpdateRequest(BaseModel):
     description: str | None = Field(default=None, description="模块描述")
     required_files: list[str] | None = Field(default=None, description="必需文件列表")
     worker_deploy_path: str | None = Field(default=None, description="Worker 部署路径")
+    worker_queue: str | None = Field(default=None, description="同步任务目标队列")
 
 
 class PublishRequest(BaseModel):

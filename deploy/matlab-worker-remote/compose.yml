@@ -85,3 +85,62 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
+
+  matlab-wind-worker:
+    # LP-36 单风机计算专用 worker：独立 MATLAB Runtime 版本，独占 matlab-wind 队列。
+    # 与判别 worker 分开部署，避免两台机器串队列 / 误用不同 Runtime。
+    image: ${MATLAB_WIND_WORKER_IMAGE}
+    container_name: lp-matlab-wind-worker
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - matlab-wind
+      - --hostname=matlab-wind@${WORKER_HOSTNAME:-remote}
+      - --loglevel=info
+      - --concurrency=1
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      APP_LANGUAGE: ${APP_LANGUAGE:-zh}
+      TZ: Asia/Shanghai
+      DB_DIALECT: postgresql
+      DB_HOST: 127.0.0.1
+      DB_PORT: ${TUNNEL_PG_PORT:-15432}
+      DB_NAME: ${DB_NAME:-lp}
+      DB_SCHEMA: public
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      USER_USERNAME_COLUMN: username
+      USER_PASSWORD_COLUMN: password_hash
+      USER_STATUS_COLUMN: status
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@127.0.0.1:${TUNNEL_REDIS_PORT:-16379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@127.0.0.1:${TUNNEL_REDIS_PORT:-16379}/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      OBJECT_STORAGE_BACKEND: s3
+      OBJECT_STORE_ENABLED: "true"
+      OBJECT_STORE_ENDPOINT: http://127.0.0.1:${TUNNEL_MINIO_PORT:-19000}
+      OBJECT_STORE_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      OBJECT_STORE_SECRET_KEY: ${MINIO_SECRET_KEY}
+      OBJECT_STORE_BUCKET: ${MINIO_BUCKET:-lp-files}
+      OBJECT_STORE_REGION: ${MINIO_REGION:-us-east-1}
+      OBJECT_STORE_ADDRESSING_STYLE: path
+      # 单风机编译产物目录：引擎同步任务解压到这里，计算服务在这里找 main_angle。
+      WIND_TURBINE_CALC_COMPILED_DIR: /app/matlab-wind
+      WIND_TURBINE_CALC_QUEUE: matlab-wind
+      WIND_TURBINE_CALC_RUNTIME_VERSION: ${WIND_TURBINE_CALC_RUNTIME_VERSION:-}
+      FILE_VFS_ROOT: /app/data/vfs
+      DEBUG_MODE: "false"
+    volumes:
+      - ./data/app:/app/data
+      - ./data/matlab-wind:/app/matlab-wind
+      - ./check_worker_env.py:/app/check_worker_env.py:ro
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"

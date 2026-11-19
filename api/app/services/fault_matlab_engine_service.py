@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 MATLAB_ENGINE_TOPIC = "admin.matlab-engine"
 REQUIRED_FILES = ("RunWaveAnalysisModule", "run_RunWaveAnalysisModule.sh")
+# 各模块引擎包同步（部署）到各自专用 worker 队列。判别模块默认走 matlab-diagnostics，
+# 单风机计算（wind_turbine_calc）走 matlab-wind（Runtime 版本不同，禁止复用判别 worker）。
+DEFAULT_WORKER_QUEUE = "matlab-diagnostics"
 
 
 class MatlabEngineError(RuntimeError):
@@ -175,9 +178,14 @@ def _load_modules(db: Session) -> list[dict[str, Any]]:
     if not raw:
         return []
     try:
-        return json.loads(raw)
+        modules = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return []
+    # 历史模块无 worker_queue 字段，按默认判别队列归一化，避免同步任务路由到 None。
+    for item in modules:
+        if isinstance(item, dict) and not item.get("worker_queue"):
+            item["worker_queue"] = DEFAULT_WORKER_QUEUE
+    return modules
 
 
 def _save_modules(db: Session, modules: list[dict[str, Any]], *, actor_user_id: str | None = None) -> None:
@@ -220,6 +228,7 @@ def create_module(db: Session, payload: dict[str, Any], *, actor_user_id: str) -
         "description": str(payload.get("description") or ""),
         "required_files": list(payload.get("required_files") or list(REQUIRED_FILES)),
         "worker_deploy_path": str(payload.get("worker_deploy_path") or ""),
+        "worker_queue": str(payload.get("worker_queue") or DEFAULT_WORKER_QUEUE),
         "created_at": _utcnow_iso(),
         "updated_at": _utcnow_iso(),
     }
@@ -246,6 +255,9 @@ def update_module(db: Session, slug: str, payload: dict[str, Any], *, actor_user
         target["required_files"] = list(payload["required_files"])
     if payload.get("worker_deploy_path") is not None:
         target["worker_deploy_path"] = str(payload["worker_deploy_path"])
+    if payload.get("worker_queue") is not None:
+        target["worker_queue"] = str(payload["worker_queue"])
+    target.setdefault("worker_queue", DEFAULT_WORKER_QUEUE)
     target["updated_at"] = _utcnow_iso()
     _save_modules(db, modules, actor_user_id=actor_user_id)
     _publish_event("module.updated", {"slug": slug})
@@ -656,11 +668,17 @@ def trigger_sync_for_module(db: Session, slug: str, *, actor_user_id: str) -> st
         raise MatlabEngineError(f"模块 {slug} 没有已发布版本")
     from ..tasks.sync_matlab_engine_task import sync_matlab_engine_module
 
-    result = sync_matlab_engine_module.delay(
-        slug,
-        current.get("version_hash", ""),
-        current.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
-        actor_user_id,
+    # 按模块的 worker_queue 动态路由到对应 worker（判别=matlab-diagnostics，
+    # 单风机=matlab-wind）。不能用 .delay()——那会落到任务装饰器上的默认队列。
+    queue = module.get("worker_queue") or DEFAULT_WORKER_QUEUE
+    result = sync_matlab_engine_module.apply_async(
+        args=(
+            slug,
+            current.get("version_hash", ""),
+            current.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
+            actor_user_id,
+        ),
+        queue=queue,
     )
     return result.id
 
@@ -679,10 +697,14 @@ def trigger_sync_for_version(db: Session, slug: str, version_hash: str, *, actor
         raise MatlabEngineError(f"版本不存在或未发布: {version_hash}")
     from ..tasks.sync_matlab_engine_task import sync_matlab_engine_module
 
-    result = sync_matlab_engine_module.delay(
-        slug,
-        version_hash,
-        target.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
-        actor_user_id,
+    queue = module.get("worker_queue") or DEFAULT_WORKER_QUEUE
+    result = sync_matlab_engine_module.apply_async(
+        args=(
+            slug,
+            version_hash,
+            target.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
+            actor_user_id,
+        ),
+        queue=queue,
     )
     return result.id
