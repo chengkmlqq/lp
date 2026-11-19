@@ -146,6 +146,16 @@ class Settings(BaseSettings):
     wine_default_timeout_seconds: int = 300
     wine_max_timeout_seconds: int = 1800
 
+    # LP-35 风电场计算：exe 作为受管静态引擎放在 wine_allowed_root 下，
+    # 与 wine_binary_path 共用进程配置。超时三层互不替代（详见 issue LP-35 §4.2）：
+    # exe 软 6h / 硬 12h，Celery 软 7h / 硬 13h，Redis visibility_timeout 24h。
+    wind_farm_calc_executable: str = "wind_farm/FengLiFangLei-10.exe"
+    wind_farm_calc_queue: str = "wind_farm_calc"
+    wind_farm_calc_exe_soft_timeout_seconds: int = 6 * 3600
+    wind_farm_calc_exe_hard_timeout_seconds: int = 12 * 3600
+    wind_farm_calc_celery_soft_time_limit: int = 7 * 3600
+    wind_farm_calc_celery_time_limit: int = 13 * 3600
+
     atp_engine_mode: Literal["wine", "native"] = "wine"
     # EGM 绕击跳闸率引擎：native=原生 numpy 直译（rjtzl_egm*.exe 的 C 源码），
     # wine=沿用 rjtzl_egm*.exe。native 只覆盖已用黄金样本对拍验证的（电压,塔型程序）组合，
@@ -214,6 +224,10 @@ class Settings(BaseSettings):
         "worker_registry_ttl_seconds",
         "wine_default_timeout_seconds",
         "wine_max_timeout_seconds",
+        "wind_farm_calc_exe_soft_timeout_seconds",
+        "wind_farm_calc_exe_hard_timeout_seconds",
+        "wind_farm_calc_celery_soft_time_limit",
+        "wind_farm_calc_celery_time_limit",
         "atp_engine_default_timeout_seconds",
         "atp_engine_max_timeout_seconds",
         "task_log_redis_ttl_seconds",

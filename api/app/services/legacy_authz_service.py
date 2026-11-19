@@ -38,6 +38,8 @@ DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "tower_model.manage",
     "lightning.read",
     "lightning.manage",
+    "wind_farm_calc.read",
+    "wind_farm_calc.manage",
     "elevation.read",
     "elevation.manage",
     "atp.read",

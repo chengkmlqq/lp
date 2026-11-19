@@ -1,0 +1,325 @@
+"""风电场计算（LP-35）：预检、GBK 解析、风险/建议规则重算。"""
+
+from __future__ import annotations
+
+import struct
+from types import SimpleNamespace
+
+import pytest
+
+from app.services import wind_farm_calc as calc
+from app.services import wind_farm_calc_service as service
+
+
+def _p0abc(nx: int, ny: int) -> bytes:
+    header = struct.pack(">6H", 11934, 11934 + nx, 2523, 2523 + ny, nx, ny)
+    return header + b"\x00\x00" * (nx * ny)
+
+
+def _files(n: int = 2, nx: int = 3, ny: int = 4, s: float = 1.0) -> dict[str, bytes]:
+    file1 = f"{n}\n{s}\n119.34\n25.23\n{nx}\n{ny}\n".encode()
+    file2 = "".join(
+        "\t".join(["119", "20", "24", "25", "13", "48", "10", "80", "40", "1", "1"]) + "\n"
+        for _ in range(n)
+    ).encode()
+    file3 = "".join(f"{i + 1}\t0\t0.2\t0.2\t0.2\t0.2\t0.1\t0.1\n" for i in range(n)).encode()
+    file4 = "".join("5.5\n" for _ in range(n)).encode()
+    return {
+        "file_1.txt": file1,
+        "file_2.txt": file2,
+        "file_3.txt": file3,
+        "file_4.txt": file4,
+        "P0.abc": _p0abc(nx, ny),
+    }
+
+
+def _gbk_out(*rows: tuple[int, str, str, str, str]) -> bytes:
+    lines = [f"{seq}\t{lon}\t{lat}\t{v}\t{risk}\t{suggestion}" for seq, lon, lat, v, risk, suggestion in rows]
+    return ("\n".join(lines) + "\n").encode("gbk")
+
+
+# ---------------------------------------------------------------------------
+# file_1 解析
+# ---------------------------------------------------------------------------
+def test_parse_file1_reads_six_parameters() -> None:
+    params = calc.parse_file1(b"50\n1.25\n119.34\n25.23\n100\n80\n")
+    assert params.n == 50
+    assert params.s == 1.25
+    assert params.start_lon == 119.34
+    assert params.start_lat == 25.23
+    assert (params.nx, params.ny) == (100, 80)
+
+
+def test_parse_file1_rejects_missing_lines() -> None:
+    with pytest.raises(calc.WindFarmCalcError):
+        calc.parse_file1(b"1\n2\n3\n")
+
+
+# ---------------------------------------------------------------------------
+# 预检
+# ---------------------------------------------------------------------------
+def test_preflight_accepts_valid_files() -> None:
+    report = calc.preflight(_files(n=3))
+    assert report.ok is True, report.errors
+    assert report.params is not None
+    assert report.params.n == 3
+    assert report.grid_rows == 3
+
+
+@pytest.mark.parametrize("missing", ["file_1.txt", "file_2.txt", "file_3.txt", "file_4.txt", "P0.abc"])
+def test_preflight_rejects_missing_file(missing: str) -> None:
+    files = _files()
+    del files[missing]
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any(missing in err for err in report.errors)
+
+
+def test_preflight_rejects_empty_file() -> None:
+    files = _files()
+    files["P0.abc"] = b""
+    report = calc.preflight(files)
+    assert report.ok is False
+
+
+def test_preflight_rejects_n_mismatch() -> None:
+    files = _files(n=2)
+    files["file_3.txt"] = files["file_3.txt"] + b"9\t0\t0.2\t0.2\t0.2\t0.2\t0.1\t0.1\n"
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any("file_3.txt 行数" in err for err in report.errors)
+
+
+def test_preflight_rejects_grid_id_out_of_range() -> None:
+    files = _files(n=2, nx=2, ny=2)
+    files["file_3.txt"] = b"9\t0\t0.2\t0.2\t0.2\t0.2\t0.1\t0.1\n" * 2
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any("网格编号" in err for err in report.errors)
+
+
+def test_preflight_rejects_circuit_out_of_range() -> None:
+    files = _files(n=2)
+    lines = files["file_2.txt"].decode().splitlines()
+    columns = lines[0].split("\t")
+    columns[10] = "101"
+    lines[0] = "\t".join(columns)
+    files["file_2.txt"] = ("\n".join(lines) + "\n").encode()
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any("回路号" in err for err in report.errors)
+
+
+def test_preflight_rejects_p0abc_wrong_size() -> None:
+    files = _files(nx=3, ny=4)
+    files["P0.abc"] = files["P0.abc"][:-2]
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any("P0.abc 字节数" in err for err in report.errors)
+
+
+def test_preflight_rejects_p0abc_header_grid_mismatch() -> None:
+    files = _files(nx=3, ny=4)
+    files["P0.abc"] = _p0abc(5, 4)  # 头部 5×4，字节数自洽但与 file_1 的 3×4 不一致
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any("file_1" in err for err in report.errors)
+
+
+def test_preflight_rejects_too_many_turbines() -> None:
+    files = _files(n=101)
+    report = calc.preflight(files)
+    assert report.ok is False
+    assert any("1–100" in err for err in report.errors)
+
+
+# ---------------------------------------------------------------------------
+# 风险等级与建议文案
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "value,s,expected",
+    [
+        (0.5, 1.0, 1),
+        (0.51, 1.0, 2),
+        (1.0, 1.0, 2),
+        (1.01, 1.0, 3),
+        (1.5, 1.0, 3),
+        (1.51, 1.0, 4),
+    ],
+)
+def test_classify_risk_boundaries(value: float, s: float, expected: int) -> None:
+    assert calc.classify_risk(value, s) == expected
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [("I", 1), ("II", 2), ("III", 3), ("IV", 4), ("3", 3), ("iv", 4), ("?", None)],
+)
+def test_parse_risk_level(text: str, expected: int | None) -> None:
+    assert calc.parse_risk_level(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("无", 1),
+        ("停运", 2),
+        ("停运(集电线)", 3),
+        ("停运(风电场)", 4),
+        ("全场停运", 4),
+        ("", 1),
+    ],
+)
+def test_classify_suggestion(text: str, expected: int) -> None:
+    assert calc.classify_suggestion(text) == expected
+    assert calc.suggestion_text(expected)
+
+
+# ---------------------------------------------------------------------------
+# file_out.txt 解析
+# ---------------------------------------------------------------------------
+def test_decode_file_out_handles_gbk() -> None:
+    assert "停运(集电线)" in calc.decode_file_out("停运(集电线)".encode("gbk"))
+
+
+def test_parse_file_out_recomputes_risk_and_suggestion() -> None:
+    raw = _gbk_out(
+        (1, "119.3400", "25.2300", "0.40000", "I", "无"),
+        (2, "119.3500", "25.2400", "1.20000", "III", "停运(集电线)"),
+        (3, "119.3600", "25.2500", "2.00000", "IV", "停运(风电场)"),
+    )
+    result = calc.parse_file_out(raw, s=1.0, expected_n=3)
+    assert len(result.rows) == 3
+    assert result.risk_mismatch_count == 0
+    assert [row.risk_level for row in result.rows] == [1, 3, 4]
+    assert [row.suggestion_code for row in result.rows] == [1, 3, 4]
+    assert "停运(集电线)" in result.rows[1].raw_line
+
+
+def test_parse_file_out_flags_gbk_risk_mismatch() -> None:
+    raw = _gbk_out((1, "119.34", "25.23", "2.0", "I", "无"))
+    result = calc.parse_file_out(raw, s=1.0, expected_n=1)
+    assert result.rows[0].risk_level == 4  # 后端按 V 重算
+    assert result.rows[0].parsed_risk_level == 1
+    assert result.risk_mismatch_count == 1
+
+
+def test_parse_file_out_rejects_row_count_mismatch() -> None:
+    raw = _gbk_out((1, "119.34", "25.23", "0.4", "I", "无"))
+    with pytest.raises(calc.WindFarmCalcError, match="行数"):
+        calc.parse_file_out(raw, s=1.0, expected_n=2)
+
+
+def test_parse_file_out_rejects_bad_sequence() -> None:
+    raw = _gbk_out((2, "119.34", "25.23", "0.4", "I", "无"))
+    with pytest.raises(calc.WindFarmCalcError, match="序号"):
+        calc.parse_file_out(raw, s=1.0, expected_n=1)
+
+
+def test_count_progress_marks() -> None:
+    assert calc.count_progress_marks("I = 100.00  J = 3") == 1
+    assert calc.count_progress_marks("no progress here") == 0
+
+
+# ---------------------------------------------------------------------------
+# 引擎路径白名单（与 ATP 引擎同款规则）
+# ---------------------------------------------------------------------------
+def test_resolve_engine_enforces_allowed_root(tmp_path, monkeypatch) -> None:
+    exe = tmp_path / "wind_farm" / "FengLiFangLei-10.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"MZ")
+
+    fake_settings = SimpleNamespace(
+        wine_allowed_root=str(tmp_path),
+        wind_farm_calc_executable="wind_farm/FengLiFangLei-10.exe",
+        wine_binary_path="wine",
+    )
+    monkeypatch.setattr(service, "get_settings", lambda: fake_settings)
+
+    assert service.resolve_engine() == str(exe)
+    assert service.resolve_engine("wind_farm/../../evil.exe") is None
+    outside = tmp_path.parent / "outside.exe"
+    outside.write_bytes(b"MZ")
+    assert service.resolve_engine(str(outside)) is None
+
+
+# ---------------------------------------------------------------------------
+# 服务端到端（SQLite + 假 exe，验证调度 → 解析 → 落库 → 统计）
+# ---------------------------------------------------------------------------
+def test_service_run_job_end_to_end(tmp_path, monkeypatch) -> None:
+    import io
+    import subprocess
+    from pathlib import Path
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    from app.models.wind_data_prep import WindDataPrepBatch
+    from app.models.wind_farm_calc import WindFarmCalcJob, WindFarmCalcResult
+
+    class FakePopen:
+        """假 Wine 子进程：启动时在 cwd 写出 GBK 的 file_out.txt，随后立即退出。"""
+
+        def __init__(self, command, cwd, stdout, stderr, env, start_new_session):  # type: ignore[no-untyped-def]
+            self.pid = 424242
+            self.returncode = None
+            self.stdout = io.BytesIO(b"I = 1.0\nI = 2.0\n")
+            Path(cwd, "file_out.txt").write_bytes(
+                _gbk_out(
+                    (1, "119.34", "25.23", "0.4", "I", "无"),
+                    (2, "119.35", "25.24", "2.0", "IV", "停运(风电场)"),
+                )
+            )
+            self._polled = False
+
+        def poll(self):  # type: ignore[no-untyped-def]
+            if not self._polled:
+                self.returncode = 0
+                self._polled = True
+            return self.returncode
+
+        def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+            return self.poll()
+
+    exe = tmp_path / "wind_farm" / "FengLiFangLei-10.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"MZ")
+    fake_settings = SimpleNamespace(
+        wine_allowed_root=str(tmp_path),
+        wind_farm_calc_executable="wind_farm/FengLiFangLei-10.exe",
+        wind_farm_calc_queue="wind_farm_calc",
+        wine_binary_path="wine",
+        wind_farm_calc_exe_soft_timeout_seconds=60,
+        wind_farm_calc_exe_hard_timeout_seconds=120,
+    )
+    store: dict[str, bytes] = {}
+    monkeypatch.setattr(service, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(service, "_fetch_prep_files", lambda batch: _files(n=2))
+    monkeypatch.setattr(service.minio_storage, "put_object", lambda key, data, **kw: store.__setitem__(key, data))
+    monkeypatch.setattr(subprocess, "Popen", FakePopen)
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    db.add(WindDataPrepBatch(id="batch-x", name="测试批次", status="completed"))
+    job = WindFarmCalcJob(
+        id="job-e2e", name="测试计算", prep_batch_id="batch-x",
+        status="pending", stage="fetching", progress=0,
+    )
+    db.add(job)
+    db.commit()
+
+    result = service.run_job(db, "job-e2e", task_id="fake-task", on_progress=lambda *_: None)
+    assert result["status"] == "completed"
+    assert result["turbine_count"] == 2
+    db.refresh(job)
+    assert job.status == "completed" and job.progress == 100
+    assert (job.risk_I_count, job.risk_IV_count) == (1, 1)
+    assert job.farm_shutdown_count == 1
+    assert job.shutdown_count == 1
+    assert job.output_object_key and job.output_object_key in store
+    rows = db.query(WindFarmCalcResult).filter_by(job_id="job-e2e").order_by(WindFarmCalcResult.seq.asc()).all()
+    assert [r.seq for r in rows] == [1, 2]
+    assert [r.risk_level for r in rows] == [1, 4]
+    assert "停运(风电场)" in rows[1].raw_line

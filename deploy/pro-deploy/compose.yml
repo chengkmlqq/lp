@@ -187,6 +187,37 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
+  wind-farm-calc-worker:
+    # LP-35 风电场计算专用 worker：独占 wind_farm_calc 队列且严格串行。
+    # 单个 Wine 任务要做约 20 亿次格子运算（小时级），并发会互相抢 CPU 全部超时。
+    image: ${WORKER_IMAGE}
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - wind_farm_calc
+      - --hostname=wind-farm-calc@lp
+      - --loglevel=${CELERY_LOG_LEVEL}
+      - --concurrency=1
+    depends_on:
+      - api
+      - redis
+    env_file:
+      - ./.env.prod
+    environment:
+      APP_LANGUAGE: ${APP_LANGUAGE:-zh}
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+    logging: *default-logging
+
   matlab-worker:
     image: ${MATLAB_WORKER_IMAGE}
     # Linux 方案：镜像内置 Linux 版 MATLAB Runtime，判别引擎（RunWaveAnalysisModule，
