@@ -62,7 +62,7 @@ import {
 const { Text } = Typography;
 
 export default function PlatformDataExportPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const { message } = App.useApp();
 
@@ -89,6 +89,15 @@ export default function PlatformDataExportPage() {
 
   const atpModelsSelected = exportCategories.includes("atp_models");
 
+  // 类别选项的 label 是中文原文，经 t() 渲染后按当前语言字母排序。
+  const categoryOptions = useMemo(
+    () =>
+      CATEGORY_OPTIONS.map((option) => ({ ...option, label: t(option.label) })).sort((a, b) =>
+        a.label.localeCompare(b.label, lang === "en" ? "en" : "zh-CN"),
+      ),
+    [t, lang],
+  );
+
   // 仅在勾选「ATP 模型」类别时按需加载维度选项（types/tree + 每维度一次 dimensions）
   const dimensionOptionsLoadedRef = useRef(false);
   useEffect(() => {
@@ -114,7 +123,9 @@ export default function PlatformDataExportPage() {
             const data = (await response.json()) as DimensionItemListResponse;
             const options = (data.items ?? [])
               .map((item) => ({ label: item.name, value: item.code }))
-              .sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+              .sort((a, b) =>
+                t(a.label).localeCompare(t(b.label), lang === "en" ? "en" : "zh-CN"),
+              );
             return [field, options];
           }),
         );
@@ -123,7 +134,7 @@ export default function PlatformDataExportPage() {
         /* 维度选项加载失败不阻断导出，下拉保持空选项 */
       }
     })();
-  }, [atpModelsSelected, canManage, fetchWithAuth]);
+  }, [atpModelsSelected, canManage, fetchWithAuth, t, lang]);
 
   // ── 详情抽屉 ──────────────────────────────────────────────────────
   const [detailOpen, setDetailOpen] = useState(false);
@@ -300,7 +311,7 @@ export default function PlatformDataExportPage() {
       width: 180,
       render: (categories?: string[] | null) =>
         categories && categories.length
-          ? categories.map((c) => CATEGORY_LABEL[c] ?? c).join(" / ")
+          ? categories.map((c) => t(CATEGORY_LABEL[c] ?? c)).join(" / ")
           : "—",
     },
     {
@@ -391,7 +402,7 @@ export default function PlatformDataExportPage() {
           <Form layout="inline">
             <Form.Item label={t("类别")} style={{ marginBottom: 0 }}>
               <Checkbox.Group
-                options={CATEGORY_OPTIONS as unknown as { label: string; value: string }[]}
+                options={categoryOptions}
                 value={exportCategories}
                 onChange={(values) => setExportCategories(values as string[])}
               />

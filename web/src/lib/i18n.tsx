@@ -860,6 +860,27 @@ export const EN_DICT: Record<string, string> = {
   "基本信息": "Basic Information",
   "基础数据包导入": "Base Data Package Import",
   "基础数据包导出": "Base Data Package Export",
+  // 基础数据包导入/导出页（LP-37）
+  "请上传数据包 ZIP，或选择复用某次历史导出": "Please upload a data package ZIP, or select a previous export to reuse",
+  "无访问权限": "No access permission",
+  "请先登录后再访问基础数据包工具。": "Please log in before accessing the Base Data Package tools.",
+  "当前账号无 platform_data.manage 权限，菜单与接口均不可用。": "The current account lacks the platform_data.manage permission; the menu and APIs are unavailable.",
+  "导入数据包": "Import data package",
+  "上传包": "Upload package",
+  "选择 ZIP": "Select ZIP",
+  "复用历史导出": "Reuse previous export",
+  "或选择某次已完成导出任务": "Or select a completed export job",
+  "请至少勾选一个导出类别": "Please select at least one export category",
+  "已创建导出任务，正在打包…": "Export job created; packaging…",
+  "产物文件": "Artifact file",
+  "来源站点": "Source site",
+  "结果摘要": "Result summary",
+  "下载产物": "Download artifact",
+  "暂无产物可下载": "No artifact available for download",
+  "导出数据包": "Export data package",
+  "任务列表": "Task list",
+  "暂无任务记录": "No task records yet",
+  "系统参数": "System parameters",
   "已创建导入任务，正在写入…可在「任务监控」页查看结果": "Import job created. Check the Task Monitoring page for the result.",
   "导入为异步任务，提交后请到「任务监控」页查看执行结果。": "Import runs asynchronously. Check the Task Monitoring page for the result after submitting.",
   "基础数据文件": "Base Data File",
@@ -3980,6 +4001,16 @@ export const BACKEND_DETAIL_EN: Record<string, string> = {
   "ZIP 包不能为空": "The ZIP package cannot be empty",
   "ZIP 包中没有可导入文件": "No importable files in the ZIP package",
   "ZIP 包必须是 zip 格式": "The archive must be a .zip file",
+  // 基础数据包服务错误（LP-37）；以分隔符/空格结尾的 key 作为前缀匹配，动态值保留原样
+  "没有可用的文件存储挂载点，无法读写基础数据包产物": "No usable file-storage mount is available; cannot read or write Base Data Package artifacts",
+  "不支持的导出类别: ": "Unsupported export category: ",
+  "导入必须提供上传包或指定复用的 export job_id": "Import requires an upload package or a reused export job_id",
+  "复用的 export job 不存在或没有可用产物": "The reused export job does not exist or has no usable artifact",
+  "上传包未落库，无法导入": "The upload package was not persisted; cannot import",
+  "不兼容的包版本 bundle_schema_version=": "Incompatible bundle version bundle_schema_version=",
+  "；当前支持 ": "; currently supported ",
+  "上传的包不是合法的 ZIP 文件: ": "The uploaded package is not a valid ZIP file: ",
+  "任务产物不存在": "Task artifact does not exist",
 };
 
 // ─────────────────────────── Context ───────────────────────────
@@ -4051,6 +4082,12 @@ export function detectBrowserLang(): AppLang {
 }
 
 /**
+ * 以分隔符/空格结尾的 BACKEND_DETAIL_EN key 视为「前缀」：后端错误里的动态值
+ * （异常信息、版本号、ID）拼在前缀后，翻译时应保留这些动态值原文。
+ */
+const BACKEND_PREFIX_TAIL = /[:：=\s]$/;
+
+/**
  * 无 React 上下文的纯文本翻译（供 lib/api 等非组件文件使用，
  * 直接读 localStorage 语言，不依赖 Provider）。
  */
@@ -4064,7 +4101,21 @@ export function translatePlainText(zhText: string): string {
   if (detectBrowserLang() === "zh") {
     return zhText;
   }
-  return EN_DICT[zhText] ?? BACKEND_DETAIL_EN[zhText] ?? zhText;
+  const exact = EN_DICT[zhText] ?? BACKEND_DETAIL_EN[zhText];
+  if (exact) {
+    return exact;
+  }
+  // 动态错误按已登记前缀逐段替换；未登记的部分（动态值）保持原文。
+  let translated = zhText;
+  const prefixes = Object.keys(BACKEND_DETAIL_EN)
+    .filter((key) => BACKEND_PREFIX_TAIL.test(key))
+    .sort((a, b) => b.length - a.length);
+  for (const key of prefixes) {
+    if (translated.includes(key)) {
+      translated = translated.split(key).join(BACKEND_DETAIL_EN[key]);
+    }
+  }
+  return translated;
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
