@@ -1,0 +1,723 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Descriptions,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Progress,
+  Select,
+  Space,
+  Steps,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+  type TableColumnsType,
+  type UploadFile,
+} from "antd";
+import {
+  CloudUploadOutlined,
+  CopyOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  EyeOutlined,
+  InboxOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
+
+import { useAuth } from "@/components/auth-provider";
+import { useI18n } from "@/lib/i18n";
+import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
+import type {
+  WindDataPrepBatchListResponse,
+  WindDataPrepBatchSummary,
+  WindDataPrepImportResponse,
+  WindDataPrepPreviewResponse,
+} from "@/types/wind-data-prep";
+
+const { Text, Paragraph } = Typography;
+
+const API_BASE = "/api/v1/wind-data-prep";
+const LIST_TAB_KEY = "list";
+
+const STATUS_META: Record<string, { color: string; label: string }> = {
+  pending: { color: "default", label: "待处理" },
+  processing: { color: "processing", label: "处理中" },
+  completed: { color: "success", label: "已完成" },
+  failed: { color: "error", label: "失败" },
+};
+
+type WizardValues = {
+  name?: string;
+  wind_farm_name?: string;
+  remark?: string;
+  start_lon?: number;
+  start_lat?: number;
+  grid_nx?: number;
+  grid_ny?: number;
+  grid_step_deg?: number;
+  risk_base_s?: number;
+  terrain_mode?: "zero" | "tif";
+};
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const pad = (input: number) => String(input).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatNumber(value: number | null | undefined, digits = 4): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return Number(value).toFixed(digits);
+}
+
+/** 0.01° 对齐校验（与后端 wind_grid.is_aligned 同口径）。 */
+function isAligned(value: number | undefined): boolean {
+  if (value === undefined || !Number.isFinite(value)) return false;
+  return Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+}
+
+export default function WindDataPrepListPage() {
+  const { t } = useI18n();
+  const router = useRouter();
+  const { message, modal } = App.useApp();
+  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const canRead = hasPermission("wind_data_prep.read") || hasPermission("wind_data_prep.manage");
+  const canManage = hasPermission("wind_data_prep.manage");
+
+  const queryClient = useQueryClient();
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [step, setStep] = useState(0);
+  const [form] = Form.useForm<WizardValues>();
+  const [turbineFiles, setTurbineFiles] = useState<UploadFile[]>([]);
+  const [lightningFiles, setLightningFiles] = useState<UploadFile[]>([]);
+  const [terrainFiles, setTerrainFiles] = useState<UploadFile[]>([]);
+  const [preview, setPreview] = useState<WindDataPrepPreviewResponse | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setPage(1);
+  }, [keyword, statusFilter]);
+
+  const listQuery = useQuery({
+    queryKey: ["wind-data-prep", keyword, statusFilter, page, pageSize],
+    enabled: Boolean(user) && canRead,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(pageSize));
+      params.set("offset", String((page - 1) * pageSize));
+      if (keyword.trim()) params.set("keyword", keyword.trim());
+      if (statusFilter) params.set("status", statusFilter);
+      return getJson<WindDataPrepBatchListResponse>(`${API_BASE}?${params.toString()}`);
+    },
+    refetchInterval: (queryResult) => {
+      const items = queryResult.state.data?.items ?? [];
+      return items.some((item) => item.status === "pending" || item.status === "processing") ? 4000 : false;
+    },
+  });
+
+  const refreshList = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["wind-data-prep"] });
+  }, [queryClient]);
+
+  const openWizard = useCallback(
+    (record?: WindDataPrepBatchSummary) => {
+      setPreview(null);
+      setStep(0);
+      setTurbineFiles([]);
+      setLightningFiles([]);
+      setTerrainFiles([]);
+      form.resetFields();
+      form.setFieldsValue(
+        record
+          ? {
+              name: `${record.name || "风电场数据准备"}（副本）`,
+              wind_farm_name: record.wind_farm_name ?? undefined,
+              start_lon: record.start_lon,
+              start_lat: record.start_lat,
+              grid_nx: record.grid_nx,
+              grid_ny: record.grid_ny,
+              grid_step_deg: record.grid_step_deg,
+              risk_base_s: record.risk_base_s,
+              terrain_mode: record.terrain_mode as "zero" | "tif",
+            }
+          : {
+              grid_step_deg: 0.01,
+              risk_base_s: 1,
+              terrain_mode: "zero",
+            },
+      );
+      setWizardOpen(true);
+    },
+    [form],
+  );
+
+  const buildFormData = useCallback(
+    async (values: WizardValues, requireFiles: boolean): Promise<FormData | null> => {
+      const lon = values.start_lon;
+      const lat = values.start_lat;
+      const nx = values.grid_nx;
+      const ny = values.grid_ny;
+      if (lon === undefined || lat === undefined || nx === undefined || ny === undefined) {
+        message.warning(t("请填写完整的区域参数"));
+        return null;
+      }
+      if (!isAligned(lon) || !isAligned(lat)) {
+        message.error(t("起始经纬度必须是 0.01° 的整数倍（例如 119.34）"));
+        return null;
+      }
+      if (nx > 100 || ny > 100 || nx < 1 || ny < 1) {
+        message.error(t("经向/纬向网格数必须在 1–100 之间（核心程序 NMAX=100）"));
+        return null;
+      }
+      const turbineFile = turbineFiles[0]?.originFileObj as File | undefined;
+      const lightningFile = lightningFiles[0]?.originFileObj as File | undefined;
+      if (requireFiles && !turbineFile) {
+        message.warning(t("请选择风机文件"));
+        return null;
+      }
+      if (requireFiles && !lightningFile) {
+        message.warning(t("请选择雷电 CSV 文件"));
+        return null;
+      }
+      const terrainFile = terrainFiles[0]?.originFileObj as File | undefined;
+      if (values.terrain_mode === "tif" && requireFiles && !terrainFile) {
+        message.warning(t("已选择 tif 地形，请上传 tif 文件"));
+        return null;
+      }
+      const formData = new FormData();
+      if (turbineFile) formData.append("turbine_file", turbineFile);
+      if (lightningFile) formData.append("lightning_file", lightningFile);
+      if (terrainFile) formData.append("terrain_file", terrainFile);
+      formData.append("name", (values.name || "").trim());
+      formData.append("wind_farm_name", (values.wind_farm_name || "").trim());
+      formData.append("remark", (values.remark || "").trim());
+      formData.append("start_lon", String(lon));
+      formData.append("start_lat", String(lat));
+      formData.append("grid_nx", String(nx));
+      formData.append("grid_ny", String(ny));
+      formData.append("grid_step_deg", String(values.grid_step_deg ?? 0.01));
+      formData.append("risk_base_s", String(values.risk_base_s ?? 1));
+      formData.append("terrain_mode", values.terrain_mode ?? "zero");
+      return formData;
+    },
+    [lightningFiles, message, t, terrainFiles, turbineFiles],
+  );
+
+  const handlePreview = useCallback(async () => {
+    const values = await form.validateFields();
+    const formData = await buildFormData(values, true);
+    if (!formData) return;
+    setPreviewing(true);
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/preview`, { method: "POST", body: formData });
+      if (!response.ok) throw new Error(await readApiError(response));
+      setPreview((await response.json()) as WindDataPrepPreviewResponse);
+    } catch (error) {
+      message.error((error as Error).message);
+    } finally {
+      setPreviewing(false);
+    }
+  }, [buildFormData, fetchWithAuth, form, message]);
+
+  const handleSubmit = useCallback(async () => {
+    const values = await form.validateFields();
+    const formData = await buildFormData(values, true);
+    if (!formData) return;
+    setSubmitting(true);
+    try {
+      const response = await fetchWithAuth(API_BASE, { method: "POST", body: formData });
+      if (!response.ok) throw new Error(await readApiError(response));
+      const result = (await response.json()) as WindDataPrepImportResponse;
+      message.success(t("已提交数据准备任务，正在后台生成五文件"));
+      setWizardOpen(false);
+      refreshList();
+      router.push(`/admin/wind-data-prep/${result.batch_id}`);
+    } catch (error) {
+      message.error((error as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [buildFormData, fetchWithAuth, form, message, refreshList, router, t]);
+
+  const handleRecompute = useCallback(
+    (record: WindDataPrepBatchSummary) => {
+      modal.confirm({
+        title: t("重跑该批次？"),
+        content: t("将使用原始上传文件按当前参数重新生成五个文件。"),
+        okText: t("重跑"),
+        cancelText: t("取消"),
+        onOk: async () => {
+          const response = await fetchWithAuth(`${API_BASE}/${record.id}/recompute`, { method: "POST" });
+          if (!response.ok) {
+            message.error(await readApiError(response));
+            return;
+          }
+          message.success(t("已提交重跑任务"));
+          refreshList();
+        },
+      });
+    },
+    [fetchWithAuth, message, modal, refreshList, t],
+  );
+
+  const handleDelete = useCallback(
+    (record: WindDataPrepBatchSummary) => {
+      modal.confirm({
+        title: t("删除该批次？"),
+        content: t("删除后列表不再展示，原始文件与产物文件保留在对象存储中。"),
+        okText: t("删除"),
+        okButtonProps: { danger: true },
+        cancelText: t("取消"),
+        onOk: async () => {
+          const response = await fetchWithAuth(`${API_BASE}/${record.id}`, { method: "DELETE" });
+          if (!response.ok) {
+            message.error(await readApiError(response));
+            return;
+          }
+          message.success(t("已删除"));
+          refreshList();
+        },
+      });
+    },
+    [fetchWithAuth, message, modal, refreshList, t],
+  );
+
+  const columns = useMemo<TableColumnsType<WindDataPrepBatchSummary>>(
+    () => [
+      {
+        title: t("批次名称"),
+        dataIndex: "name",
+        key: "name",
+        width: 220,
+        render: (_value, record) => (
+          <Space direction="vertical" size={0}>
+            <Link href={`/admin/wind-data-prep/${record.id}`}>{record.name || record.id}</Link>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.wind_farm_name || "-"}
+            </Text>
+          </Space>
+        ),
+      },
+      {
+        title: t("风机数"),
+        dataIndex: "turbine_count",
+        key: "turbine_count",
+        width: 90,
+      },
+      {
+        title: t("网格"),
+        key: "grid",
+        width: 120,
+        render: (_value, record) => `${record.grid_nx} × ${record.grid_ny}`,
+      },
+      {
+        title: t("范围内落雷数"),
+        dataIndex: "lightning_in_scope",
+        key: "lightning_in_scope",
+        width: 120,
+        render: (value: number, record) => (
+          <Tooltip title={`${t("雷电总数")} ${record.lightning_total} / ${t("有效")} ${record.lightning_valid}`}>
+            <span>{value}</span>
+          </Tooltip>
+        ),
+      },
+      {
+        title: t("产物齐全度"),
+        key: "files_ready",
+        width: 110,
+        render: (_value, record) => (
+          <Tag color={record.files_ready === 5 ? "success" : record.files_ready > 0 ? "warning" : "default"}>
+            {record.files_ready}/5
+          </Tag>
+        ),
+      },
+      {
+        title: t("S 基准值"),
+        dataIndex: "risk_base_s",
+        key: "risk_base_s",
+        width: 100,
+        render: (value: number) => formatNumber(value, 3),
+      },
+      {
+        title: t("状态"),
+        dataIndex: "status",
+        key: "status",
+        width: 170,
+        render: (value: string, record) => {
+          const meta = STATUS_META[value] ?? STATUS_META.pending;
+          return (
+            <Space direction="vertical" size={2} style={{ width: "100%" }}>
+              <Tag color={meta.color}>{t(meta.label)}</Tag>
+              {value === "processing" || value === "pending" ? (
+                <Progress percent={record.progress} size="small" showInfo={false} />
+              ) : null}
+              {value === "failed" && record.error_message ? (
+                <Text type="danger" style={{ fontSize: 12 }} ellipsis={{ tooltip: record.error_message }}>
+                  {record.error_message}
+                </Text>
+              ) : null}
+            </Space>
+          );
+        },
+      },
+      {
+        title: t("创建时间"),
+        dataIndex: "create_date",
+        key: "create_date",
+        width: 150,
+        render: (value: string | null) => formatDateTime(value),
+      },
+      {
+        title: t("操作"),
+        key: "actions",
+        width: 300,
+        render: (_value, record) => (
+          <Space size={4} wrap>
+            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => router.push(`/admin/wind-data-prep/${record.id}`)}>
+              {t("详情")}
+            </Button>
+            {record.status === "completed" ? (
+              <Button
+                size="small"
+                type="link"
+                icon={<DownloadOutlined />}
+                onClick={() => void downloadFileWithAuth(`${API_BASE}/${record.id}/package`, `${record.name || "wind-data-prep"}-five-files.zip`)}
+              >
+                {t("下载 zip")}
+              </Button>
+            ) : null}
+            {canManage ? (
+              <Button size="small" type="link" icon={<ReloadOutlined />} onClick={() => handleRecompute(record)}>
+                {t("重跑")}
+              </Button>
+            ) : null}
+            {canManage ? (
+              <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => openWizard(record)}>
+                {t("复制参数")}
+              </Button>
+            ) : null}
+            {canManage ? (
+              <Button size="small" type="link" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
+                {t("删除")}
+              </Button>
+            ) : null}
+          </Space>
+        ),
+      },
+    ],
+    [canManage, handleDelete, handleRecompute, openWizard, router, t],
+  );
+
+  if (initializing) return null;
+
+  const wizardContent = (
+    <>
+      <Steps
+        size="small"
+        current={step}
+        style={{ marginBottom: 20 }}
+        items={[
+          { title: t("研究区域") },
+          { title: t("数据") },
+          { title: t("地形") },
+        ]}
+      />
+      <Form<WizardValues> form={form} layout="vertical" initialValues={{ grid_step_deg: 0.01, risk_base_s: 1, terrain_mode: "zero" }}>
+        {step === 0 ? (
+          <>
+            <Form.Item label={t("批次名称")} name="name">
+              <Input placeholder={t("留空时默认使用风电场名称或风机文件名")} maxLength={128} />
+            </Form.Item>
+            <Form.Item label={t("风电场名称")} name="wind_farm_name">
+              <Input placeholder={t("例如：福建B1风电场")} maxLength={128} />
+            </Form.Item>
+            <Form.Item
+              label={t("起始经度（0.01° 对齐）")}
+              name="start_lon"
+              rules={[{ required: true, message: t("请填写起始经度") }]}
+              extra={t("必须是 0.01° 的整数倍，例如 119.34；P0.abc 头部以坐标×100 存为 2 字节整数")}
+            >
+              <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="119.34" />
+            </Form.Item>
+            <Form.Item
+              label={t("起始纬度（0.01° 对齐）")}
+              name="start_lat"
+              rules={[{ required: true, message: t("请填写起始纬度") }]}
+            >
+              <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="25.23" />
+            </Form.Item>
+            <Form.Item
+              label={t("经向网格数 nx（≤100）")}
+              name="grid_nx"
+              rules={[{ required: true, message: t("请填写经向网格数") }]}
+            >
+              <InputNumber min={1} max={100} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item
+              label={t("纬向网格数 ny（≤100）")}
+              name="grid_ny"
+              rules={[{ required: true, message: t("请填写纬向网格数") }]}
+            >
+              <InputNumber min={1} max={100} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item label={t("网格步长（度）")} name="grid_step_deg" extra={t("固定 0.01°，与核心程序一致")}>
+              <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
+            </Form.Item>
+            <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]}>
+              <InputNumber min={0.000001} style={{ width: "100%" }} step={0.1} />
+            </Form.Item>
+            <Form.Item label={t("统计年限")} extra={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
+              <Input value="6" readOnly />
+            </Form.Item>
+          </>
+        ) : null}
+
+        {step === 1 ? (
+          <>
+            <Form.Item label={t("风机文件（file_2.txt 11 列 / Excel / DMS 合并 / 十进制）")} required>
+              <Upload.Dragger
+                accept=".txt,.csv,.xlsx,.xlsm"
+                maxCount={1}
+                fileList={turbineFiles}
+                beforeUpload={() => false}
+                onChange={({ fileList }) => setTurbineFiles(fileList.slice(-1))}
+              >
+                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                <p className="ant-upload-text">{t("点击或拖拽风机文件到此区域")}</p>
+                <p className="ant-upload-hint">{t("表格预览可在结果页查看每台风机高度/叶片长度/动静状态/回路号")}</p>
+              </Upload.Dragger>
+            </Form.Item>
+            <Form.Item label={t("雷电 CSV（LONGITUDE / LATITUDE）")} required>
+              <Upload.Dragger
+                accept=".csv,.txt"
+                maxCount={1}
+                fileList={lightningFiles}
+                beforeUpload={() => false}
+                onChange={({ fileList }) => setLightningFiles(fileList.slice(-1))}
+              >
+                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
+                <p className="ant-upload-hint">{t("自动识别经纬度列，UTF-8 / GBK 兼容；不按 CG/IC/NB 筛选")}</p>
+              </Upload.Dragger>
+            </Form.Item>
+          </>
+        ) : null}
+
+        {step === 2 ? (
+          <>
+            <Form.Item label={t("地形模式")} name="terrain_mode">
+              <Select
+                options={[
+                  { label: t("零高程（按研究区域生成）"), value: "zero" },
+                  { label: t("上传 tif 地形"), value: "tif" },
+                ]}
+              />
+            </Form.Item>
+            {form.getFieldValue("terrain_mode") === "tif" ? (
+              <Form.Item label={t("地形 tif（EPSG:4326、0.01° 分辨率、覆盖研究区域）")} required>
+                <Upload.Dragger
+                  accept=".tif,.tiff"
+                  maxCount={1}
+                  fileList={terrainFiles}
+                  beforeUpload={() => false}
+                  onChange={({ fileList }) => setTerrainFiles(fileList.slice(-1))}
+                >
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">{t("点击或拖拽 tif 地形到此区域")}</p>
+                  <p className="ant-upload-hint">{t("不做重采样；分辨率不符或未覆盖研究区域将直接阻断")}</p>
+                </Upload.Dragger>
+              </Form.Item>
+            ) : (
+              <Alert type="info" showIcon message={t("默认零高程：按研究区域生成全 0 的 P0.abc。")} description={t("高程必须为 0–65535 的整数（P0.abc 用无符号 2 字节）。")} />
+            )}
+            <Form.Item label={t("备注")} name="remark">
+              <Input.TextArea rows={2} maxLength={500} />
+            </Form.Item>
+          </>
+        ) : null}
+      </Form>
+
+      {preview ? (
+        <Card size="small" title={t("提交前校验报告")} style={{ marginTop: 12 }}>
+          <Descriptions column={2} size="small" bordered>
+            <Descriptions.Item label={t("风机数")}>{preview.turbine_count}</Descriptions.Item>
+            <Descriptions.Item label={t("范围内落雷")}>{preview.lightning_in_scope}</Descriptions.Item>
+            <Descriptions.Item label={t("非零网格数")}>{preview.nonzero_cell_count}</Descriptions.Item>
+            <Descriptions.Item label={t("数据时间跨度")}>{preview.time_span}</Descriptions.Item>
+            <Descriptions.Item label={t("Nl 最大/最小/均值")} span={2}>
+              {formatNumber(preview.nl_max)} / {formatNumber(preview.nl_min)} / {formatNumber(preview.nl_avg)}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("P0.abc 头部")} span={2}>
+              {JSON.stringify(preview.p0abc_header)}
+            </Descriptions.Item>
+          </Descriptions>
+          <Paragraph style={{ marginTop: 10, marginBottom: 0 }}>
+            {t("五文件行数 / 字节数")}：{JSON.stringify(preview.file_lines)} / {JSON.stringify(preview.file_sizes)}
+          </Paragraph>
+          {preview.report.checks.filter((item) => item.level !== "info").length ? (
+            <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
+              {preview.report.checks.map((item, index) => (
+                <li key={`${item.code}-${index}`}>
+                  <Tag color={item.passed ? (item.level === "warning" ? "orange" : "green") : "red"}>
+                    {item.passed ? (item.level === "warning" ? t("警告") : t("通过")) : t("错误阻断")}
+                  </Tag>
+                  {t(item.label)}：{t(item.message)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Card>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ModoTabs
+        type="editable-card"
+        hideAdd
+        activeKey={LIST_TAB_KEY}
+        className="modo-page-tabs"
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: <>{t("风电场数据准备")}</>,
+            closable: false,
+            children: (
+              <div className="modo-page-card">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        placeholder={t("批次名称 / 风电场")}
+                        value={keywordInput}
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        onPressEnter={() => setKeyword(keywordInput)}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("状态")} style={{ marginBottom: 0 }}>
+                      <Select
+                        allowClear
+                        style={{ width: 140 }}
+                        value={statusFilter}
+                        onChange={(value) => setStatusFilter(value)}
+                        options={[
+                          { label: t("待处理"), value: "pending" },
+                          { label: t("处理中"), value: "processing" },
+                          { label: t("已完成"), value: "completed" },
+                          { label: t("失败"), value: "failed" },
+                        ]}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Space>
+                        <Button icon={<SearchOutlined />} onClick={() => setKeyword(keywordInput)}>
+                          {t("查询")}
+                        </Button>
+                        <Button icon={<PlusOutlined />} type="primary" onClick={() => openWizard()}>
+                          {t("新建数据准备")}
+                        </Button>
+                      </Space>
+                    </Form.Item>
+                  </Form>
+                </div>
+                <Table<WindDataPrepBatchSummary>
+                  rowKey="id"
+                  size="middle"
+                  loading={listQuery.isLoading}
+                  columns={columns}
+                  dataSource={listQuery.data?.items ?? []}
+                  pagination={false}
+                  scroll={{ x: 1500 }}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={t("暂无数据准备批次，点击「新建数据准备」上传风机与雷电数据")}
+                      />
+                    ),
+                  }}
+                  footer={() => (
+                    <ModoPagination
+                      current={page}
+                      pageSize={pageSize}
+                      total={listQuery.data?.total ?? 0}
+                      showSizeChanger
+                      pageSizeOptions={[10, 20, 50, 100]}
+                      onChange={(nextPage, nextSize) => {
+                        setPage(nextPage);
+                        if (nextSize && nextSize !== pageSize) {
+                          setPageSize(nextSize);
+                          setPage(1);
+                        }
+                      }}
+                      style={{ marginTop: 0 }}
+                    />
+                  )}
+                />
+              </div>
+            ),
+          },
+        ]}
+      />
+
+      <Drawer
+        title={t("新建风电场数据准备")}
+        width={680}
+        open={wizardOpen}
+        destroyOnHidden
+        onClose={() => setWizardOpen(false)}
+        footer={
+          <Space style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+            <Space>
+              <Button disabled={step === 0} onClick={() => setStep(step - 1)}>
+                {t("上一步")}
+              </Button>
+              <Button disabled={step === 2} onClick={() => setStep(step + 1)}>
+                {t("下一步")}
+              </Button>
+            </Space>
+            <Space>
+              <Button onClick={() => setWizardOpen(false)}>{t("取消")}</Button>
+              <Button onClick={() => void handlePreview()} loading={previewing}>
+                {t("解析预览")}
+              </Button>
+              <Button type="primary" onClick={() => void handleSubmit()} loading={submitting}>
+                {t("提交并生成")}
+              </Button>
+            </Space>
+          </Space>
+        }
+      >
+        {wizardContent}
+      </Drawer>
+    </div>
+  );
+}

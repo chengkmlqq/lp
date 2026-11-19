@@ -18,14 +18,16 @@
 
 from __future__ import annotations
 
-import csv
 import io
-import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
 import numpy as np
+
+# LP-33 起，DMS 解析 / 网格编号 / 逐格落雷聚合统一收敛到公共内核 wind_grid.py，
+# 保证本模块与「风电场数据准备」对同一批点位算出完全一致的逐格计数与 grid_id。
+from . import wind_grid as _kernel
 
 # 与 density.py 一致的默认参数
 DEFAULT_GRID_STEP_DEG = 0.01
@@ -38,13 +40,6 @@ COLOR_STOPS = ("#D3D3D3", "#0000FF", "#FFFF00", "#FF0000")
 
 # 核心程序按「1° = 100 km」近似（见 dishan_tongji.py），故 0.01° 网格 = 1 km²
 DEG_KM_APPROX = 100.0
-
-LON_HEADERS = {"longitude", "lon", "经度"}
-LAT_HEADERS = {"latitude", "lat", "纬度"}
-TIME_HEADERS = {"datetime", "time", "date", "时间", "时刻", "日期", "发生时间", "inputtime"}
-
-_DMS_SYMBOL_RE = re.compile(r"[°′'\"”″]")
-_YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
 
 
 class WindLightningDensityError(ValueError):
@@ -116,55 +111,21 @@ class BoundingBox:
 # ---------------------------------------------------------------------------
 def decode_text_bytes(content: bytes) -> str:
     """按 UTF-8(BOM) → GBK → latin-1 顺序解码（核心程序源数据多为 GBK/UTF-8）。"""
-    for encoding in ("utf-8-sig", "gbk"):
-        try:
-            return content.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return content.decode("latin-1", errors="replace")
+    return _kernel.decode_text_bytes(content)
 
 
 def dms_to_decimal(deg: float, minute: float, second: float) -> float:
     """度分秒 → 十进制度，与 density.py 的 ``d + m/60 + s/3600`` 完全一致。"""
-    return float(deg) + float(minute) / 60.0 + float(second) / 3600.0
+    return _kernel.dms_to_decimal(deg, minute, second)
 
 
 def parse_dms_compact(value: Any) -> tuple[float, float, float] | None:
     """从 ``121 11 18.339516`` / ``121°11'18.34"`` 等写法中提取 (度, 分, 秒)。"""
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    text = _DMS_SYMBOL_RE.sub(" ", text)
-    for letter in ("N", "E", "S", "W", "n", "e", "s", "w"):
-        text = text.replace(letter, " ")
-    numbers = re.findall(r"-?\d+\.?\d*", text)
-    if len(numbers) < 3:
-        return None
-    try:
-        return float(numbers[0]), float(numbers[1]), float(numbers[2])
-    except ValueError:
-        return None
+    return _kernel.parse_dms_compact(value)
 
 
 def _to_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float, np.integer, np.floating)):
-        result = float(value)
-        return result if math.isfinite(result) else None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        result = float(text)
-    except ValueError:
-        parts = parse_dms_compact(text)
-        if parts is None:
-            return None
-        result = dms_to_decimal(*parts)
-    return result if math.isfinite(result) else None
+    return _kernel.to_float(value)
 
 
 def _coord_from_text(value: Any) -> float | None:
@@ -373,71 +334,18 @@ def parse_lightning_csv(content: bytes) -> LightningParseResult:
 
     只保留坐标可解析的记录；不做 CG/IC 类型筛选（与 density.py 一致）。
     """
-    text = decode_text_bytes(content)
-    reader = csv.reader(io.StringIO(text))
     try:
-        header = next(reader)
-    except StopIteration as exc:
-        raise WindLightningDensityError("雷电 CSV 为空") from exc
-
-    lon_index = _find_column(header, LON_HEADERS)
-    lat_index = _find_column(header, LAT_HEADERS)
-    if lon_index is None or lat_index is None:
-        raise WindLightningDensityError(
-            "雷电 CSV 缺少 LONGITUDE / LATITUDE 列，无法统计"
-        )
-    time_index = _find_column(header, TIME_HEADERS, exclude={lon_index, lat_index})
-
-    lats: list[float] = []
-    lons: list[float] = []
-    years: set[int] = set()
-    total = 0
-    skipped = 0
-    for row in reader:
-        if not row or all(not str(cell).strip() for cell in row):
-            continue
-        total += 1
-        if max(lon_index, lat_index) >= len(row):
-            skipped += 1
-            continue
-        lon = _to_float(row[lon_index])
-        lat = _to_float(row[lat_index])
-        if lon is None or lat is None or not _valid_lonlat(lon, lat):
-            skipped += 1
-            continue
-        lons.append(lon)
-        lats.append(lat)
-        if time_index is not None and time_index < len(row):
-            match = _YEAR_RE.search(str(row[time_index]))
-            if match:
-                years.add(int(match.group(1)))
-
-    if not lons:
-        raise WindLightningDensityError("雷电 CSV 未解析出任何有效坐标记录，无法统计")
-
+        shared = _kernel.parse_lightning_csv(content)
+    except _kernel.WindGridError as exc:
+        raise WindLightningDensityError(str(exc)) from exc
     return LightningParseResult(
-        lat=np.asarray(lats, dtype=float),
-        lon=np.asarray(lons, dtype=float),
-        total_rows=total,
-        valid_rows=len(lons),
-        skipped_rows=skipped,
-        detected_years=sorted(years),
+        lat=shared.lat,
+        lon=shared.lon,
+        total_rows=shared.total_rows,
+        valid_rows=shared.valid_rows,
+        skipped_rows=shared.skipped_rows,
+        detected_years=shared.detected_years,
     )
-
-
-def _find_column(
-    header: Sequence[Any],
-    candidates: set[str],
-    exclude: set[int] | None = None,
-) -> int | None:
-    exclude = exclude or set()
-    for position, cell in enumerate(header):
-        if position in exclude:
-            continue
-        name = str(cell or "").strip().strip('"').lower()
-        if name in candidates:
-            return position
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -702,23 +610,33 @@ def core_density_matrix(
     grid: dict[str, float | int],
     data_years: float,
 ) -> np.ndarray:
-    """研究区域网格上的密度矩阵（次/(km²·年)），与 ``dishan_tongji.py`` 口径一致。"""
-    lon_edges, lat_edges = core_bins(grid)
-    counts, _, _ = np.histogram2d(lat, lon, bins=[lat_edges, lon_edges])
-    per_cell, per_km2 = density_from_counts(
-        counts, data_years=data_years, step_deg=float(grid["step_deg"])
+    """研究区域网格上的密度矩阵（次/(km²·年)），逐格计数走公共内核 wind_grid。"""
+    step = float(grid["step_deg"])
+    counts, _, _ = _kernel.aggregate_flashes(
+        lon,
+        lat,
+        float(grid["start_lon"]),
+        float(grid["start_lat"]),
+        int(grid["x_count"]),
+        int(grid["y_count"]),
+        step,
     )
+    per_cell, per_km2 = density_from_counts(counts, data_years=data_years, step_deg=step)
     return per_km2
 
 
 def core_grid_id(lon: float, lat: float, grid: dict[str, float | int]) -> tuple[int, int, int]:
-    """风机 → (grid_id, i, j)，与 ``fengji_bianhao.py`` 完全一致（先 round 6 位再取整）。"""
-    x_count = int(grid["x_count"])
-    lon0 = int(float(grid["start_lon"]) * 100)
-    lat0 = int(float(grid["start_lat"]) * 100)
-    i = int(round(float(lon), 6) * 100) - lon0
-    j = int(round(float(lat), 6) * 100) - lat0
-    return j * x_count + i + 1, i, j
+    """风机 → (grid_id, i, j)，与 ``fengji_bianhao.py`` 完全一致（floor + 1 起编号）。"""
+    i, j, grid_id, _ = _kernel.grid_cell(
+        lon,
+        lat,
+        float(grid["start_lon"]),
+        float(grid["start_lat"]),
+        int(grid["x_count"]),
+        int(grid["y_count"]),
+        float(grid["step_deg"]),
+    )
+    return grid_id, i, j
 
 
 def build_core_files(
