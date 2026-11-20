@@ -60,6 +60,9 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
 # 3) MCR 运行环境变量（必须在 pip/apt 之后设置，避免 MCR 库覆盖系统库）
+#    R2025a 起 MathWorks Runtime 强制要求 AGREE_TO_MATLAB_RUNTIME_LICENSE=yes，
+#    否则编译产物启动即报错退出（已在 33.2 单风机 quick 冒烟测试中实测）。
+ENV AGREE_TO_MATLAB_RUNTIME_LICENSE=yes
 ENV MCR_MASTER_PATH=/opt/matlabruntime/R2025a
 ENV LD_LIBRARY_PATH=${MCR_MASTER_PATH}/runtime/glnxa64:${MCR_MASTER_PATH}/bin/glnxa64:${MCR_MASTER_PATH}/sys/os/glnxa64:${MCR_MASTER_PATH}/sys/opengl/lib/glnxa64
 ENV XAPPLRESDIR=/etc/X11/app-defaults
