@@ -1,8 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -15,16 +20,19 @@ import {
   Input,
   Modal,
   Progress,
+  Segmented,
   Select,
   Space,
+  Spin,
   Steps,
   Table,
   Tag,
+  Tooltip,
   Typography,
+  type TabsProps,
   type TableColumnsType,
 } from "antd";
 import {
-  ApiOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
@@ -32,9 +40,11 @@ import {
   ReloadOutlined,
   SearchOutlined,
   StopOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { WindFarmCalcDetailView } from "@/components/wind-farm-calc-detail-view";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
@@ -67,6 +77,11 @@ const RISK_COUNT_KEYS: Record<number, keyof WindFarmCalcJobSummary> = {
   4: "risk_IV_count",
 };
 
+type DetailTabData = {
+  key: string;
+  title: string;
+};
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -95,7 +110,6 @@ function formatBytes(size: number | null | undefined): string {
 
 export default function WindFarmCalcListPage() {
   const { t } = useI18n();
-  const router = useRouter();
   const { message, modal } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_farm_calc.read") || hasPermission("wind_farm_calc.manage");
@@ -107,6 +121,10 @@ export default function WindFarmCalcListPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  const [detailTabsData, setDetailTabsData] = useState<DetailTabData[]>([]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -119,6 +137,8 @@ export default function WindFarmCalcListPage() {
   const listQuery = useQuery({
     queryKey: ["wind-farm-calc", keyword, statusFilter, page, pageSize],
     enabled: Boolean(user) && canRead,
+    // 查询/翻页时保留上一份数据作占位，卡片/列表不清空，仅叠加 loading 遮罩，避免闪空。
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(pageSize));
@@ -133,6 +153,9 @@ export default function WindFarmCalcListPage() {
     },
   });
 
+  const records = listQuery.data?.items ?? [];
+
+  // 引擎预检数据仍需保留：新建弹窗的「引擎预检」步骤是提交流程的一部分。
   const engineQuery = useQuery({
     queryKey: ["wind-farm-calc", "engine"],
     enabled: Boolean(user) && canRead,
@@ -148,6 +171,51 @@ export default function WindFarmCalcListPage() {
   const refreshList = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["wind-farm-calc"] });
   }, [queryClient]);
+
+  const openDetail = useCallback((jobId: string, title: string) => {
+    setDetailTabsData((previous) =>
+      previous.some((tab) => tab.key === jobId) ? previous : [...previous, { key: jobId, title }],
+    );
+    setActiveTabKey(jobId);
+  }, []);
+
+  const closeDetailTab = useCallback(
+    (key: string) => {
+      const removedIndex = detailTabsData.findIndex((tab) => tab.key === key);
+      const next = detailTabsData.filter((tab) => tab.key !== key);
+      setDetailTabsData(next);
+      if (activeTabKey === key) {
+        const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+        setActiveTabKey(fallback);
+      }
+    },
+    [activeTabKey, detailTabsData],
+  );
+
+  const handleTabsEdit = useCallback(
+    (targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+      if (action !== "remove") {
+        return;
+      }
+      closeDetailTab(String(targetKey));
+    },
+    [closeDetailTab],
+  );
+
+  const detailTabs = useMemo<NonNullable<TabsProps["items"]>>(
+    () =>
+      detailTabsData.map((tab) => ({
+        key: tab.key,
+        label: (
+          <Tooltip title={tab.title}>
+            <span>{tab.title.length > 14 ? `${tab.title.slice(0, 14)}...` : tab.title}</span>
+          </Tooltip>
+        ),
+        closable: true,
+        children: <WindFarmCalcDetailView jobId={tab.key} onClose={() => closeDetailTab(tab.key)} />,
+      })),
+    [closeDetailTab, detailTabsData],
+  );
 
   const openCreate = useCallback(() => {
     setStep(0);
@@ -179,13 +247,13 @@ export default function WindFarmCalcListPage() {
       message.success(t("已提交风电场计算任务"));
       setCreateOpen(false);
       refreshList();
-      router.push(`/admin/wind-farm-calc/${result.job_id}`);
+      openDetail(result.job_id, (values.name || "").trim() || result.job_id);
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setSubmitting(false);
     }
-  }, [fetchWithAuth, form, message, refreshList, router, t]);
+  }, [fetchWithAuth, form, message, openDetail, refreshList, t]);
 
   const handleCancel = useCallback(
     (record: WindFarmCalcJobSummary) => {
@@ -240,7 +308,13 @@ export default function WindFarmCalcListPage() {
         width: 200,
         render: (_value, record) => (
           <Space direction="vertical" size={0}>
-            <Link href={`/admin/wind-farm-calc/${record.id}`}>{record.name || record.id}</Link>
+            <Button
+              type="link"
+              style={{ padding: 0, height: "auto" }}
+              onClick={() => openDetail(record.id, record.name || record.id)}
+            >
+              {record.name || record.id}
+            </Button>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {t("来源批次")}: {record.prep_batch_id.slice(0, 12)}…
             </Text>
@@ -304,7 +378,7 @@ export default function WindFarmCalcListPage() {
         width: 280,
         render: (_value, record) => (
           <Space size={4} wrap>
-            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => router.push(`/admin/wind-farm-calc/${record.id}`)}>
+            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openDetail(record.id, record.name || record.id)}>
               {t("详情")}
             </Button>
             {record.status === "completed" ? (
@@ -331,8 +405,141 @@ export default function WindFarmCalcListPage() {
         ),
       },
     ],
-    [canManage, handleCancel, handleDelete, router, t],
+    [canManage, handleCancel, handleDelete, openDetail, t],
   );
+
+  const paginationNode = (
+    <ModoPagination
+      current={page}
+      pageSize={pageSize}
+      total={listQuery.data?.total ?? 0}
+      showSizeChanger
+      pageSizeOptions={[10, 20, 50, 100]}
+      onChange={(nextPage, nextSize) => {
+        setPage(nextPage);
+        if (nextSize && nextSize !== pageSize) {
+          setPageSize(nextSize);
+          setPage(1);
+        }
+      }}
+      style={{ marginTop: 0 }}
+    />
+  );
+
+  const renderRecordCard = (record: WindFarmCalcJobSummary) => {
+    const meta = STATUS_META[record.status] ?? STATUS_META.pending;
+    return (
+      <Card
+        key={record.id}
+        className="admin-lightning-distribution-event-card"
+        size="small"
+        hoverable
+        onClick={() => openDetail(record.id, record.name || record.id)}
+      >
+        <div className="flex flex-col">
+          <div className="admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <ThunderboltOutlined className="text-base text-gray-500" />
+            <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+              <Tooltip title={record.name || record.id}>
+                <Text strong className="truncate min-w-0">
+                  {record.name || record.id}
+                </Text>
+              </Tooltip>
+              <Tag color={meta.color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                {t(meta.label)}
+              </Tag>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1 px-4 py-3">
+            <Text type="secondary" className="text-xs truncate">
+              {t("来源批次")}：{record.prep_batch_id.slice(0, 12)}…
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("风机数")}：{record.turbine_count}
+            </Text>
+            <Space size={2} wrap>
+              {[1, 2, 3, 4].map((level) => (
+                <Tag key={level} color={RISK_COLORS[level]} style={{ marginInlineEnd: 0 }}>
+                  {RISK_LABELS[level]} {record[RISK_COUNT_KEYS[level]] as number}
+                </Tag>
+              ))}
+            </Space>
+            <Text type="secondary" className="text-xs">
+              {t("耗时")}：{formatDuration(record.duration_seconds)} · {t("创建时间")}：{formatDateTime(record.create_date)}
+            </Text>
+            {record.status === "failed" && record.error_message ? (
+              <Text type="danger" className="text-xs" ellipsis={{ tooltip: record.error_message }}>
+                {record.error_message}
+              </Text>
+            ) : null}
+          </div>
+
+          <div className="admin-lightning-distribution-event-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {record.status === "processing" || record.status === "pending" ? (
+              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
+            ) : (
+              <div />
+            )}
+            <Space size="small" className="flex-wrap">
+              <Tooltip title={t("详情")}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openDetail(record.id, record.name || record.id);
+                  }}
+                />
+              </Tooltip>
+              {record.status === "completed" ? (
+                <Tooltip title={t("导出 Excel")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void downloadFileWithAuth(`${API_BASE}/${record.id}/export`, `${record.name || "wind-farm-calc"}-results.xlsx`);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {(record.status === "processing" || record.status === "pending") && canManage ? (
+                <Tooltip title={t("取消")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<StopOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleCancel(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {canManage ? (
+                <Tooltip title={t("删除")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDelete(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+            </Space>
+          </div>
+        </div>
+      </Card>
+    );
+  };
 
   const createContent = (
     <>
@@ -414,7 +621,9 @@ export default function WindFarmCalcListPage() {
       <ModoTabs
         type="editable-card"
         hideAdd
-        activeKey={LIST_TAB_KEY}
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
         className="modo-page-tabs"
         items={[
           {
@@ -422,26 +631,7 @@ export default function WindFarmCalcListPage() {
             label: <>{t("风电场计算")}</>,
             closable: false,
             children: (
-              <div className="modo-page-card">
-                <Card size="small" title={<><ApiOutlined /> {t("引擎信息")}</>} style={{ marginBottom: 12 }}>
-                  {engineQuery.data ? (
-                    <Descriptions column={4} size="small">
-                      <Descriptions.Item label={t("引擎路径")}>{engineQuery.data.resolved || engineQuery.data.configured}</Descriptions.Item>
-                      <Descriptions.Item label={t("大小")}>{formatBytes(engineQuery.data.size)}</Descriptions.Item>
-                      <Descriptions.Item label={t("修改时间")}>{formatDateTime(engineQuery.data.modified_at)}</Descriptions.Item>
-                      <Descriptions.Item label="MD5">{engineQuery.data.md5 || "-"}</Descriptions.Item>
-                      <Descriptions.Item label="Wine" span={4}>
-                        <Tag color={engineQuery.data.wine_available ? "success" : "error"}>
-                          {engineQuery.data.wine_available ? (engineQuery.data.wine_version || t("可用")) : t("不可用")}
-                        </Tag>
-                        {!engineQuery.data.exists ? <Text type="danger">{engineQuery.data.message}</Text> : null}
-                      </Descriptions.Item>
-                    </Descriptions>
-                  ) : (
-                    <Text type="secondary">{t("加载中…")}</Text>
-                  )}
-                </Card>
-
+              <div className="modo-page-card admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -472,45 +662,67 @@ export default function WindFarmCalcListPage() {
                       </Space>
                     </Form.Item>
                   </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
+                    ]}
+                  />
                 </div>
 
-                <Table<WindFarmCalcJobSummary>
-                  rowKey="id"
-                  size="middle"
-                  loading={listQuery.isLoading}
-                  columns={columns}
-                  dataSource={listQuery.data?.items ?? []}
-                  pagination={false}
-                  scroll={{ x: 1300 }}
-                  locale={{
-                    emptyText: (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description={t("暂无计算任务，点击「新建计算」选择数据准备批次")}
-                      />
-                    ),
-                  }}
-                  footer={() => (
-                    <ModoPagination
-                      current={page}
-                      pageSize={pageSize}
-                      total={listQuery.data?.total ?? 0}
-                      showSizeChanger
-                      pageSizeOptions={[10, 20, 50, 100]}
-                      onChange={(nextPage, nextSize) => {
-                        setPage(nextPage);
-                        if (nextSize && nextSize !== pageSize) {
-                          setPageSize(nextSize);
-                          setPage(1);
-                        }
-                      }}
-                      style={{ marginTop: 0 }}
-                    />
-                  )}
-                />
+                {viewMode === "card" ? (
+                  <>
+                    <div className="admin-lightning-distribution-card-scroll">
+                      {listQuery.isLoading && records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Spin />
+                        </div>
+                      ) : records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={t("暂无计算任务，点击「新建计算」选择数据准备批次")}
+                          />
+                        </div>
+                      ) : (
+                        /* 查询/轮询刷新时不清空已有卡片，仅叠加 loading 遮罩 */
+                        <Spin spinning={listQuery.isLoading || listQuery.isPlaceholderData} className="admin-card-view-spin">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {records.map(renderRecordCard)}
+                          </div>
+                        </Spin>
+                      )}
+                    </div>
+                    {records.length > 0 ? (
+                      <div className="admin-lightning-distribution-pagination">{paginationNode}</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <Table<WindFarmCalcJobSummary>
+                    rowKey="id"
+                    size="middle"
+                    loading={listQuery.isLoading || listQuery.isPlaceholderData}
+                    columns={columns}
+                    dataSource={records}
+                    pagination={false}
+                    scroll={{ x: 1300 }}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t("暂无计算任务，点击「新建计算」选择数据准备批次")}
+                        />
+                      ),
+                    }}
+                    footer={() => paginationNode}
+                  />
+                )}
               </div>
             ),
           },
+          ...detailTabs,
         ]}
       />
 
