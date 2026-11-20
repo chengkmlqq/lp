@@ -5,7 +5,7 @@
 - 上传校验与对象存储落地（风机文件 + 雷电 CSV）；
 - 批次记录的创建/重算/逻辑删除与列表查询；
 - Celery 任务执行体 ``run_batch``（解析 → 统计 → 落库 → 出图）；
-- 网格表 / 风机表 / 图片 / Excel 导出 / 核心程序文件（file_3、file_4）导出。
+- 网格表 / 风机表 / 图片 / Excel 导出（核心程序文件 file_3、file_4 由「风电场数据准备」模块产出）。
 
 与 ``lightning_distribution``（GB/T 40621 地闪密度）完全隔离：不读写其表，
 不调用其算法与色标。
@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import io
-import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Sequence
@@ -1033,56 +1032,4 @@ def export_excel(db: Session, batch_id: str, *, export_type: str) -> tuple[bytes
     workbook.save(buffer)
     suffix = {"cells": "网格", "turbines": "风机", "all": "全部"}[export_type]
     filename = f"{batch.batch_name or '风电场地闪密度'}-{suffix}.xlsx"
-    return buffer.getvalue(), filename
-
-
-def export_core_files(db: Session, batch_id: str) -> tuple[bytes, str]:
-    """导出核心程序所需的 ``file_3.txt`` + ``file_4.txt``（zip，UTF-8 无 BOM，\\n 行尾）。"""
-    batch = _get_batch_or_404(db, batch_id)
-    if batch.status != "completed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="批次尚未完成，无法导出核心程序文件")
-    turbines = (
-        db.execute(
-            select(WindLightningDensityTurbine)
-            .where(WindLightningDensityTurbine.batch_id == batch.id)
-            .order_by(WindLightningDensityTurbine.seq.asc())
-        )
-        .scalars()
-        .all()
-    )
-    if not turbines:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="批次没有风机明细，无法导出")
-
-    core_grid_raw = (batch.stats_json or {}).get("core_grid") or {}
-    try:
-        grid: dict[str, float | int] = {
-            "start_lon": float(core_grid_raw["start_lon"]),
-            "start_lat": float(core_grid_raw["start_lat"]),
-            "x_count": int(core_grid_raw["x_count"]),
-            "y_count": int(core_grid_raw["y_count"]),
-            "step_deg": float(core_grid_raw.get("step_deg", batch.grid_step_deg)),
-        }
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="批次缺少研究区域网格参数，请重算后再导出") from exc
-
-    # 用源文件按研究区域网格重算密度，保证 file_4 与 file_3 的 grid_id 一一对应
-    lightning_content = minio_storage.get_object(batch.lightning_object_key)
-    lightning = algo.parse_lightning_csv(lightning_content)
-    core_density = algo.core_density_matrix(
-        lightning.lon,
-        lightning.lat,
-        grid,
-        batch.data_years or algo.DEFAULT_DATA_YEARS,
-    )
-    file3, file4 = algo.build_core_files(
-        [{"lon": t.lon, "lat": t.lat} for t in turbines], grid, core_density
-    )
-    if len(file3) != len(turbines) or len(file4) != len(turbines):
-        raise HTTPException(status_code=409, detail="file_3/file_4 行数与风机数不一致，已中止导出")
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("file_3.txt", "".join(file3).encode("utf-8"))
-        archive.writestr("file_4.txt", "".join(file4).encode("utf-8"))
-    filename = f"{batch.batch_name or '风电场地闪密度'}-file_3-file_4.zip"
     return buffer.getvalue(), filename

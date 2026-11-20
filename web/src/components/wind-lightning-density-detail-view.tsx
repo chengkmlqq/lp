@@ -9,10 +9,8 @@ import {
   Button,
   Card,
   Col,
-  Descriptions,
   Empty,
   Image,
-  Modal,
   Progress,
   Row,
   Segmented,
@@ -113,7 +111,6 @@ export function WindLightningDensityDetailView({
   });
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
-  const [coreModalOpen, setCoreModalOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ["wind-lightning-density-detail", batchId],
@@ -517,42 +514,6 @@ export function WindLightningDensityDetailView({
           },
         ]
       : []),
-    ...(completed
-      ? [
-          {
-            key: "core-files",
-            label: t("核心程序文件（file_3/file_4）"),
-            children: (
-              <Card
-                size="small"
-                title={t("核心程序文件（file_3 / file_4）")}
-                extra={
-                  <Button size="small" icon={<DownloadOutlined />} onClick={() => setCoreModalOpen(true)}>
-                    {t("下载 zip")}
-                  </Button>
-                }
-              >
-                <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                  <Text type="secondary">
-                    {t(
-                      "按风电场研究区域网格（与核心程序 file_1.txt 一致）导出：file_3 为风机所在网格编号，file_4 为对应网格地闪密度（次/(km²·年)）。",
-                    )}
-                  </Text>
-                  <Descriptions column={2} size="small" bordered>
-                    <Descriptions.Item label={t("起始经度")}>{detail?.core_grid?.start_lon ?? "-"}</Descriptions.Item>
-                    <Descriptions.Item label={t("起始纬度")}>{detail?.core_grid?.start_lat ?? "-"}</Descriptions.Item>
-                    <Descriptions.Item label={t("网格列数 x_count")}>{detail?.core_grid?.x_count ?? "-"}</Descriptions.Item>
-                    <Descriptions.Item label={t("网格行数 y_count")}>{detail?.core_grid?.y_count ?? "-"}</Descriptions.Item>
-                    <Descriptions.Item label={t("风机数（行数校验）")} span={2}>
-                      {detail?.turbine_count ?? 0}
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Space>
-              </Card>
-            ),
-          },
-        ]
-      : []),
   ];
 
   return (
@@ -614,23 +575,18 @@ export function WindLightningDensityDetailView({
                 </Button>
               ) : null}
               {completed ? (
-                <>
-                  <Button
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={() =>
-                      void handleExport(
-                        `${API_BASE}/${batchId}/export?type=all`,
-                        `${detail.batch_name || "wind-lightning-density"}-all.xlsx`,
-                      )
-                    }
-                  >
-                    {t("数据导出")}
-                  </Button>
-                  <Button size="small" icon={<DownloadOutlined />} onClick={() => setCoreModalOpen(true)}>
-                    {t("核心程序文件（file_3/file_4）")}
-                  </Button>
-                </>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() =>
+                    void handleExport(
+                      `${API_BASE}/${batchId}/export?type=all`,
+                      `${detail.batch_name || "wind-lightning-density"}-all.xlsx`,
+                    )
+                  }
+                >
+                  {t("数据导出")}
+                </Button>
               ) : null}
             </>
           }
@@ -651,37 +607,6 @@ export function WindLightningDensityDetailView({
         <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
       </div>
 
-      <Modal
-        title={t("核心程序文件（file_3 / file_4）")}
-        open={coreModalOpen}
-        onCancel={() => setCoreModalOpen(false)}
-        onOk={() => {
-          void handleExport(
-            `${API_BASE}/${batchId}/export-core`,
-            `${detail?.batch_name || "wind-lightning-density"}-file_3-file_4.zip`,
-          );
-          setCoreModalOpen(false);
-        }}
-        okText={t("下载 zip")}
-        cancelText={t("取消")}
-      >
-        <Space direction="vertical" size={8} style={{ width: "100%" }}>
-          <Text type="secondary">
-            {t(
-              "按风电场研究区域网格（与核心程序 file_1.txt 一致）导出：file_3 为风机所在网格编号，file_4 为对应网格地闪密度（次/(km²·年)）。",
-            )}
-          </Text>
-          <Descriptions column={2} size="small" bordered>
-            <Descriptions.Item label={t("起始经度")}>{detail?.core_grid?.start_lon ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("起始纬度")}>{detail?.core_grid?.start_lat ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("网格列数 x_count")}>{detail?.core_grid?.x_count ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("网格行数 y_count")}>{detail?.core_grid?.y_count ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("风机数（行数校验）")} span={2}>
-              {detail?.turbine_count ?? 0}
-            </Descriptions.Item>
-          </Descriptions>
-        </Space>
-      </Modal>
     </>
   );
 }

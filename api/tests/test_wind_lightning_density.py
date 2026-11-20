@@ -1,4 +1,4 @@
-"""风电场地闪密度统计：算法 golden case、解析入口与核心程序文件导出。
+"""风电场地闪密度统计：算法 golden case、解析入口与导出。
 
 golden case 说明
 ----------------
@@ -253,7 +253,7 @@ def test_render_density_png() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6) 导出：Excel（中文不乱码）+ file_3/file_4 zip
+# 6) 导出：Excel（中文不乱码）+ 不再提供 core 文件导出入口
 # ---------------------------------------------------------------------------
 def _seed_batch(db, analysis):  # type: ignore[no-untyped-def]
     from app.models.wind_lightning_density import (
@@ -309,9 +309,7 @@ def _seed_batch(db, analysis):  # type: ignore[no-untyped-def]
     return batch
 
 
-def test_export_core_files_and_excel(monkeypatch) -> None:
-    import zipfile
-
+def test_export_excel() -> None:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -323,23 +321,8 @@ def test_export_core_files_and_excel(monkeypatch) -> None:
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
     try:
-        batch = _seed_batch(db, analysis)
-        monkeypatch.setattr(
-            service.minio_storage, "get_object", lambda key: FUJIAN_CSV.read_bytes()
-        )
-
-        zip_bytes, zip_name = service.export_core_files(db, batch.id)
-        assert zip_name.endswith(".zip")
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-            assert archive.namelist() == ["file_3.txt", "file_4.txt"]
-            file3 = archive.read("file_3.txt").decode("utf-8")
-            file4 = archive.read("file_4.txt").decode("utf-8")
-        assert not file3.startswith("\ufeff") and not file4.startswith("\ufeff")
-        assert len(file3.splitlines()) == len(file4.splitlines()) == 58
-        assert "\r" not in file3 and "\r" not in file4
-        assert file3.splitlines()[0].startswith("3945\t")
-
-        excel_bytes, excel_name = service.export_excel(db, batch.id, export_type="all")
+        _seed_batch(db, analysis)
+        excel_bytes, excel_name = service.export_excel(db, "batch-test", export_type="all")
         assert excel_name.endswith(".xlsx")
         from openpyxl import load_workbook
 
@@ -350,3 +333,12 @@ def test_export_core_files_and_excel(monkeypatch) -> None:
         assert workbook["网格"].max_row == len(analysis.cells) + 1
     finally:
         db.close()
+
+
+def test_no_core_file_export_entrypoint() -> None:
+    """地闪密度统计不再提供 core 文件导出接口/入口（唯一出口为「风电场数据准备」）。"""
+    from app.api.v1.wind_lightning_density import router
+    from app.services import wind_lightning_density_service as service
+
+    assert not hasattr(service, "export_core_files")
+    assert not any("export-core" in route.path for route in router.routes)

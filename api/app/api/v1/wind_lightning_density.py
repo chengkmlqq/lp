@@ -207,20 +207,6 @@ def export_wind_lightning_density_excel(
     )
 
 
-@router.get("/{batch_id}/export-core")
-def export_wind_lightning_density_core_files(
-    batch_id: str,
-    _: CurrentUser = Depends(require_any_permission(*_READ_PERMISSIONS)),
-    db: Session = Depends(get_db),
-) -> Response:
-    content, filename = service.export_core_files(db, batch_id)
-    return Response(
-        content=content,
-        media_type="application/zip",
-        headers=_attachment_headers(filename),
-    )
-
-
 # ---------------------------------------------------------------------------
 # 重算 / 删除
 # ---------------------------------------------------------------------------
