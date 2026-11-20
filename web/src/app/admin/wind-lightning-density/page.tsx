@@ -905,8 +905,8 @@ export default function WindLightningDensityListPage() {
           <Form.Item label={t("风电场名称")} name="wind_farm_name">
             <Input placeholder={t("例如：江苏A3风电场")} maxLength={128} />
           </Form.Item>
-          <Form.Item label={t("批次名称")} name="batch_name" extra={t("留空时默认使用风电场名称或风机文件名")}>
-            <Input placeholder={t("例如：2020-2025 六年版")} maxLength={128} />
+          <Form.Item label={t("备注")} name="notes">
+            <Input.TextArea rows={2} maxLength={500} />
           </Form.Item>
 
           <Form.Item label={t("风机点位文件（txt 11 列 / Excel）")} required>
@@ -941,10 +941,6 @@ export default function WindLightningDensityListPage() {
               <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
               <p className="ant-upload-hint">{t("支持 UTF-8 / GBK 编码，含 DATETIME 列时可自动推断统计年限")}</p>
             </Upload.Dragger>
-          </Form.Item>
-
-          <Form.Item label={t("备注")} name="notes">
-            <Input.TextArea rows={2} maxLength={500} />
           </Form.Item>
 
           {/* 高级参数：独立弹窗展示（不在新建表单中平铺），字段仍注册到同一个 form */}
