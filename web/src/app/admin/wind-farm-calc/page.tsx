@@ -47,7 +47,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { WindFarmCalcDetailView } from "@/components/wind-farm-calc-detail-view";
-import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -472,7 +472,7 @@ export default function WindFarmCalcListPage() {
           setPage(1);
         }
       }}
-      style={{ marginTop: 0 }}
+      style={{ flexShrink: 0, marginTop: "auto" }}
     />
   );
 
@@ -722,8 +722,8 @@ export default function WindFarmCalcListPage() {
                   />
                 </div>
 
+                <div className="relative flex min-h-0 flex-1 flex-col">
                 {viewMode === "card" ? (
-                  <>
                     <div className="admin-lightning-distribution-card-scroll">
                       {listQuery.isLoading && records.length === 0 ? (
                         <div className="admin-lightning-distribution-card-view-state">
@@ -745,10 +745,6 @@ export default function WindFarmCalcListPage() {
                         </Spin>
                       )}
                     </div>
-                    {records.length > 0 ? (
-                      <div className="admin-lightning-distribution-pagination">{paginationNode}</div>
-                    ) : null}
-                  </>
                 ) : (
                   <div ref={tableScrollAnchorRef} className="admin-wind-table-view" style={{ "--admin-wind-table-body-min-height": `${tableScrollY}px` } as CSSProperties}>
                   <Table<WindFarmCalcJobSummary>
@@ -757,7 +753,7 @@ export default function WindFarmCalcListPage() {
                     loading={listQuery.isLoading || listQuery.isPlaceholderData}
                     columns={columns}
                     dataSource={records}
-                    pagination={modoTablePagination({ current: page, pageSize, total: listQuery.data?.total ?? 0, onChange: (nextPage, nextSize) => { setPage(nextPage); if (nextSize && nextSize !== pageSize) { setPageSize(nextSize); setPage(1); } } })}
+                    pagination={false}
                     scroll={{ x: 1300, y: tableScrollY }}
                     locale={{
                       emptyText: (
@@ -770,6 +766,8 @@ export default function WindFarmCalcListPage() {
                   />
                   </div>
                 )}
+                  {paginationNode}
+                </div>
               </div>
             ),
           },

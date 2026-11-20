@@ -54,7 +54,7 @@ import { useAuth } from "@/components/auth-provider";
 import { WindLightningDensityDetailView } from "@/components/wind-lightning-density-detail-view";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useI18n } from "@/lib/i18n";
-import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import type {
@@ -589,7 +589,7 @@ export default function WindLightningDensityListPage() {
           setPage(1);
         }
       }}
-      style={{ marginTop: 0 }}
+      style={{ flexShrink: 0, marginTop: "auto" }}
     />
   );
 
@@ -801,8 +801,8 @@ export default function WindLightningDensityListPage() {
                   />
                 </div>
 
+                <div className="relative flex min-h-0 flex-1 flex-col">
                 {viewMode === "card" ? (
-                  <>
                     <div className="admin-lightning-distribution-card-scroll">
                       {listQuery.isLoading && records.length === 0 ? (
                         <div className="admin-lightning-distribution-card-view-state">
@@ -824,10 +824,6 @@ export default function WindLightningDensityListPage() {
                         </Spin>
                       )}
                     </div>
-                    {records.length > 0 ? (
-                      <div className="admin-lightning-distribution-pagination">{paginationNode}</div>
-                    ) : null}
-                  </>
                 ) : (
                   <div ref={tableScrollAnchorRef} className="admin-wind-table-view" style={{ "--admin-wind-table-body-min-height": `${tableScrollY}px` } as CSSProperties}>
                   <Table<WindLightningDensityBatchSummary>
@@ -836,7 +832,7 @@ export default function WindLightningDensityListPage() {
                     loading={listQuery.isLoading || listQuery.isPlaceholderData}
                     columns={columns}
                     dataSource={records}
-                    pagination={modoTablePagination({ current: page, pageSize, total: listQuery.data?.total ?? 0, onChange: (nextPage, nextSize) => { setPage(nextPage); if (nextSize && nextSize !== pageSize) { setPageSize(nextSize); setPage(1); } } })}
+                    pagination={false}
                     scroll={{ x: 1500, y: tableScrollY }}
                     locale={{
                       emptyText: (
@@ -849,6 +845,8 @@ export default function WindLightningDensityListPage() {
                   />
                   </div>
                 )}
+                  {paginationNode}
+                </div>
               </div>
             ),
           },
