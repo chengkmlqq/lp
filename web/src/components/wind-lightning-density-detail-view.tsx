@@ -24,10 +24,9 @@ import {
   Typography,
   type TableColumnsType,
 } from "antd";
-import { ArrowLeftOutlined, CloseOutlined, DownloadOutlined, FileTextOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
-import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useI18n } from "@/lib/i18n";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
@@ -108,7 +107,6 @@ export function WindLightningDensityDetailView({
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
   const [coreModalOpen, setCoreModalOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ["wind-lightning-density-detail", batchId],
@@ -299,18 +297,12 @@ export function WindLightningDensityDetailView({
     );
   }
 
-  const warnings = (detail?.stats_json?.warnings as string[] | undefined) ?? [];
-
   return (
     <div className="admin-lightning-distribution-detail-view">
       <div className="modo-page-card">
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <Space wrap>
-            {onClose ? (
-              <Button icon={<CloseOutlined />} onClick={onClose}>
-                {t("关闭")}
-              </Button>
-            ) : (
+            {onClose ? null : (
               <Link href="/admin/wind-lightning-density">
                 <Button icon={<ArrowLeftOutlined />}>{t("返回列表")}</Button>
               </Link>
@@ -326,9 +318,6 @@ export function WindLightningDensityDetailView({
             {detail?.status === "processing" || detail?.status === "pending" ? (
               <Progress percent={detail.progress} size="small" style={{ width: 160 }} />
             ) : null}
-            <Button icon={<FileTextOutlined />} onClick={() => setLogOpen(true)} disabled={!detail?.task_id}>
-              {t("运行日志")}
-            </Button>
             {canManage ? (
               <Button icon={<ReloadOutlined />} onClick={handleRecompute} disabled={detail?.status === "processing"}>
                 {t("重算")}
@@ -376,20 +365,6 @@ export function WindLightningDensityDetailView({
 
           {detail?.status === "failed" ? (
             <Alert type="error" showIcon message={t("统计失败")} description={detail.error_message} />
-          ) : null}
-          {warnings.length ? (
-            <Alert
-              type="warning"
-              showIcon
-              message={t("提示")}
-              description={
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {warnings.map((warning) => (
-                    <li key={warning}>{t(warning)}</li>
-                  ))}
-                </ul>
-              }
-            />
           ) : null}
 
           <Row gutter={16}>
@@ -596,13 +571,6 @@ export function WindLightningDensityDetailView({
           </Descriptions>
         </Space>
       </Modal>
-
-      <TaskLogViewerDrawer
-        taskId={detail?.task_id ?? null}
-        title={t("运行日志")}
-        open={logOpen}
-        onClose={() => setLogOpen(false)}
-      />
     </div>
   );
 }

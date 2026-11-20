@@ -42,6 +42,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
+  FileTextOutlined,
   InboxOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -51,6 +52,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { WindLightningDensityDetailView } from "@/components/wind-lightning-density-detail-view";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
@@ -121,6 +123,21 @@ export default function WindLightningDensityListPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
   const canManage = hasPermission("wind_lightning_density.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+  const [logOpen, setLogOpen] = useState(false);
+  const [logTaskId, setLogTaskId] = useState<string | null>(null);
+  const [logTitle, setLogTitle] = useState(t("任务执行日志"));
+  const openLogViewer = useCallback(
+    (taskId: string | null | undefined, label: string, title: string) => {
+      if (!taskId || !canReadLogs) {
+        return;
+      }
+      setLogTaskId(taskId);
+      setLogTitle(label ? `${label} - ${title}` : title);
+      setLogOpen(true);
+    },
+    [canReadLogs],
+  );
 
   const queryClient = useQueryClient();
   const [keywordInput, setKeywordInput] = useState("");
@@ -511,6 +528,16 @@ export default function WindLightningDensityListPage() {
             >
               {t("详情")}
             </Button>
+            {canReadLogs && record.task_id ? (
+              <Button
+                size="small"
+                type="link"
+                icon={<FileTextOutlined />}
+                onClick={() => openLogViewer(record.task_id, t("任务执行日志"), record.batch_name || record.id)}
+              >
+                {t("日志")}
+              </Button>
+            ) : null}
             {canManage ? (
               <Button size="small" type="link" icon={<ReloadOutlined />} onClick={() => handleRecompute(record)}>
                 {t("重算")}
@@ -545,7 +572,7 @@ export default function WindLightningDensityListPage() {
         ),
       },
     ],
-    [canManage, handleDelete, handleExport, handleRecompute, openDetail, t],
+    [canManage, canReadLogs, openLogViewer, handleDelete, handleExport, handleRecompute, openDetail, t],
   );
 
   const paginationNode = (
@@ -628,6 +655,19 @@ export default function WindLightningDensityListPage() {
                   }}
                 />
               </Tooltip>
+              {canReadLogs && record.task_id ? (
+                <Tooltip title={t("运行日志")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openLogViewer(record.task_id, t("任务执行日志"), record.batch_name || record.id);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
               {canManage ? (
                 <Tooltip title={t("重算")}>
                   <Button
@@ -965,6 +1005,13 @@ export default function WindLightningDensityListPage() {
           </Card>
         ) : null}
       </Modal>
+
+      <TaskLogViewerDrawer
+        taskId={logTaskId}
+        title={logTitle}
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+      />
     </div>
   );
 }
