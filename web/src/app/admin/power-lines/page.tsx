@@ -169,11 +169,16 @@ export default function AdminPowerLinesPage() {
     const containerRect = container.getBoundingClientRect();
     const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
-    const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    // 分页器是卡片/列表共用的外置 ModoPagination，不在锚点内部；按面板取其实测高度，
+    // 避免 anchor.querySelector(".ant-table-pagination") 落空后用 64px 回退而少算表体高度。
+    const pagination = pane?.querySelector<HTMLElement>(".admin-list-view-pagination")
+      ?? anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = pagination?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT;
     const available = containerRect.bottom - containerPadBottom - anchorTop - POWER_LINES_TABLE_BOTTOM_GAP;
-    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
+    // 与故障分析页一致：分页钉在面板底部，预留 16px 上方间距 + 4px 余量（共 20px）。
+    // available 已扣除面板底部 8px 余量，这里加回后再扣分页高度与 20px 间距，避免表格下方留白。
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight + POWER_LINES_TABLE_BOTTOM_GAP - 20);
     return Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, nextHeight);
   }, []);
 
@@ -618,7 +623,7 @@ export default function AdminPowerLinesPage() {
                       onChange={(page, pageSize) => {
                         setPagination({ current: page, pageSize });
                       }}
-                      style={{ flexShrink: 0, marginTop: "auto" }}
+                      containerClassName="admin-list-view-pagination"
                     />
                   </div>
                 )}

@@ -5652,7 +5652,6 @@ body {
   flex: 0 0 auto;
 }
 
-.admin-power-lines-tabs .admin-power-lines-table-view .ant-table-pagination,
 .admin-atp-models-table-view .ant-table-pagination,
 .admin-elevation-table-anchor .ant-table-pagination,
 .admin-fault-analysis-table-anchor .ant-table-pagination,
@@ -6344,6 +6343,15 @@ h5.ant-typography,
 .modo-page-card [class*="-table-anchor"] .ant-table-pagination,
 .modo-page-card [class*="-table-view"] .ant-table-pagination {
   margin-top: auto !important;
+}
+
+/* LP-46: 风电四页 + 线路管理的卡片/列表视图共用同一个外置 ModoPagination。
+   统一在此钉底（替代各页内联 style 与 .admin-power-lines-tabs 前缀/风电专属规则），
+   与故障分析页内建分页同为 flex 底部吸附 + 8px 底部间距（分页容器自带 padding-bottom:8px）。
+   高度算法按此类名读取真实分页高度，避免 64px 回退值导致表格底部留白。 */
+.admin-list-view-pagination {
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 /* 独立页（atp-test-sets）与 Tab 复用的批量历史 pane：撑满白卡，
