@@ -45,7 +45,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { Card } from "@/components/ui-antd";
-import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -538,43 +538,79 @@ export default function AdminPowerLinesPage() {
                   ) : (
                     <Empty description={t("暂无线路数据")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                   )
-                ) : viewMode === "card" ? (
+                ) : (
+                  // 卡片 / 列表两视图共用同一个受控服务端分页器：total 来自后端，
+                  // 翻页与 pageSize 切换更新 pagination state 并驱动 lineListPath 重新请求
+                  // limit/offset；切换视图不改 pagination state，故分页状态保持一致。
                   <div className="relative flex min-h-0 flex-1 flex-col">
-                    <div className="admin-power-lines-card-scroll">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {lines.map((line) => (
-                          <PowerLineCard
-                            key={line.id}
-                            line={line}
-                            canLineManage={canLineManage}
-                            canUpdateLine={canUpdateLine}
-                            canDeleteLine={canDeleteLine}
-                            canMap={canMap}
-                            onEdit={openEditLineModal}
-                            onDetail={openDetail}
-                            onPreview={openPreview}
-                            onDelete={() => {
-                              modalApi.confirm({
-                                title: t("删除线路"),
-                                content: `${t("确认删除线路")} ${line.name || line.code} ${t("吗？")}`,
-                                okText: t("删除"),
-                                cancelText: t("取消"),
-                                okButtonProps: { danger: true },
-                                onOk: async () => {
-                                  await deleteLineMutation.mutateAsync(line.id);
-                                },
-                              });
-                            }}
-                            deleteLoading={deleteLineMutation.isPending}
-                          />
-                        ))}
+                    {viewMode === "card" ? (
+                      <>
+                        <div className="admin-power-lines-card-scroll">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {lines.map((line) => (
+                              <PowerLineCard
+                                key={line.id}
+                                line={line}
+                                canLineManage={canLineManage}
+                                canUpdateLine={canUpdateLine}
+                                canDeleteLine={canDeleteLine}
+                                canMap={canMap}
+                                onEdit={openEditLineModal}
+                                onDetail={openDetail}
+                                onPreview={openPreview}
+                                onDelete={() => {
+                                  modalApi.confirm({
+                                    title: t("删除线路"),
+                                    content: `${t("确认删除线路")} ${line.name || line.code} ${t("吗？")}`,
+                                    okText: t("删除"),
+                                    cancelText: t("取消"),
+                                    okButtonProps: { danger: true },
+                                    onOk: async () => {
+                                      await deleteLineMutation.mutateAsync(line.id);
+                                    },
+                                  });
+                                }}
+                                deleteLoading={deleteLineMutation.isPending}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        {linesQuery.isFetching ? (
+                          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--ant-color-bg-layout)_60%,transparent)]">
+                            <Spin />
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div
+                        ref={tableScrollAnchorRef}
+                        className="admin-power-lines-table-view"
+                        style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                      >
+                        <PowerLineTable
+                          lines={lines}
+                          canLineManage={canLineManage}
+                          onEdit={openEditLineModal}
+                          onDetail={openDetail}
+                          onPreview={openPreview}
+                          loading={linesQuery.isFetching}
+                          onDelete={(line) => {
+                            modalApi.confirm({
+                              title: t("删除线路"),
+                              content: `${t("确认删除线路")} ${line.name || line.code} ${t("吗？")}`,
+                              okText: t("删除"),
+                              cancelText: t("取消"),
+                              okButtonProps: { danger: true },
+                              onOk: async () => {
+                                await deleteLineMutation.mutateAsync(line.id);
+                              },
+                            });
+                          }}
+                          deleteLoading={deleteLineMutation.isPending}
+                          scrollY={tableScrollY}
+                        />
                       </div>
-                    </div>
-                    {linesQuery.isFetching ? (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--ant-color-bg-layout)_60%,transparent)]">
-                        <Spin />
-                      </div>
-                    ) : null}
+                    )}
                     <ModoPagination
                       current={pagination.current}
                       pageSize={pagination.pageSize}
@@ -583,35 +619,6 @@ export default function AdminPowerLinesPage() {
                         setPagination({ current: page, pageSize });
                       }}
                       style={{ flexShrink: 0, marginTop: "auto" }}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    ref={tableScrollAnchorRef}
-                    className="admin-power-lines-table-view"
-                    style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-                  >
-                    <PowerLineTable
-                      lines={lines}
-                      canLineManage={canLineManage}
-                      onEdit={openEditLineModal}
-                      onDetail={openDetail}
-                      onPreview={openPreview}
-                      loading={linesQuery.isFetching}
-                      onDelete={(line) => {
-                        modalApi.confirm({
-                          title: t("删除线路"),
-                          content: `${t("确认删除线路")} ${line.name || line.code} ${t("吗？")}`,
-                          okText: t("删除"),
-                          cancelText: t("取消"),
-                          okButtonProps: { danger: true },
-                          onOk: async () => {
-                            await deleteLineMutation.mutateAsync(line.id);
-                          },
-                        });
-                      }}
-                      deleteLoading={deleteLineMutation.isPending}
-                      scrollY={tableScrollY}
                     />
                   </div>
                 )}
@@ -909,7 +916,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       dataSource={lines}
       loading={loading}
       sticky
-      pagination={modoTablePagination()}
+      pagination={false}
       scroll={{ x: 820, y: scrollY }}
       tableLayout="fixed"
     />

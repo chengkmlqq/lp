@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -329,15 +329,22 @@ export default function AdminSystemMessagesPage() {
   const [tableScrollY, setTableScrollY] = useState(MESSAGES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  // 卡片视图客户端分页（与列表视图同口径：20 条/页）
-  const [cardPage, setCardPage] = useState(1);
+  // 服务端分页：列表/卡片两视图共用同一份分页 state，翻页与 pageSize 切换通过
+  // listPath 的 limit/offset 重新请求后端；切换视图不重置，分页状态保持一致。
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const pageCardRef = useRef<HTMLDivElement | null>(null);
+  // 筛选条件变化时回到第一页，避免新结果集下停留在越界页码
+  const resetPagination = () => {
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
 
   const canManage = hasPermission("admin.system_message");
 
   const listPath = useMemo(() => {
     const params = new URLSearchParams();
-    params.set("limit", "200");
+    params.set("limit", String(paginationPageSize));
+    params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
     if (readStatus) {
       params.set("read_status", readStatus);
     }
@@ -346,7 +353,7 @@ export default function AdminSystemMessagesPage() {
     }
     const qs = params.toString();
     return `/api/v1/system-messages/me?${qs}`;
-  }, [readStatus, messageTypeFilter]);
+  }, [readStatus, messageTypeFilter, paginationCurrent, paginationPageSize]);
 
   const listQuery = useQuery({
     queryKey: ["admin.system-messages", listPath, searchNonce],
@@ -370,6 +377,7 @@ export default function AdminSystemMessagesPage() {
     // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
     // 即便类型/状态等筛选条件均未变化（旧实现直接 invalidateQueries，目标 key 已被
     // react-query 缓存时可能短路不发请求）也会产生新 key 重新拉取当前筛选条件的列表。
+    resetPagination();
     setSearchNonce((n) => n + 1);
   };
 
@@ -487,7 +495,9 @@ export default function AdminSystemMessagesPage() {
     // wrapper.height - body.height 会把拉伸空白误算成外围高度，导致表体被钳在
     // 最小值、未占满剩余空间就出现纵向滚动条；改用统一测量工具按实际
     // chrome（表头+分页+边框）与滚动容器底边计算，两种布局都稳定收敛
-    const measuredHeight = measureTableScrollY(anchor);
+    // 分页器在 Table 外部（服务端分页，Table 自身 pagination={false}），
+    // 用专用选择器让测量工具计入外部分页高度，避免表体高度溢出到分页区域。
+    const measuredHeight = measureTableScrollY(anchor, ".admin-system-messages-pagination");
     if (measuredHeight !== null) {
       nextHeight = measuredHeight;
     }
@@ -537,10 +547,6 @@ export default function AdminSystemMessagesPage() {
       resizeObserver.disconnect();
     };
   }, [updateTableScrollY]);
-
-  const resetCardViewState = () => {
-    setCardPage(1);
-  };
 
   const openCreateMessageModal = () => {
     setError("");
@@ -831,7 +837,7 @@ export default function AdminSystemMessagesPage() {
                           options={MESSAGE_TYPE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))}
                           onChange={(value) => {
                             setMessageTypeFilter(value);
-                            resetCardViewState();
+                            resetPagination();
                           }}
                         />
                       </Form.Item>
@@ -848,7 +854,7 @@ export default function AdminSystemMessagesPage() {
                           ]}
                           onChange={(value) => {
                             setReadStatus(value);
-                            resetCardViewState();
+                            resetPagination();
                           }}
                         />
                       </Form.Item>
@@ -873,7 +879,7 @@ export default function AdminSystemMessagesPage() {
                           options={MESSAGE_TYPE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))}
                           onChange={(value) => {
                             setMessageTypeFilter(value);
-                            resetCardViewState();
+                            resetPagination();
                           }}
                         />
                       </Form.Item>
@@ -889,7 +895,7 @@ export default function AdminSystemMessagesPage() {
                           ]}
                           onChange={(value) => {
                             setReadStatus(value);
-                            resetCardViewState();
+                            resetPagination();
                           }}
                         />
                       </Form.Item>
@@ -924,11 +930,18 @@ export default function AdminSystemMessagesPage() {
                           />
                         ),
                       }}
-                      pagination={modoTablePagination({
-                        pageSize: 20,
-                        total: listQuery.data?.total ?? 0,
-                      })}
+                      pagination={false}
                       scroll={{ x: 1100, y: tableScrollY }}
+                    />
+                    <ModoPagination
+                      containerClassName="admin-system-messages-pagination"
+                      current={pagination.current}
+                      pageSize={pagination.pageSize}
+                      total={listQuery.data?.total ?? 0}
+                      onChange={(page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                      }}
+                      style={{ flexShrink: 0, marginTop: "auto" }}
                     />
                   </div>
                 ) : (
@@ -949,23 +962,21 @@ export default function AdminSystemMessagesPage() {
                       <Spin spinning={listQuery.isFetching} className="admin-card-view-spin">
                         <div className="admin-system-messages-card-view-content">
                           <Row gutter={[12, 12]}>
-                            {messages
-                              .slice((cardPage - 1) * 20, cardPage * 20)
-                              .map((item) => (
-                                <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                                  {renderMessageCard(item)}
-                                </Col>
-                              ))}
+                            {messages.map((item) => (
+                              <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                {renderMessageCard(item)}
+                              </Col>
+                            ))}
                           </Row>
                         </div>
                       </Spin>
                     )}
                     <ModoPagination
-                      current={cardPage}
-                      pageSize={20}
-                      total={Math.max(listQuery.data?.total ?? 0, 1)}
-                      onChange={(page) => {
-                        setCardPage(page);
+                      current={pagination.current}
+                      pageSize={pagination.pageSize}
+                      total={listQuery.data?.total ?? 0}
+                      onChange={(page, pageSize) => {
+                        setPagination({ current: page, pageSize });
                       }}
                       style={{ flexShrink: 0, marginTop: "auto" }}
                     />

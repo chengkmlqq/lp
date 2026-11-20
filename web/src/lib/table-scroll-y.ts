@@ -11,7 +11,10 @@
  *
  * 返回 null 表示表格尚未渲染（无表头），调用方应退回各自的兜底公式。
  */
-export function measureTableScrollY(anchor: HTMLElement): number | null {
+export function measureTableScrollY(
+  anchor: HTMLElement,
+  paginationSelector = ".ant-table-pagination",
+): number | null {
   const header = anchor.querySelector<HTMLElement>(".ant-table-header");
   if (!header) {
     return null;
@@ -20,7 +23,9 @@ export function measureTableScrollY(anchor: HTMLElement): number | null {
   const anchorTop = anchor.getBoundingClientRect().top;
   const headerHeight = header.getBoundingClientRect().height;
 
-  const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+  // 默认取 antd Table 内置分页；服务端分页（Table pagination={false} + 外部分页器）
+  // 可传入外部分页容器的选择器，确保表体高度为其预留空间。
+  const pagination = anchor.querySelector<HTMLElement>(paginationSelector);
   let paginationHeight = 0;
   if (pagination) {
     const marginBottom = parseFloat(getComputedStyle(pagination).marginBottom) || 0;
