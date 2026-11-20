@@ -18,6 +18,7 @@ import {
   Card,
   Collapse,
   Descriptions,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -44,6 +45,7 @@ import {
   EyeOutlined,
   FileTextOutlined,
   InboxOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -55,6 +57,7 @@ import { WindLightningDensityDetailView } from "@/components/wind-lightning-dens
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import type {
@@ -123,6 +126,9 @@ export default function WindLightningDensityListPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
   const canManage = hasPermission("wind_lightning_density.manage");
+  // 删除口径对齐线路管理写操作（菜单可见即可操作）：有页面访问权限即可删除，
+  // 接口层同步放开 read||manage，避免"按钮可见但接口 403"。其余操作仍由 canManage 控制。
+  const canDelete = canRead;
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logOpen, setLogOpen] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
@@ -519,60 +525,57 @@ export default function WindLightningDensityListPage() {
         key: "actions",
         width: 300,
         render: (_value, record) => (
-          <Space size={4} wrap>
-            <Button
-              size="small"
-              type="link"
-              icon={<EyeOutlined />}
-              onClick={() => openDetail(record.id, record.batch_name || record.id)}
-            >
-              {t("详情")}
-            </Button>
-            {canReadLogs && record.task_id ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<FileTextOutlined />}
-                onClick={() => openLogViewer(record.task_id, t("任务执行日志"), record.batch_name || record.id)}
-              >
-                {t("日志")}
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button size="small" type="link" icon={<ReloadOutlined />} onClick={() => handleRecompute(record)}>
-                {t("重算")}
-              </Button>
-            ) : null}
-            {record.status === "completed" ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<DownloadOutlined />}
-                onClick={() => void handleExport(record, "all")}
-              >
-                {t("导出")}
-              </Button>
-            ) : null}
-            {record.status === "completed" && canManage ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<CloudUploadOutlined />}
-                onClick={() => void handleExport(record, "core")}
-              >
-                {t("核心文件")}
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button size="small" type="link" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-                {t("删除")}
-              </Button>
-            ) : null}
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "detail",
+                label: t("详情"),
+                icon: <EyeOutlined />,
+                onClick: () => openDetail(record.id, record.batch_name || record.id),
+              },
+              {
+                key: "log",
+                label: t("日志"),
+                icon: <FileTextOutlined />,
+                visible: Boolean(canReadLogs && record.task_id),
+                onClick: () =>
+                  openLogViewer(record.task_id, t("任务执行日志"), record.batch_name || record.id),
+              },
+              {
+                key: "recompute",
+                label: t("重算"),
+                icon: <ReloadOutlined />,
+                visible: canManage,
+                onClick: () => handleRecompute(record),
+              },
+              {
+                key: "export",
+                label: t("导出"),
+                icon: <DownloadOutlined />,
+                visible: record.status === "completed",
+                onClick: () => void handleExport(record, "all"),
+              },
+              {
+                key: "core",
+                label: t("核心文件"),
+                icon: <CloudUploadOutlined />,
+                visible: record.status === "completed" && canManage,
+                onClick: () => void handleExport(record, "core"),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                visible: canDelete,
+                onClick: () => handleDelete(record),
+              },
+            ]}
+          />
         ),
       },
     ],
-    [canManage, canReadLogs, openLogViewer, handleDelete, handleExport, handleRecompute, openDetail, t],
+    [canDelete, canManage, canReadLogs, openLogViewer, handleDelete, handleExport, handleRecompute, openDetail, t],
   );
 
   const paginationNode = (
@@ -668,59 +671,91 @@ export default function WindLightningDensityListPage() {
                   />
                 </Tooltip>
               ) : null}
-              {canManage ? (
-                <Tooltip title={t("重算")}>
+              <Dropdown
+                menu={{
+                  items: [
+                    ...(canManage
+                      ? [
+                          {
+                            key: "recompute",
+                            label: (
+                              <Space size={4}>
+                                <ReloadOutlined />
+                                <span>{t("重算")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              handleRecompute(record);
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(record.status === "completed"
+                      ? [
+                          {
+                            key: "export",
+                            label: (
+                              <Space size={4}>
+                                <DownloadOutlined />
+                                <span>{t("导出")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              void handleExport(record, "all");
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(record.status === "completed" && canManage
+                      ? [
+                          {
+                            key: "core",
+                            label: (
+                              <Space size={4}>
+                                <CloudUploadOutlined />
+                                <span>{t("核心文件")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              void handleExport(record, "core");
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(canDelete
+                      ? [
+                          {
+                            key: "delete",
+                            label: (
+                              <Space size={4}>
+                                <DeleteOutlined />
+                                <span>{t("删除")}</span>
+                              </Space>
+                            ),
+                            danger: true,
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              handleDelete(record);
+                            },
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
+                trigger={["click"]}
+              >
+                <Tooltip title={t("更多")}>
                   <Button
                     type="text"
                     size="small"
-                    icon={<ReloadOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRecompute(record);
-                    }}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
                   />
                 </Tooltip>
-              ) : null}
-              {record.status === "completed" ? (
-                <Tooltip title={t("导出")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleExport(record, "all");
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
-              {record.status === "completed" && canManage ? (
-                <Tooltip title={t("核心文件")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<CloudUploadOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleExport(record, "core");
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
-              {canManage ? (
-                <Tooltip title={t("删除")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDelete(record);
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
+              </Dropdown>
             </Space>
           </div>
         </div>

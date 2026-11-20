@@ -240,7 +240,8 @@ def recompute_wind_lightning_density_batch(
 @router.delete("/{batch_id}")
 def delete_wind_lightning_density_batch(
     batch_id: str,
-    current_user: CurrentUser = Depends(require_permission(_MANAGE_PERMISSION)),
+    # 删除口径与前端对齐：有页面访问权限（read/manage）即可删除，避免"按钮可见但接口 403"
+    current_user: CurrentUser = Depends(require_any_permission(*_READ_PERMISSIONS)),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     service.delete_batch(db, batch_id, actor_user_id=current_user.user.id)

@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   Descriptions,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -45,6 +46,7 @@ import {
   EyeOutlined,
   FileTextOutlined,
   InboxOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -55,6 +57,7 @@ import { WindDataPrepDetailView } from "@/components/wind-data-prep-detail-view"
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import type {
@@ -124,6 +127,9 @@ export default function WindDataPrepListPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_data_prep.read") || hasPermission("wind_data_prep.manage");
   const canManage = hasPermission("wind_data_prep.manage");
+  // 删除口径对齐线路管理写操作（菜单可见即可操作）：有页面访问权限即可删除，
+  // 接口层同步放开 read||manage，避免"按钮可见但接口 403"。其余操作仍由 canManage 控制。
+  const canDelete = canRead;
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logOpen, setLogOpen] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
@@ -553,45 +559,57 @@ export default function WindDataPrepListPage() {
         key: "actions",
         width: 300,
         render: (_value, record) => (
-          <Space size={4} wrap>
-            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openDetail(record.id, record.name || record.id)}>
-              {t("详情")}
-            </Button>
-            {canReadLogs && record.task_id ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<FileTextOutlined />}
-                onClick={() => openLogViewer(record.task_id, t("任务执行日志"), record.name || record.id)}
-              >
-                {t("日志")}
-              </Button>
-            ) : null}
-            {record.status === "completed" ? (
-              <Button size="small" type="link" icon={<DownloadOutlined />} onClick={() => handleDownloadPackage(record)}>
-                {t("下载 zip")}
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button size="small" type="link" icon={<ReloadOutlined />} onClick={() => handleRecompute(record)}>
-                {t("重跑")}
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => openWizard(record)}>
-                {t("复制参数")}
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button size="small" type="link" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-                {t("删除")}
-              </Button>
-            ) : null}
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "detail",
+                label: t("详情"),
+                icon: <EyeOutlined />,
+                onClick: () => openDetail(record.id, record.name || record.id),
+              },
+              {
+                key: "log",
+                label: t("日志"),
+                icon: <FileTextOutlined />,
+                visible: Boolean(canReadLogs && record.task_id),
+                onClick: () =>
+                  openLogViewer(record.task_id, t("任务执行日志"), record.name || record.id),
+              },
+              {
+                key: "package",
+                label: t("下载 zip"),
+                icon: <DownloadOutlined />,
+                visible: record.status === "completed",
+                onClick: () => handleDownloadPackage(record),
+              },
+              {
+                key: "recompute",
+                label: t("重跑"),
+                icon: <ReloadOutlined />,
+                visible: canManage,
+                onClick: () => handleRecompute(record),
+              },
+              {
+                key: "copy",
+                label: t("复制参数"),
+                icon: <CopyOutlined />,
+                visible: canManage,
+                onClick: () => openWizard(record),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                visible: canDelete,
+                onClick: () => handleDelete(record),
+              },
+            ]}
+          />
         ),
       },
     ],
-    [canManage, canReadLogs, openLogViewer, handleDelete, handleDownloadPackage, handleRecompute, openDetail, openWizard, t],
+    [canDelete, canManage, canReadLogs, openLogViewer, handleDelete, handleDownloadPackage, handleRecompute, openDetail, openWizard, t],
   );
 
   const paginationNode = (
@@ -691,59 +709,91 @@ export default function WindDataPrepListPage() {
                   />
                 </Tooltip>
               ) : null}
-              {record.status === "completed" ? (
-                <Tooltip title={t("下载 zip")}>
+              <Dropdown
+                menu={{
+                  items: [
+                    ...(record.status === "completed"
+                      ? [
+                          {
+                            key: "package",
+                            label: (
+                              <Space size={4}>
+                                <DownloadOutlined />
+                                <span>{t("下载 zip")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              handleDownloadPackage(record);
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(canManage
+                      ? [
+                          {
+                            key: "recompute",
+                            label: (
+                              <Space size={4}>
+                                <ReloadOutlined />
+                                <span>{t("重跑")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              handleRecompute(record);
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(canManage
+                      ? [
+                          {
+                            key: "copy",
+                            label: (
+                              <Space size={4}>
+                                <CopyOutlined />
+                                <span>{t("复制参数")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              openWizard(record);
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(canDelete
+                      ? [
+                          {
+                            key: "delete",
+                            label: (
+                              <Space size={4}>
+                                <DeleteOutlined />
+                                <span>{t("删除")}</span>
+                              </Space>
+                            ),
+                            danger: true,
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              handleDelete(record);
+                            },
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
+                trigger={["click"]}
+              >
+                <Tooltip title={t("更多")}>
                   <Button
                     type="text"
                     size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDownloadPackage(record);
-                    }}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
                   />
                 </Tooltip>
-              ) : null}
-              {canManage ? (
-                <Tooltip title={t("重跑")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<ReloadOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRecompute(record);
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
-              {canManage ? (
-                <Tooltip title={t("复制参数")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openWizard(record);
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
-              {canManage ? (
-                <Tooltip title={t("删除")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDelete(record);
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
+              </Dropdown>
             </Space>
           </div>
         </div>
