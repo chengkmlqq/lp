@@ -588,6 +588,13 @@ export default function WindTurbineCalcListPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="modo-page-tabs"
+        tabBarExtraContent={
+          canManage && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              {t("新建计算")}
+            </Button>
+          )
+        }
         items={[
           {
             key: LIST_TAB_KEY,
@@ -623,11 +630,6 @@ export default function WindTurbineCalcListPage() {
                         <Button icon={<ReloadOutlined />} onClick={refreshList}>
                           {t("刷新")}
                         </Button>
-                        {canManage && (
-                          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                            {t("新建计算")}
-                          </Button>
-                        )}
                       </Space>
                     </Form.Item>
                   </Form>

@@ -680,6 +680,11 @@ export default function WindFarmCalcListPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="modo-page-tabs"
+        tabBarExtraContent={
+          canManage ? (
+            <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>{t("新建计算")}</Button>
+          ) : null
+        }
         items={[
           {
             key: LIST_TAB_KEY,
@@ -711,9 +716,6 @@ export default function WindFarmCalcListPage() {
                       <Space>
                         <Button icon={<SearchOutlined />} onClick={() => setKeyword(keywordInput)}>{t("查询")}</Button>
                         <Button icon={<ReloadOutlined />} onClick={refreshList}>{t("刷新")}</Button>
-                        {canManage ? (
-                          <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>{t("新建计算")}</Button>
-                        ) : null}
                       </Space>
                     </Form.Item>
                   </Form>

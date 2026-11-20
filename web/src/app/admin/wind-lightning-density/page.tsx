@@ -781,6 +781,18 @@ export default function WindLightningDensityListPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="modo-page-tabs"
+        tabBarExtraContent={
+          <Button
+            icon={<PlusOutlined />}
+            type="primary"
+            onClick={() => {
+              setPreview(null);
+              setCreateOpen(true);
+            }}
+          >
+            {t("新建统计")}
+          </Button>
+        }
         items={[
           {
             key: LIST_TAB_KEY,
@@ -817,16 +829,6 @@ export default function WindLightningDensityListPage() {
                       <Space>
                         <Button icon={<SearchOutlined />} onClick={() => setKeyword(keywordInput)}>
                           {t("查询")}
-                        </Button>
-                        <Button
-                          icon={<PlusOutlined />}
-                          type="primary"
-                          onClick={() => {
-                            setPreview(null);
-                            setCreateOpen(true);
-                          }}
-                        >
-                          {t("新建统计")}
                         </Button>
                       </Space>
                     </Form.Item>

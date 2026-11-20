@@ -978,6 +978,11 @@ export default function WindDataPrepListPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="modo-page-tabs"
+        tabBarExtraContent={
+          <Button icon={<PlusOutlined />} type="primary" onClick={() => openWizard()}>
+            {t("新建数据准备")}
+          </Button>
+        }
         items={[
           {
             key: LIST_TAB_KEY,
@@ -1014,9 +1019,6 @@ export default function WindDataPrepListPage() {
                       <Space>
                         <Button icon={<SearchOutlined />} onClick={() => setKeyword(keywordInput)}>
                           {t("查询")}
-                        </Button>
-                        <Button icon={<PlusOutlined />} type="primary" onClick={() => openWizard()}>
-                          {t("新建数据准备")}
                         </Button>
                       </Space>
                     </Form.Item>
