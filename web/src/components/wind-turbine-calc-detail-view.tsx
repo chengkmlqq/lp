@@ -9,16 +9,17 @@ import {
   Button,
   Card,
   Col,
-  Descriptions,
   Empty,
   Progress,
   Row,
   Space,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Typography,
   type TableColumnsType,
+  type TabsProps,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -27,10 +28,18 @@ import {
   DownloadOutlined,
   ReloadOutlined,
   StopOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import {
+  WindDetailHero,
+  WindDetailMeta,
+  WindDetailSubline,
+  WindStatusChip,
+  type WindDetailMetaItem,
+} from "@/components/wind-detail-layout";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type {
@@ -206,134 +215,181 @@ export function WindTurbineCalcDetailView({
   );
 
   const completedAngles = detail ? Math.round((detail.progress / 100) * detail.angle_count) : 0;
+  const running = detail?.status === "processing" || detail?.status === "pending";
+  const engineVersion = detail?.engine_version_tag || detail?.engine_version_hash?.slice(0, 12);
+
+  const metaItems: WindDetailMetaItem[] = [
+    { label: t("状态"), value: <Tag color={statusMeta.color}>{t(statusMeta.label)}</Tag> },
+    { label: t("阶段"), value: detail?.stage ?? "-" },
+    {
+      label: t("进度（已完成角度）"),
+      value: (
+        <Progress
+          percent={detail?.progress ?? 0}
+          format={() => `${completedAngles}/${detail?.angle_count ?? 0}`}
+          style={{ width: 200 }}
+        />
+      ),
+    },
+    { label: t("耗时"), value: formatDuration(detail?.duration_seconds) },
+    { label: t("轮毂高度 h"), value: detail?.hub_height != null ? `${detail.hub_height} m` : "-" },
+    { label: t("叶片长度 R"), value: detail?.blade_length != null ? `${detail.blade_length} m` : "-" },
+    { label: t("起始雷电流 Ic"), value: detail?.start_current != null ? `${detail.start_current} kA` : "-" },
+    { label: t("接闪器径向位置"), value: detail?.receptor_radii?.join(", ") || "-" },
+    { label: t("旋转角列表"), value: detail?.angle_list?.join(", ") || "-" },
+    {
+      label: t("引擎版本"),
+      value: engineVersion
+        ? `${engineVersion}${detail?.runtime_version ? ` (${detail.runtime_version})` : ""}`
+        : "-",
+    },
+    { label: t("开始时间"), value: formatDateTime(detail?.started_at) },
+    { label: t("结束时间"), value: formatDateTime(detail?.finished_at) },
+    ...(detail?.error_message
+      ? [{ label: t("错误信息"), span: 2 as const, value: <Text type="danger">{detail.error_message}</Text> }]
+      : []),
+  ];
+
+  const tabItems: NonNullable<TabsProps["items"]> = [
+    {
+      key: "overview",
+      label: t("概览"),
+      children: (
+        <div className="wind-detail-tab-content">
+          <Row gutter={16}>
+            <Col span={8}>
+              <Card size="small">
+                <Statistic title={t("平均失效率")} value={formatRate(detail?.mean_failure_rate)} />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card size="small">
+                <Statistic title={t("最小失效率")} value={formatRate(detail?.min_failure_rate)} />
+                <Text type="secondary">{t("对应角度")}: {detail?.min_failure_rate_theta ?? "-"}</Text>
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card size="small">
+                <Statistic title={t("最大失效率")} value={formatRate(detail?.max_failure_rate)} />
+                <Text type="secondary">{t("对应角度")}: {detail?.max_failure_rate_theta ?? "-"}</Text>
+              </Card>
+            </Col>
+          </Row>
+          {chartQuery.data ? (
+            <Card size="small" title={t("失效率曲线")}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={chartQuery.data} alt="failure rate chart" style={{ maxWidth: "100%", width: 900 }} />
+            </Card>
+          ) : null}
+        </div>
+      ),
+    },
+    ...(detail?.status === "completed"
+      ? [
+          {
+            key: "angles",
+            label: `${t("逐角度结果")} (${detail.angle_count})`,
+            children: (
+              <Card size="small" title={t("逐角度结果")}>
+                <Table<WindTurbineCalcResultRow>
+                  rowKey="theta_deg"
+                  columns={columns}
+                  dataSource={resultsQuery.data?.items ?? []}
+                  loading={resultsQuery.isLoading}
+                  pagination={false}
+                  locale={{ emptyText: <Empty description={t("暂无结果")} /> }}
+                />
+                <ModoPagination
+                  current={page}
+                  pageSize={pageSize}
+                  total={resultsQuery.data?.total ?? 0}
+                  showSizeChanger
+                  pageSizeOptions={[20, 50, 100]}
+                  onChange={(nextPage, nextSize) => {
+                    setPage(nextPage);
+                    if (nextSize && nextSize !== pageSize) {
+                      setPageSize(nextSize);
+                      setPage(1);
+                    }
+                  }}
+                  style={{ marginTop: 0 }}
+                />
+              </Card>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <div className="wind-turbine-calc-detail-view modo-page-card">
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Space wrap>
-          {onClose ? (
-            <Button icon={<CloseOutlined />} onClick={onClose}>
-              {t("关闭")}
-            </Button>
-          ) : (
-            <Link href="/admin/wind-turbine-calc">
-              <Button icon={<ArrowLeftOutlined />}>{t("返回列表")}</Button>
-            </Link>
-          )}
-          <Button icon={<ReloadOutlined />} onClick={refresh}>
-            {t("刷新")}
-          </Button>
-          <Button icon={<DownloadOutlined />} onClick={() => handleExport("csv")} disabled={detail?.status !== "completed"}>
-            {t("导出 CSV")}
-          </Button>
-          <Button icon={<DownloadOutlined />} onClick={() => handleExport("all")} disabled={detail?.status !== "completed"}>
-            {t("导出结果包")}
-          </Button>
-          {canManage && (detail?.status === "processing" || detail?.status === "pending") && (
-            <Button danger icon={<StopOutlined />} onClick={handleCancel}>
-              {t("取消任务")}
-            </Button>
-          )}
-          {canManage && detail && detail.status !== "processing" && detail.status !== "pending" && (
-            <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
-              {t("删除")}
-            </Button>
-          )}
-        </Space>
-
-        <Alert
-          type="warning"
-          showIcon
-          message={t("角度公式外推提示")}
-          description={t("角度击距公式只在 0–90° 范围内拟合，超过 90° 的旋转角按外推计算，结果仅供参考。")}
-        />
-
-        <Card size="small" title={detail?.name || t("单风机计算详情")}>
-          <Descriptions column={2} size="small" bordered>
-            <Descriptions.Item label={t("状态")}>
-              <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label={t("阶段")}>{detail?.stage ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("进度（已完成角度）")}>
-              <Progress
-                percent={detail?.progress ?? 0}
-                format={() => `${completedAngles}/${detail?.angle_count ?? 0}`}
-                style={{ width: 200 }}
-              />
-            </Descriptions.Item>
-            <Descriptions.Item label={t("耗时")}>{formatDuration(detail?.duration_seconds)}</Descriptions.Item>
-            <Descriptions.Item label={t("轮毂高度 h")}>{detail?.hub_height ?? "-"} m</Descriptions.Item>
-            <Descriptions.Item label={t("叶片长度 R")}>{detail?.blade_length ?? "-"} m</Descriptions.Item>
-            <Descriptions.Item label={t("起始雷电流 Ic")}>{detail?.start_current ?? "-"} kA</Descriptions.Item>
-            <Descriptions.Item label={t("接闪器径向位置")}>{detail?.receptor_radii?.join(", ") || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("旋转角列表")}>{detail?.angle_list?.join(", ") || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("引擎版本")}>
-              {detail?.engine_version_tag || detail?.engine_version_hash?.slice(0, 12) || "-"}
-              {detail?.runtime_version ? ` (${detail.runtime_version})` : ""}
-            </Descriptions.Item>
-            <Descriptions.Item label={t("开始时间")}>{formatDateTime(detail?.started_at)}</Descriptions.Item>
-            <Descriptions.Item label={t("结束时间")}>{formatDateTime(detail?.finished_at)}</Descriptions.Item>
-            {detail?.error_message && (
-              <Descriptions.Item label={t("错误信息")} span={2}>
-                <Text type="danger">{detail.error_message}</Text>
-              </Descriptions.Item>
+    <div className="wind-detail-pane">
+      <WindDetailHero
+        icon={<ThunderboltOutlined />}
+        title={detail?.name || t("单风机计算详情")}
+        titleTooltip={detail?.name}
+        statusChip={<WindStatusChip status={detail?.status ?? "pending"} label={t(statusMeta.label)} />}
+        subline={
+          <WindDetailSubline
+            items={[
+              <span key="task">{t("任务 ID")} {jobId}</span>,
+              <span key="start">{t("开始时间")} {formatDateTime(detail?.started_at)}</span>,
+              <span key="duration">{t("耗时")} {formatDuration(detail?.duration_seconds)}</span>,
+              detail?.engine_version_tag ? <span key="engine">{detail.engine_version_tag}</span> : null,
+              detail ? (
+                <span key="progress">
+                  {t("进度（已完成角度）")} {completedAngles}/{detail.angle_count}
+                </span>
+              ) : null,
+            ]}
+          />
+        }
+        actions={
+          <>
+            {onClose ? (
+              <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
+                {t("关闭")}
+              </Button>
+            ) : (
+              <Link href="/admin/wind-turbine-calc">
+                <Button size="small" icon={<ArrowLeftOutlined />}>
+                  {t("返回列表")}
+                </Button>
+              </Link>
             )}
-          </Descriptions>
-        </Card>
+            <Button size="small" icon={<ReloadOutlined />} onClick={refresh}>
+              {t("刷新")}
+            </Button>
+            <Button size="small" icon={<DownloadOutlined />} onClick={() => handleExport("csv")} disabled={detail?.status !== "completed"}>
+              {t("导出 CSV")}
+            </Button>
+            <Button size="small" icon={<DownloadOutlined />} onClick={() => handleExport("all")} disabled={detail?.status !== "completed"}>
+              {t("导出结果包")}
+            </Button>
+            {canManage && running ? (
+              <Button danger size="small" icon={<StopOutlined />} onClick={handleCancel}>
+                {t("取消任务")}
+              </Button>
+            ) : null}
+            {canManage && detail && !running ? (
+              <Button danger size="small" icon={<DeleteOutlined />} onClick={handleDelete}>
+                {t("删除")}
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
-        <Row gutter={16}>
-          <Col span={8}>
-            <Card size="small">
-              <Statistic title={t("平均失效率")} value={formatRate(detail?.mean_failure_rate)} />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card size="small">
-              <Statistic title={t("最小失效率")} value={formatRate(detail?.min_failure_rate)} />
-              <Text type="secondary">{t("对应角度")}: {detail?.min_failure_rate_theta ?? "-"}°</Text>
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card size="small">
-              <Statistic title={t("最大失效率")} value={formatRate(detail?.max_failure_rate)} />
-              <Text type="secondary">{t("对应角度")}: {detail?.max_failure_rate_theta ?? "-"}°</Text>
-            </Card>
-          </Col>
-        </Row>
+      <Alert
+        className="wind-detail-alert"
+        type="warning"
+        showIcon
+        message={t("角度公式外推提示")}
+        description={t("角度击距公式只在 0–90° 范围内拟合，超过 90° 的旋转角按外推计算，结果仅供参考。")}
+      />
 
-        {chartQuery.data && (
-          <Card size="small" title={t("失效率曲线")}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={chartQuery.data} alt="failure rate chart" style={{ maxWidth: "100%", width: 900 }} />
-          </Card>
-        )}
+      {detail ? <WindDetailMeta items={metaItems} /> : null}
 
-        <Card size="small" title={t("逐角度结果")}>
-          <Table<WindTurbineCalcResultRow>
-            rowKey="theta_deg"
-            columns={columns}
-            dataSource={resultsQuery.data?.items ?? []}
-            loading={resultsQuery.isLoading}
-            pagination={false}
-            locale={{ emptyText: <Empty description={t("暂无结果")} /> }}
-          />
-          <ModoPagination
-            current={page}
-            pageSize={pageSize}
-            total={resultsQuery.data?.total ?? 0}
-            showSizeChanger
-            pageSizeOptions={[20, 50, 100]}
-            onChange={(nextPage, nextSize) => {
-              setPage(nextPage);
-              if (nextSize && nextSize !== pageSize) {
-                setPageSize(nextSize);
-                setPage(1);
-              }
-            }}
-            style={{ marginTop: 0 }}
-          />
-        </Card>
-      </Space>
+      <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
     </div>
   );
 }

@@ -9,7 +9,6 @@ import {
   Button,
   Card,
   Col,
-  Descriptions,
   Empty,
   Modal,
   Progress,
@@ -18,11 +17,16 @@ import {
   Space,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Typography,
   type TableColumnsType,
+  type TabsProps,
 } from "antd";
 import {
+  ArrowLeftOutlined,
+  CalculatorOutlined,
+  CloseOutlined,
   DownloadOutlined,
   FileTextOutlined,
   ReloadOutlined,
@@ -31,6 +35,13 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import {
+  WindDetailHero,
+  WindDetailMeta,
+  WindDetailSubline,
+  WindStatusChip,
+  type WindDetailMetaItem,
+} from "@/components/wind-detail-layout";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type {
@@ -188,48 +199,38 @@ export function WindFarmCalcDetailView({
     [t],
   );
 
-  return (
-    <div className="admin-lightning-distribution-detail-view" style={{ gap: 12, paddingBottom: 24 }}>
-      <div>
-        {onClose ? null : <Link href="/admin/wind-farm-calc">{t("返回列表")}</Link>}
-      </div>
+  const titleText = detail?.name || jobId;
+  const metaItems: WindDetailMetaItem[] = [
+    { label: t("任务名称"), value: detail?.name || "-" },
+    { label: t("状态"), value: <Tag color={statusMeta.color}>{t(statusMeta.label)}</Tag> },
+    { label: t("阶段"), value: detail?.stage || "-" },
+    { label: t("风机数"), value: detail?.turbine_count ?? 0 },
+    { label: t("耗时"), value: formatDuration(detail?.duration_seconds) },
+    { label: t("任务 ID"), value: detail?.task_id || "-" },
+    { label: t("开始时间"), value: formatDateTime(detail?.started_at) },
+    { label: t("结束时间"), value: formatDateTime(detail?.finished_at) },
+    { label: t("引擎 MD5"), value: detail?.engine_md5 || "-" },
+    { label: t("来源批次"), span: 2, value: detail?.prep_batch_id || "-" },
+    ...(detail?.error_message
+      ? [{ label: t("失败原因"), span: 2 as const, value: <Text type="danger">{detail.error_message}</Text> }]
+      : []),
+  ];
 
-      <Card size="small" title={t("状态卡")} extra={<Button icon={<ReloadOutlined />} size="small" onClick={() => void detailQuery.refetch()}>{t("刷新")}</Button>}>
-        <Descriptions column={3} size="small" bordered>
-          <Descriptions.Item label={t("任务名称")}>{detail?.name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("状态")}>
-            <Space direction="vertical" size={2}>
-              <Tag color={statusMeta.color}>{t(statusMeta.label)}</Tag>
-              {(detail?.status === "processing" || detail?.status === "pending") ? (
-                <Progress percent={detail?.progress ?? 0} size="small" />
-              ) : null}
-            </Space>
-          </Descriptions.Item>
-          <Descriptions.Item label={t("阶段")}>{detail?.stage || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("风机数")}>{detail?.turbine_count ?? 0}</Descriptions.Item>
-          <Descriptions.Item label={t("耗时")}>{formatDuration(detail?.duration_seconds)}</Descriptions.Item>
-          <Descriptions.Item label={t("任务 ID")}>{detail?.task_id || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("开始时间")}>{formatDateTime(detail?.started_at)}</Descriptions.Item>
-          <Descriptions.Item label={t("结束时间")}>{formatDateTime(detail?.finished_at)}</Descriptions.Item>
-          <Descriptions.Item label={t("引擎 MD5")}>{detail?.engine_md5 || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("来源批次")} span={3}>{detail?.prep_batch_id || "-"}</Descriptions.Item>
-          {detail?.error_message ? (
-            <Descriptions.Item label={t("失败原因")} span={3}>
-              <Text type="danger">{detail.error_message}</Text>
-            </Descriptions.Item>
-          ) : null}
-        </Descriptions>
-      </Card>
+  const completed = detail?.status === "completed";
 
-      {detail?.status === "completed" ? (
-        <Card size="small" title={t("统计卡")}>
+  const tabItems: NonNullable<TabsProps["items"]> = [
+    {
+      key: "overview",
+      label: t("概览"),
+      children: (
+        <div className="wind-detail-tab-content">
           <Row gutter={[12, 12]}>
             {[1, 2, 3, 4].map((level) => (
               <Col key={level} xs={12} sm={6} md={4}>
                 <Card size="small">
                   <Statistic
                     title={`${t("风险")} ${RISK_LABELS[level]}`}
-                    value={(detail[RISK_COUNT_KEYS[level]] as number) ?? 0}
+                    value={(detail?.[RISK_COUNT_KEYS[level]] as number) ?? 0}
                     valueStyle={{ color: RISK_COLORS[level] === "red" ? "#cf1322" : undefined }}
                   />
                 </Card>
@@ -237,140 +238,260 @@ export function WindFarmCalcDetailView({
             ))}
             <Col xs={12} sm={6} md={4}>
               <Card size="small">
-                <Statistic title={t("需停运")} value={detail.shutdown_count ?? 0} />
+                <Statistic title={t("需停运")} value={detail?.shutdown_count ?? 0} />
               </Card>
             </Col>
             <Col xs={12} sm={6} md={4}>
               <Card size="small">
-                <Statistic title={t("集电线停运")} value={detail.circuit_shutdown_count ?? 0} />
+                <Statistic title={t("集电线停运")} value={detail?.circuit_shutdown_count ?? 0} />
               </Card>
             </Col>
             <Col xs={12} sm={6} md={4}>
               <Card size="small">
-                <Statistic title={t("全场停运")} value={detail.farm_shutdown_count ?? 0} />
+                <Statistic title={t("全场停运")} value={detail?.farm_shutdown_count ?? 0} />
               </Card>
             </Col>
           </Row>
-          {detail.risk_mismatch_count > 0 ? (
+          {detail && detail.risk_mismatch_count > 0 ? (
             <Alert
               type="info"
               showIcon
-              style={{ marginTop: 12 }}
               message={t("GBK 风险列与后端重算不一致")}
               description={t("以后端按 V 与 S 重算的风险等级为准，GBK 原文保留在结果表 raw_line 列。")}
             />
           ) : null}
-        </Card>
-      ) : null}
-
-      <Card
-        size="small"
-        title={t("逐台结果")}
-        extra={
-          <Space>
-            <Button size="small" icon={<FileTextOutlined />} loading={rawLoading} onClick={() => void showRaw()}>
-              {t("原始输出预览")}
-            </Button>
-            <Button
-              size="small"
-              icon={<DownloadOutlined />}
-              onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt")}
-            >
-              {t("下载 file_out.txt")}
-            </Button>
-            {detail?.status === "completed" ? (
+        </div>
+      ),
+    },
+    {
+      key: "results",
+      label: `${t("逐台结果")} (${resultsQuery.data?.total ?? 0})`,
+      children: (
+        <Card
+          size="small"
+          title={t("逐台结果")}
+          extra={
+            <Space>
+              <Button size="small" icon={<FileTextOutlined />} loading={rawLoading} onClick={() => void showRaw()}>
+                {t("原始输出预览")}
+              </Button>
               <Button
                 size="small"
-                type="primary"
                 icon={<DownloadOutlined />}
-                onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/export`, `${detail.name || "wind-farm-calc"}-results.xlsx`)}
+                onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt")}
               >
-                {t("导出 Excel")}
+                {t("下载 file_out.txt")}
               </Button>
-            ) : null}
-            <Button size="small" onClick={() => setLogOpen(true)}>{t("运行日志")}</Button>
-          </Space>
-        }
-      >
-        <Space style={{ marginBottom: 12 }} wrap>
-          <span>{t("风险等级")}:</span>
-          <Select
-            allowClear
-            style={{ width: 120 }}
-            placeholder={t("全部")}
-            value={riskFilter}
-            onChange={(v) => { setRiskFilter(v); setPage(1); }}
-            options={[1, 2, 3, 4].map((level) => ({ value: level, label: `${t("风险")} ${RISK_LABELS[level]}` }))}
-          />
-          <span>{t("停运建议")}:</span>
-          <Select
-            allowClear
-            style={{ width: 140 }}
-            placeholder={t("全部")}
-            value={suggestionFilter}
-            onChange={(v) => { setSuggestionFilter(v); setPage(1); }}
-            options={[
-              { value: 1, label: t("无") },
-              { value: 2, label: t("停运") },
-              { value: 3, label: t("停运(集电线)") },
-              { value: 4, label: t("停运(风电场)") },
-            ]}
-          />
-        </Space>
-        <Table<WindFarmCalcResultRow>
-          rowKey="seq"
-          size="small"
-          loading={resultsQuery.isLoading}
-          columns={resultColumns}
-          dataSource={resultsQuery.data?.items ?? []}
-          pagination={false}
-          scroll={{ x: 900 }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无结果")} /> }}
-          onChange={(_pagination, _filters, sorter) => {
-            const s = Array.isArray(sorter) ? sorter[0] : sorter;
-            if (!s || !s.columnKey) return;
-            setSortBy(String(s.columnKey));
-            setOrder(s.order === "descend" ? "desc" : "asc");
-            setPage(1);
-          }}
-          footer={() => (
-            <ModoPagination
-              current={page}
-              pageSize={pageSize}
-              total={resultsQuery.data?.total ?? 0}
-              showSizeChanger
-              pageSizeOptions={[20, 50, 100]}
-              onChange={(nextPage, nextSize) => {
-                setPage(nextPage);
-                if (nextSize && nextSize !== pageSize) {
-                  setPageSize(nextSize);
-                  setPage(1);
-                }
-              }}
-              style={{ marginTop: 0 }}
+              {completed ? (
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<DownloadOutlined />}
+                  onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/export`, `${detail.name || "wind-farm-calc"}-results.xlsx`)}
+                >
+                  {t("导出 Excel")}
+                </Button>
+              ) : null}
+              <Button size="small" onClick={() => setLogOpen(true)}>{t("运行日志")}</Button>
+            </Space>
+          }
+        >
+          <Space style={{ marginBottom: 12 }} wrap>
+            <span>{t("风险等级")}:</span>
+            <Select
+              allowClear
+              style={{ width: 120 }}
+              placeholder={t("全部")}
+              value={riskFilter}
+              onChange={(v) => { setRiskFilter(v); setPage(1); }}
+              options={[1, 2, 3, 4].map((level) => ({ value: level, label: `${t("风险")} ${RISK_LABELS[level]}` }))}
             />
-          )}
-        />
-      </Card>
-
-      {detail?.preflight_json ? (
-        <Card size="small" title={t("预检结果")}>
-          <Paragraph style={{ marginBottom: 4 }}>
-            {t("结果行数")}: {detail.preflight_json.grid_rows ?? "-"} · {t("网格")}:{" "}
-            {detail.preflight_json.params?.nx}×{detail.preflight_json.params?.ny} · S: {detail.preflight_json.params?.s}
-          </Paragraph>
-          <Space direction="vertical" size={2} style={{ width: "100%" }}>
-            {(detail.preflight_json.checks ?? []).map((check) => (
-              <div key={check.code}>
-                <Tag color={check.passed ? "green" : "red"}>{check.passed ? t("通过") : t("失败")}</Tag>
-                {t(check.label)}：{t(check.message)}
-              </div>
-            ))}
+            <span>{t("停运建议")}:</span>
+            <Select
+              allowClear
+              style={{ width: 140 }}
+              placeholder={t("全部")}
+              value={suggestionFilter}
+              onChange={(v) => { setSuggestionFilter(v); setPage(1); }}
+              options={[
+                { value: 1, label: t("无") },
+                { value: 2, label: t("停运") },
+                { value: 3, label: t("停运(集电线)") },
+                { value: 4, label: t("停运(风电场)") },
+              ]}
+            />
           </Space>
+          <Table<WindFarmCalcResultRow>
+            rowKey="seq"
+            size="small"
+            loading={resultsQuery.isLoading}
+            columns={resultColumns}
+            dataSource={resultsQuery.data?.items ?? []}
+            pagination={false}
+            scroll={{ x: 900 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无结果")} /> }}
+            onChange={(_pagination, _filters, sorter) => {
+              const s = Array.isArray(sorter) ? sorter[0] : sorter;
+              if (!s || !s.columnKey) return;
+              setSortBy(String(s.columnKey));
+              setOrder(s.order === "descend" ? "desc" : "asc");
+              setPage(1);
+            }}
+            footer={() => (
+              <ModoPagination
+                current={page}
+                pageSize={pageSize}
+                total={resultsQuery.data?.total ?? 0}
+                showSizeChanger
+                pageSizeOptions={[20, 50, 100]}
+                onChange={(nextPage, nextSize) => {
+                  setPage(nextPage);
+                  if (nextSize && nextSize !== pageSize) {
+                    setPageSize(nextSize);
+                    setPage(1);
+                  }
+                }}
+                style={{ marginTop: 0 }}
+              />
+            )}
+          />
         </Card>
-      ) : null}
+      ),
+    },
+    ...(detail?.preflight_json
+      ? [
+          {
+            key: "preflight",
+            label: t("预检结果"),
+            children: (
+              <Card size="small" title={t("预检结果")}>
+                <Paragraph style={{ marginBottom: 4 }}>
+                  {t("结果行数")}: {detail.preflight_json.grid_rows ?? "-"} · {t("网格")}:{" "}
+                  {detail.preflight_json.params?.nx}×{detail.preflight_json.params?.ny} · S: {detail.preflight_json.params?.s}
+                </Paragraph>
+                <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                  {(detail.preflight_json.checks ?? []).map((check) => (
+                    <div key={check.code}>
+                      <Tag color={check.passed ? "green" : "red"}>{check.passed ? t("通过") : t("失败")}</Tag>
+                      {t(check.label)}：{t(check.message)}
+                    </div>
+                  ))}
+                </Space>
+              </Card>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: "raw-output",
+      label: t("原始 file_out.txt"),
+      children: (
+        <Card
+          size="small"
+          title={t("原始 file_out.txt")}
+          extra={
+            <Space>
+              <Button size="small" icon={<FileTextOutlined />} loading={rawLoading} onClick={() => void showRaw()}>
+                {t("原始输出预览")}
+              </Button>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt")}
+              >
+                {t("下载 file_out.txt")}
+              </Button>
+            </Space>
+          }
+        >
+          <Text type="secondary">{t("原始 file_out.txt 预览（GBK 已转 UTF-8）")}</Text>
+        </Card>
+      ),
+    },
+  ];
 
-      <TaskLogViewerDrawer taskId={logQuery.data?.task_id ?? detail?.task_id ?? null} title={t("运行日志")} open={logOpen} onClose={() => setLogOpen(false)} />
+  return (
+    <>
+      <div className="wind-detail-pane">
+        <WindDetailHero
+          icon={<CalculatorOutlined />}
+          title={titleText}
+          titleTooltip={titleText}
+          statusChip={<WindStatusChip status={detail?.status ?? "pending"} label={t(statusMeta.label)} />}
+          subline={
+            <WindDetailSubline
+              items={[
+                <span key="prep">{t("来源批次")} {detail?.prep_batch_id || "-"}</span>,
+                <span key="task">{t("任务 ID")} {detail?.task_id || "-"}</span>,
+                <span key="start">{t("开始时间")} {formatDateTime(detail?.started_at)}</span>,
+                detail && (detail.status === "processing" || detail.status === "pending") ? (
+                  <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
+                ) : null,
+              ]}
+            />
+          }
+          actions={
+            <>
+              {onClose ? (
+                <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
+                  {t("关闭")}
+                </Button>
+              ) : (
+                <Link href="/admin/wind-farm-calc">
+                  <Button size="small" icon={<ArrowLeftOutlined />}>
+                    {t("返回列表")}
+                  </Button>
+                </Link>
+              )}
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => void detailQuery.refetch()}>
+                {t("刷新")}
+              </Button>
+              <Button size="small" onClick={() => setLogOpen(true)}>{t("运行日志")}</Button>
+              <Button size="small" icon={<FileTextOutlined />} loading={rawLoading} onClick={() => void showRaw()}>
+                {t("原始输出预览")}
+              </Button>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt")}
+              >
+                {t("下载 file_out.txt")}
+              </Button>
+              {completed ? (
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<DownloadOutlined />}
+                  onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/export`, `${detail.name || "wind-farm-calc"}-results.xlsx`)}
+                >
+                  {t("导出 Excel")}
+                </Button>
+              ) : null}
+            </>
+          }
+        />
+
+        {detail?.error_message ? (
+          <Alert
+            className="wind-detail-alert"
+            type="error"
+            showIcon
+            message={t("失败原因")}
+            description={detail.error_message}
+          />
+        ) : null}
+
+        {detail ? <WindDetailMeta items={metaItems} /> : null}
+
+        <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
+      </div>
+
+      <TaskLogViewerDrawer
+        taskId={logQuery.data?.task_id ?? detail?.task_id ?? null}
+        title={t("运行日志")}
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+      />
 
       <Modal
         title={t("原始 file_out.txt 预览（GBK 已转 UTF-8）")}
@@ -381,6 +502,6 @@ export function WindFarmCalcDetailView({
       >
         <pre style={{ maxHeight: 500, overflow: "auto", fontSize: 12 }}>{rawText || t("(空)")}</pre>
       </Modal>
-    </div>
+    </>
   );
 }

@@ -20,14 +20,28 @@ import {
   Space,
   Statistic,
   Table,
-  Tag,
+  Tabs,
   Typography,
   type TableColumnsType,
+  type TabsProps,
 } from "antd";
-import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  CloseOutlined,
+  DownloadOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import {
+  WindDetailHero,
+  WindDetailMeta,
+  WindDetailSubline,
+  WindStatusChip,
+  type WindDetailMetaItem,
+} from "@/components/wind-detail-layout";
 import { useI18n } from "@/lib/i18n";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import type {
@@ -40,13 +54,6 @@ import type {
 
 const { Text } = Typography;
 const API_BASE = "/api/v1/wind-lightning-density";
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "default",
-  processing: "processing",
-  completed: "success",
-  failed: "error",
-};
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待处理",
@@ -297,77 +304,38 @@ export function WindLightningDensityDetailView({
     );
   }
 
-  return (
-    <div className="admin-lightning-distribution-detail-view">
-      <div className="modo-page-card">
-        <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Space wrap>
-            {onClose ? null : (
-              <Link href="/admin/wind-lightning-density">
-                <Button icon={<ArrowLeftOutlined />}>{t("返回列表")}</Button>
-              </Link>
-            )}
-            <Typography.Title level={5} style={{ margin: 0 }}>
-              {detail?.batch_name || batchId}
-            </Typography.Title>
-            {detail ? (
-              <Tag color={STATUS_COLORS[detail.status] ?? "default"}>
-                {t(STATUS_LABELS[detail.status] ?? detail.status)}
-              </Tag>
-            ) : null}
-            {detail?.status === "processing" || detail?.status === "pending" ? (
-              <Progress percent={detail.progress} size="small" style={{ width: 160 }} />
-            ) : null}
-            {canManage ? (
-              <Button icon={<ReloadOutlined />} onClick={handleRecompute} disabled={detail?.status === "processing"}>
-                {t("重算")}
-              </Button>
-            ) : null}
-            {detail?.status === "completed" ? (
-              <Space>
-                <Button
-                  icon={<DownloadOutlined />}
-                  onClick={() =>
-                    void handleExport(
-                      `${API_BASE}/${batchId}/export?type=all`,
-                      `${detail.batch_name || "wind-lightning-density"}-all.xlsx`,
-                    )
-                  }
-                >
-                  {t("数据导出")}
-                </Button>
-                <Button icon={<DownloadOutlined />} onClick={() => setCoreModalOpen(true)}>
-                  {t("核心程序文件（file_3/file_4）")}
-                </Button>
-              </Space>
-            ) : null}
-          </Space>
+  const titleText = detail?.batch_name || batchId;
+  const metaItems: WindDetailMetaItem[] = detail
+    ? [
+        { label: t("风电场"), value: detail.wind_farm_name || "-" },
+        { label: t("风机文件"), value: detail.turbine_source_file_name || "-" },
+        { label: t("雷电文件"), value: detail.lightning_source_file_name || "-" },
+        { label: t("创建时间"), value: formatDateTime(detail.create_date) },
+        {
+          label: t("统计范围"),
+          span: 2,
+          value: (
+            <>
+              {formatNumber(detail.bbox_min_lon, 4)} ~ {formatNumber(detail.bbox_max_lon, 4)}（{t("经度")}）
+              {" / "}
+              {formatNumber(detail.bbox_min_lat, 4)} ~ {formatNumber(detail.bbox_max_lat, 4)}（{t("纬度")}）
+            </>
+          ),
+        },
+        { label: t("网格数"), value: `${detail.grid_x_count} × ${detail.grid_y_count}` },
+        { label: t("网格步长 / 边距"), value: `${detail.grid_step_deg}° / ${detail.margin_deg}°` },
+      ]
+    : [];
 
-          {detail ? (
-            <Descriptions size="small" column={4} bordered>
-              <Descriptions.Item label={t("风电场")}>{detail.wind_farm_name || "-"}</Descriptions.Item>
-              <Descriptions.Item label={t("风机文件")}>{detail.turbine_source_file_name || "-"}</Descriptions.Item>
-              <Descriptions.Item label={t("雷电文件")}>{detail.lightning_source_file_name || "-"}</Descriptions.Item>
-              <Descriptions.Item label={t("创建时间")}>{formatDateTime(detail.create_date)}</Descriptions.Item>
-              <Descriptions.Item label={t("统计范围")} span={2}>
-                {formatNumber(detail.bbox_min_lon, 4)} ~ {formatNumber(detail.bbox_max_lon, 4)}（{t("经度")}）
-                {" / "}
-                {formatNumber(detail.bbox_min_lat, 4)} ~ {formatNumber(detail.bbox_max_lat, 4)}（{t("纬度")}）
-              </Descriptions.Item>
-              <Descriptions.Item label={t("网格数")}>
-                {detail.grid_x_count} × {detail.grid_y_count}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("网格步长 / 边距")}>
-                {detail.grid_step_deg}° / {detail.margin_deg}°
-              </Descriptions.Item>
-            </Descriptions>
-          ) : null}
+  const completed = detail?.status === "completed";
 
-          {detail?.status === "failed" ? (
-            <Alert type="error" showIcon message={t("统计失败")} description={detail.error_message} />
-          ) : null}
-
-          <Row gutter={16}>
+  const tabItems: NonNullable<TabsProps["items"]> = [
+    {
+      key: "overview",
+      label: t("概览"),
+      children: (
+        <div className="wind-detail-tab-content">
+          <Row gutter={[12, 12]}>
             <Col xs={12} md={8} lg={4}>
               <Card size="small">
                 <Statistic title={t("风机数")} value={detail?.turbine_count ?? 0} />
@@ -380,35 +348,22 @@ export function WindLightningDensityDetailView({
             </Col>
             <Col xs={12} md={8} lg={4}>
               <Card size="small">
-                <Statistic
-                  title={t("范围面积 (km²)")}
-                  value={formatNumber(detail?.area_km2, 2)}
-                />
+                <Statistic title={t("范围面积 (km²)")} value={formatNumber(detail?.area_km2, 2)} />
               </Card>
             </Col>
             <Col xs={12} md={8} lg={4}>
               <Card size="small">
-                <Statistic
-                  title={t("平均密度 次/(km²·年)")}
-                  value={formatNumber(detail?.overall_density, 4)}
-                />
+                <Statistic title={t("平均密度 次/(km²·年)")} value={formatNumber(detail?.overall_density, 4)} />
               </Card>
             </Col>
             <Col xs={12} md={8} lg={4}>
               <Card size="small">
-                <Statistic
-                  title={t("峰值密度 次/(km²·年)")}
-                  value={formatNumber(detail?.peak_density, 4)}
-                />
+                <Statistic title={t("峰值密度 次/(km²·年)")} value={formatNumber(detail?.peak_density, 4)} />
               </Card>
             </Col>
             <Col xs={12} md={8} lg={4}>
               <Card size="small">
-                <Statistic
-                  title={t("统计年限")}
-                  value={detail?.data_years ?? "-"}
-                  suffix={t("年")}
-                />
+                <Statistic title={t("统计年限")} value={detail?.data_years ?? "-"} suffix={t("年")} />
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {detail
                     ? detail.years_source === "fixed"
@@ -471,73 +426,229 @@ export function WindLightningDensityDetailView({
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
             )}
           </Card>
-
-          <Card size="small" title={t("网格密度表")} extra={<Text type="secondary">{t("仅展示有落雷或有风机的网格")}</Text>}>
-            <Table<WindLightningDensityCellRow>
-              rowKey={(record) => `${record.cell_i}-${record.cell_j}`}
-              size="small"
-              columns={cellColumns}
-              dataSource={cellsQuery.data?.items ?? []}
-              loading={cellsQuery.isLoading}
-              pagination={false}
-              scroll={{ x: 1000 }}
-              onChange={(_pagination, _filters, sorter, extra) => {
-                if (extra.action !== "sort") {
-                  return;
+        </div>
+      ),
+    },
+    ...(completed
+      ? [
+          {
+            key: "cells",
+            label: `${t("网格密度表")} (${cellsQuery.data?.total ?? 0})`,
+            children: (
+              <Card
+                size="small"
+                title={t("网格密度表")}
+                extra={<Text type="secondary">{t("仅展示有落雷或有风机的网格")}</Text>}
+              >
+                <Table<WindLightningDensityCellRow>
+                  rowKey={(record) => `${record.cell_i}-${record.cell_j}`}
+                  size="small"
+                  columns={cellColumns}
+                  dataSource={cellsQuery.data?.items ?? []}
+                  loading={cellsQuery.isLoading}
+                  pagination={false}
+                  scroll={{ x: 1000 }}
+                  onChange={(_pagination, _filters, sorter, extra) => {
+                    if (extra.action !== "sort") {
+                      return;
+                    }
+                    const current = Array.isArray(sorter) ? sorter[0] : sorter;
+                    const field = String(current?.field ?? "density_per_km2_year");
+                    const order = current?.order === "ascend" ? "asc" : "desc";
+                    setCellSort({ field, order });
+                    setCellPage(1);
+                  }}
+                  footer={() => (
+                    <ModoPagination
+                      current={cellPage}
+                      pageSize={cellPageSize}
+                      total={cellsQuery.data?.total ?? 0}
+                      pageSizeOptions={[10, 20, 50, 100]}
+                      onChange={(nextPage, nextSize) => {
+                        setCellPage(nextPage);
+                        if (nextSize && nextSize !== cellPageSize) {
+                          setCellPageSize(nextSize);
+                          setCellPage(1);
+                        }
+                      }}
+                      style={{ marginTop: 0 }}
+                    />
+                  )}
+                />
+              </Card>
+            ),
+          },
+        ]
+      : []),
+    ...(completed
+      ? [
+          {
+            key: "turbines",
+            label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
+            children: (
+              <Card size="small" title={t("风机明细")}>
+                <Table<WindLightningDensityTurbineRow>
+                  rowKey={(record) => String(record.seq)}
+                  size="small"
+                  columns={turbineColumns}
+                  dataSource={turbinesQuery.data?.items ?? []}
+                  loading={turbinesQuery.isLoading}
+                  pagination={false}
+                  scroll={{ x: 900 }}
+                  footer={() => (
+                    <ModoPagination
+                      current={turbinePage}
+                      pageSize={turbinePageSize}
+                      total={turbinesQuery.data?.total ?? 0}
+                      pageSizeOptions={[10, 20, 50, 100]}
+                      onChange={(nextPage, nextSize) => {
+                        setTurbinePage(nextPage);
+                        if (nextSize && nextSize !== turbinePageSize) {
+                          setTurbinePageSize(nextSize);
+                          setTurbinePage(1);
+                        }
+                      }}
+                      style={{ marginTop: 0 }}
+                    />
+                  )}
+                />
+              </Card>
+            ),
+          },
+        ]
+      : []),
+    ...(completed
+      ? [
+          {
+            key: "core-files",
+            label: t("核心程序文件（file_3/file_4）"),
+            children: (
+              <Card
+                size="small"
+                title={t("核心程序文件（file_3 / file_4）")}
+                extra={
+                  <Button size="small" icon={<DownloadOutlined />} onClick={() => setCoreModalOpen(true)}>
+                    {t("下载 zip")}
+                  </Button>
                 }
-                const current = Array.isArray(sorter) ? sorter[0] : sorter;
-                const field = String(current?.field ?? "density_per_km2_year");
-                const order = current?.order === "ascend" ? "asc" : "desc";
-                setCellSort({ field, order });
-                setCellPage(1);
-              }}
-              footer={() => (
-                <ModoPagination
-                  current={cellPage}
-                  pageSize={cellPageSize}
-                  total={cellsQuery.data?.total ?? 0}
-                  pageSizeOptions={[10, 20, 50, 100]}
-                  onChange={(nextPage, nextSize) => {
-                    setCellPage(nextPage);
-                    if (nextSize && nextSize !== cellPageSize) {
-                      setCellPageSize(nextSize);
-                      setCellPage(1);
-                    }
-                  }}
-                  style={{ marginTop: 0 }}
-                />
-              )}
-            />
-          </Card>
+              >
+                <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                  <Text type="secondary">
+                    {t(
+                      "按风电场研究区域网格（与核心程序 file_1.txt 一致）导出：file_3 为风机所在网格编号，file_4 为对应网格地闪密度（次/(km²·年)）。",
+                    )}
+                  </Text>
+                  <Descriptions column={2} size="small" bordered>
+                    <Descriptions.Item label={t("起始经度")}>{detail?.core_grid?.start_lon ?? "-"}</Descriptions.Item>
+                    <Descriptions.Item label={t("起始纬度")}>{detail?.core_grid?.start_lat ?? "-"}</Descriptions.Item>
+                    <Descriptions.Item label={t("网格列数 x_count")}>{detail?.core_grid?.x_count ?? "-"}</Descriptions.Item>
+                    <Descriptions.Item label={t("网格行数 y_count")}>{detail?.core_grid?.y_count ?? "-"}</Descriptions.Item>
+                    <Descriptions.Item label={t("风机数（行数校验）")} span={2}>
+                      {detail?.turbine_count ?? 0}
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Space>
+              </Card>
+            ),
+          },
+        ]
+      : []),
+  ];
 
-          <Card size="small" title={t("风机明细")}>
-            <Table<WindLightningDensityTurbineRow>
-              rowKey={(record) => String(record.seq)}
-              size="small"
-              columns={turbineColumns}
-              dataSource={turbinesQuery.data?.items ?? []}
-              loading={turbinesQuery.isLoading}
-              pagination={false}
-              scroll={{ x: 900 }}
-              footer={() => (
-                <ModoPagination
-                  current={turbinePage}
-                  pageSize={turbinePageSize}
-                  total={turbinesQuery.data?.total ?? 0}
-                  pageSizeOptions={[10, 20, 50, 100]}
-                  onChange={(nextPage, nextSize) => {
-                    setTurbinePage(nextPage);
-                    if (nextSize && nextSize !== turbinePageSize) {
-                      setTurbinePageSize(nextSize);
-                      setTurbinePage(1);
-                    }
-                  }}
-                  style={{ marginTop: 0 }}
-                />
-              )}
+  return (
+    <>
+      <div className="wind-detail-pane">
+        <WindDetailHero
+          icon={<ThunderboltOutlined />}
+          title={titleText}
+          titleTooltip={titleText}
+          statusChip={
+            detail ? (
+              <WindStatusChip
+                status={detail.status}
+                label={t(STATUS_LABELS[detail.status] ?? detail.status)}
+              />
+            ) : null
+          }
+          subline={
+            <WindDetailSubline
+              items={[
+                <span key="farm" title={detail?.wind_farm_name ?? undefined}>
+                  {detail?.wind_farm_name || "-"}
+                </span>,
+                <span key="id" title={batchId}>
+                  {batchId}
+                </span>,
+                detail ? (
+                  <span key="created">
+                    {t("创建时间")} {formatDateTime(detail.create_date)}
+                  </span>
+                ) : null,
+                detail && (detail.status === "processing" || detail.status === "pending") ? (
+                  <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
+                ) : null,
+              ]}
             />
-          </Card>
-        </Space>
+          }
+          actions={
+            <>
+              {onClose ? (
+                <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
+                  {t("关闭")}
+                </Button>
+              ) : (
+                <Link href="/admin/wind-lightning-density">
+                  <Button size="small" icon={<ArrowLeftOutlined />}>
+                    {t("返回列表")}
+                  </Button>
+                </Link>
+              )}
+              {canManage ? (
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={handleRecompute}
+                  disabled={detail?.status === "processing"}
+                >
+                  {t("重算")}
+                </Button>
+              ) : null}
+              {completed ? (
+                <>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() =>
+                      void handleExport(
+                        `${API_BASE}/${batchId}/export?type=all`,
+                        `${detail.batch_name || "wind-lightning-density"}-all.xlsx`,
+                      )
+                    }
+                  >
+                    {t("数据导出")}
+                  </Button>
+                  <Button size="small" icon={<DownloadOutlined />} onClick={() => setCoreModalOpen(true)}>
+                    {t("核心程序文件（file_3/file_4）")}
+                  </Button>
+                </>
+              ) : null}
+            </>
+          }
+        />
+
+        {detail?.status === "failed" ? (
+          <Alert
+            className="wind-detail-alert"
+            type="error"
+            showIcon
+            message={t("统计失败")}
+            description={detail.error_message}
+          />
+        ) : null}
+
+        {detail ? <WindDetailMeta items={metaItems} /> : null}
+
+        <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
       </div>
 
       <Modal
@@ -571,7 +682,7 @@ export function WindLightningDensityDetailView({
           </Descriptions>
         </Space>
       </Modal>
-    </div>
+    </>
   );
 }
 

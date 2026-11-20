@@ -10,7 +10,6 @@ import {
   Card,
   Col,
   Descriptions,
-  Divider,
   Empty,
   Modal,
   Progress,
@@ -18,13 +17,17 @@ import {
   Space,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Typography,
   type TableColumnsType,
+  type TabsProps,
 } from "antd";
 import {
   ArrowLeftOutlined,
+  CloseOutlined,
   CloudDownloadOutlined,
+  DatabaseOutlined,
   DownloadOutlined,
   EyeOutlined,
   FileTextOutlined,
@@ -33,6 +36,13 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import {
+  WindDetailHero,
+  WindDetailMeta,
+  WindDetailSubline,
+  WindStatusChip,
+  type WindDetailMetaItem,
+} from "@/components/wind-detail-layout";
 import { useI18n } from "@/lib/i18n";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import type {
@@ -215,184 +225,258 @@ export function WindDataPrepDetailView({
 
   if (initializing) return null;
 
-  return (
-    <div className="admin-lightning-distribution-detail-view">
-      <Card size="small">
-        <Space direction="vertical" size={8} style={{ width: "100%" }}>
-          <Space wrap>
-            {onClose ? null : (
-              <Link href="/admin/wind-data-prep">
-                <Button icon={<ArrowLeftOutlined />}>{t("返回列表")}</Button>
-              </Link>
-            )}
-            <Divider type="vertical" />
-            <Text strong style={{ fontSize: 16 }}>
-              {detail?.name || batchId}
-            </Text>
-            {detail?.status ? (
-              <Tag color={{ pending: "default", processing: "processing", completed: "success", failed: "error" }[detail.status] ?? "default"}>
-                {t({ pending: "待处理", processing: "处理中", completed: "已完成", failed: "失败" }[detail.status] ?? detail.status)}
-              </Tag>
-            ) : null}
-          </Space>
-          {detail && (detail.status === "pending" || detail.status === "processing") ? (
-            <Progress percent={detail.progress} size="small" />
-          ) : null}
-          {detail?.status === "failed" && detail.error_message ? (
-            <Alert type="error" showIcon message={t("数据准备失败")} description={detail.error_message} />
-          ) : null}
-          <Space wrap>
-            <Button icon={<CloudDownloadOutlined />} type="primary" disabled={detail?.status !== "completed"} onClick={() => void downloadFileWithAuth(`${API_BASE}/${batchId}/package`, `${detail?.name || "wind-data-prep"}-five-files.zip`)}>
-              {t("下载五文件 zip")}
-            </Button>
-            <Button icon={<FileTextOutlined />} onClick={() => void handleReport("json")} disabled={!detail?.has_report}>
-              {t("校验报告 JSON")}
-            </Button>
-            <Button icon={<FileTextOutlined />} onClick={() => void handleReport("excel")} disabled={!detail?.has_report}>
-              {t("校验报告 Excel")}
-            </Button>
-            {canManage ? (
-              <Button icon={<ReloadOutlined />} onClick={handleRecompute}>
-                {t("重跑")}
-              </Button>
-            ) : null}
-          </Space>
-        </Space>
-      </Card>
+  const titleText = detail?.name || batchId;
+  const metaItems: WindDetailMetaItem[] = [
+    { label: t("风电场"), value: detail?.wind_farm_name || "-" },
+    { label: t("风机文件"), value: detail?.turbine_file_name || "-" },
+    { label: t("雷电文件"), value: detail?.lightning_file_name || "-" },
+    { label: t("地形文件"), value: detail?.terrain_file_name || "-" },
+    { label: t("起始经度"), value: formatNumber(detail?.start_lon, 6) },
+    { label: t("起始纬度"), value: formatNumber(detail?.start_lat, 6) },
+    { label: t("网格 nx × ny"), value: detail ? `${detail.grid_nx} × ${detail.grid_ny}` : "-" },
+    { label: t("网格步长"), value: detail?.grid_step_deg ?? "-" },
+    { label: t("风险基准 S"), value: formatNumber(detail?.risk_base_s, 4) },
+    { label: t("统计年限"), value: t("固定 6 年") },
+    { label: t("地形模式"), value: detail?.terrain_mode === "tif" ? t("上传 tif") : t("零高程") },
+    { label: t("创建时间"), value: formatDateTime(detail?.create_date) },
+  ];
 
-      <Card size="small" title={t("参数卡")}>
-        <Descriptions size="small" column={4} bordered>
-          <Descriptions.Item label={t("风电场")}>{detail?.wind_farm_name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("风机文件")}>{detail?.turbine_file_name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("雷电文件")}>{detail?.lightning_file_name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("地形文件")}>{detail?.terrain_file_name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("起始经度")}>{formatNumber(detail?.start_lon, 6)}</Descriptions.Item>
-          <Descriptions.Item label={t("起始纬度")}>{formatNumber(detail?.start_lat, 6)}</Descriptions.Item>
-          <Descriptions.Item label={t("网格 nx × ny")}>{detail ? `${detail.grid_nx} × ${detail.grid_ny}` : "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("网格步长")}>{detail?.grid_step_deg ?? "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("风险基准 S")}>{formatNumber(detail?.risk_base_s, 4)}</Descriptions.Item>
-          <Descriptions.Item label={t("统计年限")}>{t("固定 6 年")}</Descriptions.Item>
-          <Descriptions.Item label={t("地形模式")}>{detail?.terrain_mode === "tif" ? t("上传 tif") : t("零高程")}</Descriptions.Item>
-          <Descriptions.Item label={t("创建时间")}>{formatDateTime(detail?.create_date)}</Descriptions.Item>
-        </Descriptions>
-      </Card>
+  const completed = detail?.status === "completed";
 
-      <Row gutter={[12, 12]}>
-        {[
-          { title: t("风机数"), value: detail?.turbine_count ?? 0 },
-          { title: t("范围内落雷数"), value: detail?.lightning_in_scope ?? 0 },
-          { title: t("非零网格数"), value: detail?.nonzero_cell_count ?? 0 },
-          { title: t("零 Nl 风机数"), value: detail?.zero_nl_turbine_count ?? 0 },
-          { title: t("Nl 最大"), value: formatNumber(detail?.nl_max, 4) },
-          { title: t("Nl 最小"), value: formatNumber(detail?.nl_min, 4) },
-          { title: t("Nl 均值"), value: formatNumber(detail?.nl_avg, 4) },
-          { title: t("数据时间跨度"), value: (detail?.stats_json?.time_span as string) || "-" },
-        ].map((item) => (
-          <Col key={item.title} xs={24} sm={12} md={8} lg={6}>
-            <Card size="small">
-              <Statistic title={item.title} value={item.value} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
-      <Card size="small" title={t("五文件清单与校验状态")} extra={<Tag color={detail?.files_ready === 5 ? "success" : "warning"}>{detail?.files_ready ?? 0}/5</Tag>}>
-        <Table
-          rowKey="name"
+  const tabItems: NonNullable<TabsProps["items"]> = [
+    {
+      key: "overview",
+      label: t("概览"),
+      children: (
+        <Row gutter={[12, 12]}>
+          {[
+            { title: t("风机数"), value: detail?.turbine_count ?? 0 },
+            { title: t("范围内落雷数"), value: detail?.lightning_in_scope ?? 0 },
+            { title: t("非零网格数"), value: detail?.nonzero_cell_count ?? 0 },
+            { title: t("零 Nl 风机数"), value: detail?.zero_nl_turbine_count ?? 0 },
+            { title: t("Nl 最大"), value: formatNumber(detail?.nl_max, 4) },
+            { title: t("Nl 最小"), value: formatNumber(detail?.nl_min, 4) },
+            { title: t("Nl 均值"), value: formatNumber(detail?.nl_avg, 4) },
+            { title: t("数据时间跨度"), value: (detail?.stats_json?.time_span as string) || "-" },
+          ].map((item) => (
+            <Col key={item.title} xs={24} sm={12} md={8} lg={6}>
+              <Card size="small">
+                <Statistic title={item.title} value={item.value} />
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      ),
+    },
+    {
+      key: "params-validation",
+      label: t("参数与校验"),
+      children: (
+        <Card size="small" title={t("校验报告")}>
+          {detail?.report_json?.checks?.length ? (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {detail.report_json.checks.map((check, index) => (
+                <li key={`${check.code}-${index}`} style={{ marginBottom: 4 }}>
+                  <Tag color={check.passed ? (check.level === "warning" ? "orange" : check.level === "info" ? "blue" : "green") : "red"}>
+                    {check.passed ? (check.level === "warning" ? t("警告") : t("通过")) : t("错误阻断")}
+                  </Tag>
+                  <Text strong>{t(check.label)}</Text>：{t(check.message)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("任务完成后显示逐项校验结果")} />
+          )}
+        </Card>
+      ),
+    },
+    {
+      key: "files",
+      label: `${t("文件清单")} (${detail?.files_ready ?? 0}/5)`,
+      children: (
+        <Card
           size="small"
-          pagination={false}
-          dataSource={FILES}
-          columns={[
-            { title: t("文件"), dataIndex: "label", key: "label" },
-            {
-              title: t("状态"),
-              key: "status",
-              width: 120,
-              render: () => (
-                <Tag color={detail && detail.files_ready === 5 ? "success" : "processing"}>
-                  {detail && detail.files_ready === 5 ? t("已生成") : t("生成中")}
-                </Tag>
-              ),
-            },
-            {
-              title: t("操作"),
-              key: "actions",
-              width: 220,
-              render: (_value, record) => (
-                <Space size={4}>
-                  <Button size="small" type="link" icon={<EyeOutlined />} disabled={detail?.status !== "completed"} onClick={() => void handlePreview(record.name, record.label)}>
-                    {t("预览")}
+          title={t("五文件清单与校验状态")}
+          extra={<Tag color={detail?.files_ready === 5 ? "success" : "warning"}>{detail?.files_ready ?? 0}/5</Tag>}
+        >
+          <Table
+            rowKey="name"
+            size="small"
+            pagination={false}
+            dataSource={FILES}
+            columns={[
+              { title: t("文件"), dataIndex: "label", key: "label" },
+              {
+                title: t("状态"),
+                key: "status",
+                width: 120,
+                render: () => (
+                  <Tag color={detail && detail.files_ready === 5 ? "success" : "processing"}>
+                    {detail && detail.files_ready === 5 ? t("已生成") : t("生成中")}
+                  </Tag>
+                ),
+              },
+              {
+                title: t("操作"),
+                key: "actions",
+                width: 220,
+                render: (_value, record) => (
+                  <Space size={4}>
+                    <Button size="small" type="link" icon={<EyeOutlined />} disabled={detail?.status !== "completed"} onClick={() => void handlePreview(record.name, record.label)}>
+                      {t("预览")}
+                    </Button>
+                    <Button size="small" type="link" icon={<DownloadOutlined />} disabled={detail?.status !== "completed"} onClick={() => void handleDownload(record.name, record.label)}>
+                      {t("下载")}
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+          {detail?.p0abc_header && Object.keys(detail.p0abc_header).length ? (
+            <Alert
+              style={{ marginTop: 12 }}
+              type="info"
+              showIcon
+              message={t("P0.abc 头部（6 个 uint16 大端数值）")}
+              description={<Paragraph style={{ margin: 0 }}>{JSON.stringify(detail.p0abc_header)}</Paragraph>}
+            />
+          ) : null}
+        </Card>
+      ),
+    },
+    ...(completed
+      ? [
+          {
+            key: "turbines",
+            label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
+            children: (
+              <Card
+                size="small"
+                title={t("风机明细（本格 vs 东邻格对照）")}
+                extra={<Text type="secondary">{t("东邻格一列仅供解释修正前后差异，不作为验收基准")}</Text>}
+              >
+                <Table<WindDataPrepTurbineRow>
+                  rowKey="seq"
+                  size="small"
+                  loading={turbineQuery.isLoading}
+                  columns={turbineColumns}
+                  dataSource={turbineQuery.data?.items ?? []}
+                  pagination={false}
+                  scroll={{ x: 1500 }}
+                  footer={() => (
+                    <ModoPagination
+                      current={turbinePage}
+                      pageSize={turbinePageSize}
+                      total={turbineQuery.data?.total ?? 0}
+                      showSizeChanger
+                      pageSizeOptions={[20, 50, 100, 500]}
+                      onChange={(nextPage, nextSize) => {
+                        setTurbinePage(nextPage);
+                        if (nextSize && nextSize !== turbinePageSize) {
+                          setTurbinePageSize(nextSize);
+                          setTurbinePage(1);
+                        }
+                      }}
+                      style={{ marginTop: 0 }}
+                    />
+                  )}
+                />
+              </Card>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <>
+      <div className="wind-detail-pane">
+        <WindDetailHero
+          icon={<DatabaseOutlined />}
+          title={titleText}
+          titleTooltip={titleText}
+          statusChip={
+            detail ? (
+              <WindStatusChip
+                status={detail.status}
+                label={t({ pending: "待处理", processing: "处理中", completed: "已完成", failed: "失败" }[detail.status] ?? detail.status)}
+              />
+            ) : null
+          }
+          subline={
+            <WindDetailSubline
+              items={[
+                <span key="farm">{detail?.wind_farm_name || "-"}</span>,
+                <span key="id" title={batchId}>{batchId}</span>,
+                detail ? (
+                  <span key="created">
+                    {t("创建时间")} {formatDateTime(detail.create_date)}
+                  </span>
+                ) : null,
+                detail && (detail.status === "pending" || detail.status === "processing") ? (
+                  <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
+                ) : null,
+              ]}
+            />
+          }
+          actions={
+            <>
+              {onClose ? (
+                <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
+                  {t("关闭")}
+                </Button>
+              ) : (
+                <Link href="/admin/wind-data-prep">
+                  <Button size="small" icon={<ArrowLeftOutlined />}>
+                    {t("返回列表")}
                   </Button>
-                  <Button size="small" type="link" icon={<DownloadOutlined />} disabled={detail?.status !== "completed"} onClick={() => void handleDownload(record.name, record.label)}>
-                    {t("下载")}
-                  </Button>
-                </Space>
-              ),
-            },
-          ]}
+                </Link>
+              )}
+              <Button
+                size="small"
+                type="primary"
+                icon={<CloudDownloadOutlined />}
+                disabled={detail?.status !== "completed"}
+                onClick={() => void downloadFileWithAuth(`${API_BASE}/${batchId}/package`, `${detail?.name || "wind-data-prep"}-five-files.zip`)}
+              >
+                {t("下载五文件 zip")}
+              </Button>
+              <Button size="small" icon={<FileTextOutlined />} onClick={() => void handleReport("json")} disabled={!detail?.has_report}>
+                {t("校验报告 JSON")}
+              </Button>
+              <Button size="small" icon={<FileTextOutlined />} onClick={() => void handleReport("excel")} disabled={!detail?.has_report}>
+                {t("校验报告 Excel")}
+              </Button>
+              {canManage ? (
+                <Button size="small" icon={<ReloadOutlined />} onClick={handleRecompute}>
+                  {t("重跑")}
+                </Button>
+              ) : null}
+            </>
+          }
         />
-        {detail?.p0abc_header && Object.keys(detail.p0abc_header).length ? (
+
+        {detail?.status === "failed" && detail.error_message ? (
           <Alert
-            style={{ marginTop: 12 }}
-            type="info"
+            className="wind-detail-alert"
+            type="error"
             showIcon
-            message={t("P0.abc 头部（6 个 uint16 大端数值）")}
-            description={<Paragraph style={{ margin: 0 }}>{JSON.stringify(detail.p0abc_header)}</Paragraph>}
+            message={t("数据准备失败")}
+            description={detail.error_message}
           />
         ) : null}
-      </Card>
 
-      <Card size="small" title={t("校验报告")}>
-        {detail?.report_json?.checks?.length ? (
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {detail.report_json.checks.map((check, index) => (
-              <li key={`${check.code}-${index}`} style={{ marginBottom: 4 }}>
-                <Tag color={check.passed ? (check.level === "warning" ? "orange" : check.level === "info" ? "blue" : "green") : "red"}>
-                  {check.passed ? (check.level === "warning" ? t("警告") : t("通过")) : t("错误阻断")}
-                </Tag>
-                <Text strong>{t(check.label)}</Text>：{t(check.message)}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("任务完成后显示逐项校验结果")} />
-        )}
-      </Card>
+        {detail ? <WindDetailMeta items={metaItems} /> : null}
 
-      <Card size="small" title={t("风机明细（本格 vs 东邻格对照）")} extra={<Text type="secondary">{t("东邻格一列仅供解释修正前后差异，不作为验收基准")}</Text>}>
-        <Table<WindDataPrepTurbineRow>
-          rowKey="seq"
-          size="small"
-          loading={turbineQuery.isLoading}
-          columns={turbineColumns}
-          dataSource={turbineQuery.data?.items ?? []}
-          pagination={false}
-          scroll={{ x: 1500 }}
-          footer={() => (
-            <ModoPagination
-              current={turbinePage}
-              pageSize={turbinePageSize}
-              total={turbineQuery.data?.total ?? 0}
-              showSizeChanger
-              pageSizeOptions={[20, 50, 100, 500]}
-              onChange={(nextPage, nextSize) => {
-                setTurbinePage(nextPage);
-                if (nextSize && nextSize !== turbinePageSize) {
-                  setTurbinePageSize(nextSize);
-                  setTurbinePage(1);
-                }
-              }}
-              style={{ marginTop: 0 }}
-            />
-          )}
-        />
-      </Card>
+        <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
+      </div>
 
       <Modal title={previewTitle} open={previewOpen} onCancel={() => setPreviewOpen(false)} footer={null} width={720}>
         <pre style={{ maxHeight: 520, overflow: "auto", background: "#fafafa", padding: 12, whiteSpace: "pre-wrap" }}>
           {previewText}
         </pre>
       </Modal>
-    </div>
+    </>
   );
 }

@@ -3676,6 +3676,46 @@ body {
   border-top: 1px solid var(--fquiz-theme-border);
 }
 
+/* ── 风电四个详情页：对齐 ATP 概览带 + 固定 Tab 栏 + 内容区滚动（LP-49） ── */
+/* 详情面板撑满外层 Tab 内容区；概览带/提示条固定，只有 Tab 内容区滚动，整页不出滚动条 */
+.wind-detail-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.wind-detail-pane > .wind-detail-hero,
+.wind-detail-pane > .wind-detail-alert {
+  flex: 0 0 auto;
+}
+
+/* 独立详情页入口：与 ATP 详情一致，给 flex:1 的面板补一个明确高度边界 */
+.admin-design-page-body > .wind-detail-pane {
+  height: 100%;
+}
+
+/* Tab 栏固定、内容面板滚动的高度链路沿用 ATP 同款 .admin-atp-models-detail-tabs（LP-48），
+   这里只补内容区与 Tab 栏之间的上间距，避免双层滚动条 */
+.wind-detail-tabs .ant-tabs-content {
+  padding-top: 12px;
+}
+
+/* 属性网格长字段跨两列（窄屏仍是两列，即占满一行） */
+.wind-detail-meta-span-2 {
+  grid-column: span 2;
+}
+
+/* Tab 内容区内部块间距（统计卡 / 图表 / 表格之间） */
+.wind-detail-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 /* 文件列表工具栏：左筛选右计数 */
 .admin-atp-models-detail-toolbar {
   display: flex;

@@ -3790,6 +3790,14 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "预览": "Preview",
   "下载": "Download",
   "Nl（次/(格·年)）": "Nl (count/(cell·year))",
+  // ── LP-49 风电详情页 Tab 分区标签（沿用现有词条，仅补齐英文映射） ──
+  "概览": "Overview",
+  "参数与校验": "Parameters & validation",
+  "文件清单": "Files",
+  "原始 file_out.txt": "Raw file_out.txt",
+  "逐台结果": "Per-turbine results",
+  "预检结果": "Preflight results",
+  "逐角度结果": "Per-angle results",
 };
 
 
