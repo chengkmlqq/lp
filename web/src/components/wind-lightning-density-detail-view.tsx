@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,7 +10,6 @@ import {
   Col,
   Empty,
   Image,
-  Progress,
   Row,
   Segmented,
   Skeleton,
@@ -23,21 +21,12 @@ import {
   type TableColumnsType,
   type TabsProps,
 } from "antd";
-import {
-  ArrowLeftOutlined,
-  CloseOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-  ThunderboltOutlined,
-} from "@ant-design/icons";
+import { DownloadOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import {
-  WindDetailHero,
   WindDetailMeta,
-  WindDetailSubline,
-  WindStatusChip,
   type WindDetailMetaItem,
 } from "@/components/wind-detail-layout";
 import { useI18n } from "@/lib/i18n";
@@ -52,13 +41,6 @@ import type {
 
 const { Text } = Typography;
 const API_BASE = "/api/v1/wind-lightning-density";
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "待处理",
-  processing: "处理中",
-  completed: "已完成",
-  failed: "失败",
-};
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -85,18 +67,11 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
  * 风电场地闪密度统计详情视图。
  * 独立路由页与列表页的动态详情标签共用此组件，避免复制详情页逻辑。
  */
-export function WindLightningDensityDetailView({
-  batchId,
-  onClose,
-}: {
-  batchId: string;
-  onClose?: () => void;
-}) {
+export function WindLightningDensityDetailView({ batchId }: { batchId: string }) {
   const { t } = useI18n();
   const { message } = App.useApp();
   const { user, fetchWithAuth: authFetch, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
-  const canManage = hasPermission("wind_lightning_density.manage");
 
   const [interpolation, setInterpolation] = useState<"bilinear" | "nearest">("bilinear");
   const [unit, setUnit] = useState<"km2" | "cell">("km2");
@@ -204,24 +179,6 @@ export function WindLightningDensityDetailView({
     }
   };
 
-  const handleExport = async (path: string, fallbackName: string) => {
-    try {
-      await downloadFileWithAuth(path, fallbackName);
-    } catch (error) {
-      message.error((error as Error).message);
-    }
-  };
-
-  const handleRecompute = async () => {
-    const response = await authFetch(`${API_BASE}/${batchId}/recompute`, { method: "POST" });
-    if (!response.ok) {
-      message.error(await readApiError(response));
-      return;
-    }
-    message.success(t("已提交重算任务"));
-    void detailQuery.refetch();
-  };
-
   const cellColumns = useMemo<TableColumnsType<WindLightningDensityCellRow>>(
     () => [
       { title: t("列号 i"), dataIndex: "cell_i", key: "cell_i", width: 90, sorter: true },
@@ -301,7 +258,6 @@ export function WindLightningDensityDetailView({
     );
   }
 
-  const titleText = detail?.batch_name || batchId;
   const metaItems: WindDetailMetaItem[] = detail
     ? [
         { label: t("风电场"), value: detail.wind_farm_name || "-" },
@@ -361,15 +317,6 @@ export function WindLightningDensityDetailView({
             <Col xs={12} md={8} lg={4}>
               <Card size="small">
                 <Statistic title={t("统计年限")} value={detail?.data_years ?? "-"} suffix={t("年")} />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {detail
-                    ? detail.years_source === "fixed"
-                      ? t("固定 6 年")
-                      : detail.stats_json?.years_inferred
-                        ? t("自动推断（雷电数据实际覆盖年份）")
-                        : t("默认 6 年（无法从时间列推断）")
-                    : "-"}
-                </Text>
               </Card>
             </Col>
           </Row>
@@ -523,79 +470,6 @@ export function WindLightningDensityDetailView({
   return (
     <>
       <div className="wind-detail-pane">
-        <WindDetailHero
-          icon={<ThunderboltOutlined />}
-          title={titleText}
-          titleTooltip={titleText}
-          statusChip={
-            detail ? (
-              <WindStatusChip
-                status={detail.status}
-                label={t(STATUS_LABELS[detail.status] ?? detail.status)}
-              />
-            ) : null
-          }
-          subline={
-            <WindDetailSubline
-              items={[
-                <span key="farm" title={detail?.wind_farm_name ?? undefined}>
-                  {detail?.wind_farm_name || "-"}
-                </span>,
-                <span key="id" title={batchId}>
-                  {batchId}
-                </span>,
-                detail ? (
-                  <span key="created">
-                    {t("创建时间")} {formatDateTime(detail.create_date)}
-                  </span>
-                ) : null,
-                detail && (detail.status === "processing" || detail.status === "pending") ? (
-                  <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
-                ) : null,
-              ]}
-            />
-          }
-          actions={
-            <>
-              {onClose ? (
-                <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
-                  {t("关闭")}
-                </Button>
-              ) : (
-                <Link href="/admin/wind-lightning-density">
-                  <Button size="small" icon={<ArrowLeftOutlined />}>
-                    {t("返回列表")}
-                  </Button>
-                </Link>
-              )}
-              {canManage ? (
-                <Button
-                  size="small"
-                  icon={<ReloadOutlined />}
-                  onClick={handleRecompute}
-                  disabled={detail?.status === "processing"}
-                >
-                  {t("重算")}
-                </Button>
-              ) : null}
-              {completed ? (
-                <Button
-                  size="small"
-                  icon={<DownloadOutlined />}
-                  onClick={() =>
-                    void handleExport(
-                      `${API_BASE}/${batchId}/export?type=all`,
-                      `${detail.batch_name || "wind-lightning-density"}-all.xlsx`,
-                    )
-                  }
-                >
-                  {t("数据导出")}
-                </Button>
-              ) : null}
-            </>
-          }
-        />
-
         {detail?.status === "failed" ? (
           <Alert
             className="wind-detail-alert"
