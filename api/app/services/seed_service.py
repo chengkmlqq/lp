@@ -325,7 +325,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
     },
     {
         "code": "admin.wind_lightning_density",
-        "name": "风电场地闪密度统计",
+        "name": "地闪密度统计",
         "path": "/admin/wind-lightning-density",
         "icon": "CloudOutlined",
         "parent_code": None,

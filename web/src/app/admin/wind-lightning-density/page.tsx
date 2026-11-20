@@ -16,7 +16,6 @@ import {
   App,
   Button,
   Card,
-  Collapse,
   Descriptions,
   Dropdown,
   Empty,
@@ -39,7 +38,6 @@ import {
   type UploadFile,
 } from "antd";
 import {
-  CloudUploadOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
@@ -157,6 +155,7 @@ export default function WindLightningDensityListPage() {
   const [detailTabsData, setDetailTabsData] = useState<DetailTabData[]>([]);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
   const [turbineFiles, setTurbineFiles] = useState<UploadFile[]>([]);
   const [lightningFiles, setLightningFiles] = useState<UploadFile[]>([]);
@@ -167,6 +166,13 @@ export default function WindLightningDensityListPage() {
   useEffect(() => {
     setPage(1);
   }, [keyword, statusFilter]);
+
+  // 新建弹窗关闭时一并收起高级参数弹窗，避免下次打开时它仍处于展开状态。
+  useEffect(() => {
+    if (!createOpen) {
+      setAdvancedOpen(false);
+    }
+  }, [createOpen]);
 
   const listQuery = useQuery({
     queryKey: ["wind-lightning-density", keyword, statusFilter, page, pageSize],
@@ -409,15 +415,8 @@ export default function WindLightningDensityListPage() {
   );
 
   const handleExport = useCallback(
-    async (record: WindLightningDensityBatchSummary, exportType: WindLightningDensityExportType | "core") => {
+    async (record: WindLightningDensityBatchSummary, exportType: WindLightningDensityExportType) => {
       try {
-        if (exportType === "core") {
-          await downloadFileWithAuth(
-            `${API_BASE}/${record.id}/export-core`,
-            `${record.batch_name || "wind-lightning-density"}-file_3-file_4.zip`,
-          );
-          return;
-        }
         await downloadFileWithAuth(
           `${API_BASE}/${record.id}/export?type=${exportType}`,
           `${record.batch_name || "wind-lightning-density"}-${exportType}.xlsx`,
@@ -559,13 +558,6 @@ export default function WindLightningDensityListPage() {
                 icon: <DownloadOutlined />,
                 visible: record.status === "completed",
                 onClick: () => void handleExport(record, "all"),
-              },
-              {
-                key: "core",
-                label: t("核心文件"),
-                icon: <CloudUploadOutlined />,
-                visible: record.status === "completed" && canManage,
-                onClick: () => void handleExport(record, "core"),
               },
               {
                 key: "delete",
@@ -713,23 +705,6 @@ export default function WindLightningDensityListPage() {
                           },
                         ]
                       : []),
-                    ...(record.status === "completed" && canManage
-                      ? [
-                          {
-                            key: "core",
-                            label: (
-                              <Space size={4}>
-                                <CloudUploadOutlined />
-                                <span>{t("核心文件")}</span>
-                              </Space>
-                            ),
-                            onClick: (event) => {
-                              event.domEvent.stopPropagation();
-                              void handleExport(record, "core");
-                            },
-                          },
-                        ]
-                      : []),
                     ...(canDelete
                       ? [
                           {
@@ -796,7 +771,7 @@ export default function WindLightningDensityListPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <>{t("风电场地闪密度统计")}</>,
+            label: <>{t("地闪密度统计")}</>,
             closable: false,
             children: (
               <div className="modo-page-card admin-lightning-distribution-list-pane">
@@ -897,7 +872,7 @@ export default function WindLightningDensityListPage() {
       />
 
       <Modal
-        title={t("新建风电场地闪密度统计")}
+        title={t("新建地闪密度统计")}
         width={760}
         open={createOpen}
         destroyOnHidden
@@ -907,15 +882,18 @@ export default function WindLightningDensityListPage() {
         }}
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
-          <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
-            <Button onClick={handlePreview} loading={previewing}>
-              {t("解析预览")}
-            </Button>
-            <Button type="primary" onClick={handleSubmit} loading={submitting}>
-              {t("提交统计")}
-            </Button>
-          </Space>
+          <div className="flex items-center justify-between gap-2">
+            <Button onClick={() => setAdvancedOpen(true)}>{t("高级参数")}</Button>
+            <Space>
+              <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
+              <Button onClick={handlePreview} loading={previewing}>
+                {t("解析预览")}
+              </Button>
+              <Button type="primary" onClick={handleSubmit} loading={submitting}>
+                {t("提交统计")}
+              </Button>
+            </Space>
+          </div>
         }
       >
         <Form<CreateFormValues>
@@ -964,49 +942,51 @@ export default function WindLightningDensityListPage() {
             </Upload.Dragger>
           </Form.Item>
 
-          <Collapse
-            ghost
-            items={[
-              {
-                key: "advanced",
-                label: t("高级参数"),
-                children: (
-                  <>
-                    <Form.Item
-                      label={t("网格步长（度）")}
-                      name="grid_step_deg"
-                      extra={t("默认 0.01°（约 1km），与核心程序一致；单边网格数超过 500 会被拒绝")}
-                    >
-                      <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item
-                      label={t("外扩边距（度）")}
-                      name="margin_deg"
-                      extra={t("统计范围为风机经/纬度 min/max 四周各外扩该值，默认 0.01°")}
-                    >
-                      <InputNumber min={0} max={0.5} step={0.005} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item
-                      label={t("统计年限来源")}
-                      name="years_source"
-                      extra={t("自动：能从时间列推断则用实际覆盖年数，否则 6 年；固定：始终 6 年")}
-                    >
-                      <Select
-                        options={[
-                          { label: t("自动（优先实际覆盖年份）"), value: "auto" },
-                          { label: t("固定 6 年"), value: "fixed" },
-                        ]}
-                      />
-                    </Form.Item>
-                  </>
-                ),
-              },
-            ]}
-          />
-
           <Form.Item label={t("备注")} name="notes">
             <Input.TextArea rows={2} maxLength={500} />
           </Form.Item>
+
+          {/* 高级参数：独立弹窗展示（不在新建表单中平铺），字段仍注册到同一个 form */}
+          <Modal
+            title={t("高级参数")}
+            open={advancedOpen}
+            onCancel={() => setAdvancedOpen(false)}
+            width={720}
+            forceRender
+            destroyOnHidden={false}
+            footer={
+              <Button type="primary" onClick={() => setAdvancedOpen(false)}>
+                {t("确定")}
+              </Button>
+            }
+          >
+            <Form.Item
+              label={t("网格步长（度）")}
+              name="grid_step_deg"
+              extra={t("默认 0.01°（约 1km），与核心程序一致；单边网格数超过 500 会被拒绝")}
+            >
+              <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item
+              label={t("外扩边距（度）")}
+              name="margin_deg"
+              extra={t("统计范围为风机经/纬度 min/max 四周各外扩该值，默认 0.01°")}
+            >
+              <InputNumber min={0} max={0.5} step={0.005} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item
+              label={t("统计年限来源")}
+              name="years_source"
+              extra={t("自动：能从时间列推断则用实际覆盖年数，否则 6 年；固定：始终 6 年")}
+            >
+              <Select
+                options={[
+                  { label: t("自动（优先实际覆盖年份）"), value: "auto" },
+                  { label: t("固定 6 年"), value: "fixed" },
+                ]}
+              />
+            </Form.Item>
+          </Modal>
         </Form>
 
         {preview ? (

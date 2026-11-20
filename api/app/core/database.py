@@ -1437,6 +1437,26 @@ def purge_legacy_app_language_param(db) -> bool:  # noqa: ANN001
     return bool(result.rowcount)
 
 
+def rename_wind_lightning_density_menu(db) -> bool:  # noqa: ANN001
+    """把存量菜单「风电场地闪密度统计」改名为「地闪密度统计」（LP-50）。
+
+    幂等：仅更新 code 命中且仍为旧名的行；已是新名或被手工改名则不触碰。
+    与迁移 046_rename_wind_lightning_density_menu.sql 等价，挂在启动链路保证
+    已部署环境（如 33.2）升级后无需手工执行 SQL 也能生效。
+    """
+    from sqlalchemy import update  # noqa: PLC0415
+
+    from ..models.menu import Menu  # noqa: PLC0415
+
+    result = db.execute(
+        update(Menu)
+        .where(Menu.code == "admin.wind_lightning_density")
+        .where(Menu.name == "风电场地闪密度统计")
+        .values(name="地闪密度统计")
+    )
+    return bool(result.rowcount)
+
+
 def _auto_seed_baseline() -> None:
     """启动时自动播种基线数据（维度枚举 + 参数分类）并清理废弃参数。
 
@@ -1479,6 +1499,14 @@ def _auto_seed_baseline() -> None:
                 except Exception:  # noqa: BLE001
                     db.rollback()
                     logger.debug("purge legacy app.language param skipped", exc_info=True)
+                # LP-50：存量菜单改名（幂等），保证已部署环境升级后显示新名称。
+                try:
+                    if rename_wind_lightning_density_menu(db):
+                        db.commit()
+                        logger.info("renamed menu '风电场地闪密度统计' to '地闪密度统计' (LP-50)")
+                except Exception:  # noqa: BLE001
+                    db.rollback()
+                    logger.debug("wind lightning density menu rename skipped", exc_info=True)
             finally:
                 if lock_acquired:
                     try:

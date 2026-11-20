@@ -840,6 +840,7 @@ export const EN_DICT: Record<string, string> = {
   "地闪密度回填完成，可在回填记录中查看 Ng 图。": "Ground flash density refill complete; you can view the Ng map in the refill records.",
   "地闪密度图": "Ground Flash Density Map",
   "地闪密度统计": "Ground Flash Density Statistics",
+  "新建地闪密度统计": "New Ground Flash Density Statistics",
   "地闪密度（次/km²·年）": "Ground Flash Density (strikes/km²·yr)",
   "地闪密度：区域内单位面积、单位时间内的落雷次数，即有效落雷数 ÷（面积 km² × 统计年数），单位为 次/(km²·年)。数值越高表示该区域雷击活动越频繁。": "Ground flash density: the number of lightning strikes per unit area and time within a region, i.e. valid strikes ÷ (area in km² × number of statistical years), in strikes/(km²·yr). A higher value means more frequent lightning activity in the region.",
   "地面倾角": "Ground Slope Angle",
@@ -3334,6 +3335,7 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "admin.fl_analysis": "Lightning Analysis",
   "admin.lightning_currents": "Lightning Currents",
   "admin.lightning_distribution": "Ground Flash Density Statistics",
+  "admin.wind_lightning_density": "Ground Flash Density Statistics",
   "admin.lightning_retrofit": "Lightning Retrofit",
   "admin.docs_view": "Docs",
   "admin.basic_data": "Master Data",
@@ -3597,7 +3599,8 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "系统总览": "System Overview",
   "收起": "Collapse",
   "展开筛选": "Expand filters",
-  // ── LP-32 风电场地闪密度统计 ──
+  // ── LP-50 菜单/页签改名：新名词条（保留下方旧名词条，不影响其它引用）──
+  "地闪密度统计": "Ground Flash Density Statistics",
   "风电场地闪密度统计": "Wind farm ground flash density",
   "新建统计": "New statistics",
   "请选择风机点位文件": "Please select the turbine point file",
