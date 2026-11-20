@@ -48,6 +48,7 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { WindFarmCalcDetailView } from "@/components/wind-farm-calc-detail-view";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -430,33 +431,46 @@ export default function WindFarmCalcListPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 280,
+        width: 160,
+        fixed: "right",
         render: (_value, record) => (
-          <Space size={4} wrap>
-            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openDetail(record.id, record.name || record.id)}>
-              {t("详情")}
-            </Button>
-            {record.status === "completed" ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<DownloadOutlined />}
-                onClick={() => void downloadFileWithAuth(`${API_BASE}/${record.id}/export`, `${record.name || "wind-farm-calc"}-results.xlsx`)}
-              >
-                {t("导出 Excel")}
-              </Button>
-            ) : null}
-            {(record.status === "processing" || record.status === "pending") && canManage ? (
-              <Button size="small" type="link" danger icon={<StopOutlined />} onClick={() => handleCancel(record)}>
-                {t("取消")}
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button size="small" type="link" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-                {t("删除")}
-              </Button>
-            ) : null}
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "detail",
+                label: t("详情"),
+                icon: <EyeOutlined />,
+                onClick: () => openDetail(record.id, record.name || record.id),
+              },
+              {
+                key: "export",
+                label: t("导出 Excel"),
+                icon: <DownloadOutlined />,
+                visible: record.status === "completed",
+                onClick: () =>
+                  void downloadFileWithAuth(
+                    `${API_BASE}/${record.id}/export`,
+                    `${record.name || "wind-farm-calc"}-results.xlsx`,
+                  ),
+              },
+              {
+                key: "cancel",
+                label: t("取消"),
+                icon: <StopOutlined />,
+                danger: true,
+                visible: (record.status === "processing" || record.status === "pending") && canManage,
+                onClick: () => handleCancel(record),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                visible: canManage,
+                onClick: () => handleDelete(record),
+              },
+            ]}
+          />
         ),
       },
     ],
@@ -761,7 +775,7 @@ export default function WindFarmCalcListPage() {
                     columns={columns}
                     dataSource={records}
                     pagination={false}
-                    scroll={{ x: 1300, y: tableScrollY }}
+                    scroll={{ x: 1020, y: tableScrollY }}
                     locale={{
                       emptyText: (
                         <Empty

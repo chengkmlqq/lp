@@ -373,59 +373,63 @@ export function WindLightningDensityDetailView({
               </Card>
             </Col>
           </Row>
-
-          <Card
-            size="small"
-            title={t("地闪密度图")}
-            extra={
-              <Space wrap>
-                <Segmented
-                  value={interpolation}
-                  onChange={(value) => setInterpolation(value as "bilinear" | "nearest")}
-                  options={[
-                    { label: t("平滑 bilinear"), value: "bilinear" },
-                    { label: t("网格 nearest"), value: "nearest" },
-                  ]}
-                />
-                <Segmented
-                  value={unit}
-                  onChange={(value) => setUnit(value as "km2" | "cell")}
-                  options={[
-                    { label: t("次/(km²·年)"), value: "km2" },
-                    { label: t("次/(格·年)"), value: "cell" },
-                  ]}
-                />
-                <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadImage}>
-                  {t("下载图片")}
-                </Button>
-              </Space>
-            }
-          >
-            {detail?.status !== "completed" ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={
-                  detail?.status === "failed" ? t("统计失败，暂无密度图") : t("统计完成后可查看密度图")
-                }
-              />
-            ) : imageLoading ? (
-              <Skeleton.Image active style={{ width: 640, height: 420 }} />
-            ) : imageError ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={imageError} />
-            ) : imageUrl ? (
-              <Image
-                src={imageUrl}
-                alt={t("地闪密度图")}
-                preview={false}
-                style={{ maxWidth: "100%", borderRadius: 6, border: "1px solid #f0f0f0" }}
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
-            )}
-          </Card>
         </div>
       ),
     },
+    ...(completed
+      ? [
+          {
+            key: "image",
+            label: t("地闪密度图"),
+            children: (
+              <div className="wind-detail-tab-content">
+                <Card
+                  size="small"
+                  title={t("地闪密度图")}
+                  extra={
+                    <Space wrap>
+                      <Segmented
+                        value={interpolation}
+                        onChange={(value) => setInterpolation(value as "bilinear" | "nearest")}
+                        options={[
+                          { label: t("平滑 bilinear"), value: "bilinear" },
+                          { label: t("网格 nearest"), value: "nearest" },
+                        ]}
+                      />
+                      <Segmented
+                        value={unit}
+                        onChange={(value) => setUnit(value as "km2" | "cell")}
+                        options={[
+                          { label: t("次/(km²·年)"), value: "km2" },
+                          { label: t("次/(格·年)"), value: "cell" },
+                        ]}
+                      />
+                      <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadImage}>
+                        {t("下载图片")}
+                      </Button>
+                    </Space>
+                  }
+                >
+                  {imageLoading ? (
+                    <Skeleton.Image active style={{ width: 640, height: 420 }} />
+                  ) : imageError ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={imageError} />
+                  ) : imageUrl ? (
+                    <Image
+                      src={imageUrl}
+                      alt={t("地闪密度图")}
+                      preview={false}
+                      style={{ maxWidth: "100%", borderRadius: 6, border: "1px solid #f0f0f0" }}
+                    />
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
+                  )}
+                </Card>
+              </div>
+            ),
+          },
+        ]
+      : []),
     ...(completed
       ? [
           {
@@ -606,7 +610,6 @@ export function WindLightningDensityDetailView({
 
         <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
       </div>
-
     </>
   );
 }

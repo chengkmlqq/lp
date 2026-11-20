@@ -562,7 +562,8 @@ export default function WindDataPrepListPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 300,
+        width: 160,
+        fixed: "right",
         render: (_value, record) => (
           <ModoActionGroup
             actions={[
@@ -1065,7 +1066,7 @@ export default function WindDataPrepListPage() {
                     columns={columns}
                     dataSource={records}
                     pagination={false}
-                    scroll={{ x: 1500, y: tableScrollY }}
+                    scroll={{ x: 1240, y: tableScrollY }}
                     locale={{
                       emptyText: (
                         <Empty

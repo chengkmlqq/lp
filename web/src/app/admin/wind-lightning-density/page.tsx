@@ -527,7 +527,8 @@ export default function WindLightningDensityListPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 300,
+        width: 160,
+        fixed: "right",
         render: (_value, record) => (
           <ModoActionGroup
             actions={[
@@ -850,7 +851,7 @@ export default function WindLightningDensityListPage() {
                     columns={columns}
                     dataSource={records}
                     pagination={false}
-                    scroll={{ x: 1500, y: tableScrollY }}
+                    scroll={{ x: 1430, y: tableScrollY }}
                     locale={{
                       emptyText: (
                         <Empty
