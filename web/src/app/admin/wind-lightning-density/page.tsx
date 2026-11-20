@@ -1,8 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -11,19 +16,22 @@ import {
   Card,
   Collapse,
   Descriptions,
-  Drawer,
   Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Progress,
+  Segmented,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Tooltip,
   Typography,
   Upload,
+  type TabsProps,
   type TableColumnsType,
   type UploadFile,
 } from "antd";
@@ -36,9 +44,11 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { WindLightningDensityDetailView } from "@/components/wind-lightning-density-detail-view";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
@@ -72,6 +82,11 @@ type CreateFormValues = {
   years_source?: "auto" | "fixed";
 };
 
+type DetailTabData = {
+  key: string;
+  title: string;
+};
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -93,16 +108,8 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
   return Number(value).toFixed(digits);
 }
 
-function yearsSourceLabel(source: string, years: number | null, t: (text: string) => string): string {
-  if (source === "fixed") {
-    return t("固定 6 年");
-  }
-  return years ? t("自动推断") : t("默认 6 年");
-}
-
 export default function WindLightningDensityListPage() {
   const { t } = useI18n();
-  const router = useRouter();
   const { message, modal } = App.useApp();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
@@ -114,6 +121,10 @@ export default function WindLightningDensityListPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  const [detailTabsData, setDetailTabsData] = useState<DetailTabData[]>([]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
@@ -130,6 +141,9 @@ export default function WindLightningDensityListPage() {
   const listQuery = useQuery({
     queryKey: ["wind-lightning-density", keyword, statusFilter, page, pageSize],
     enabled: Boolean(user) && canRead,
+    // 查询/翻页时保留上一份数据作占位，列表/卡片不清空，仅叠加 loading 遮罩，避免闪空。
+    // 后台同 key 轮询属于静默刷新，不触发占位态。
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(pageSize));
@@ -148,9 +162,56 @@ export default function WindLightningDensityListPage() {
     },
   });
 
+  const records = listQuery.data?.items ?? [];
+
   const refreshList = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["wind-lightning-density"] });
   }, [queryClient]);
+
+  const openDetail = useCallback((batchId: string, title: string) => {
+    setDetailTabsData((previous) =>
+      previous.some((tab) => tab.key === batchId) ? previous : [...previous, { key: batchId, title }],
+    );
+    setActiveTabKey(batchId);
+  }, []);
+
+  const closeDetailTab = useCallback(
+    (key: string) => {
+      const removedIndex = detailTabsData.findIndex((tab) => tab.key === key);
+      const next = detailTabsData.filter((tab) => tab.key !== key);
+      setDetailTabsData(next);
+      if (activeTabKey === key) {
+        const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+        setActiveTabKey(fallback);
+      }
+    },
+    [activeTabKey, detailTabsData],
+  );
+
+  const handleTabsEdit = useCallback(
+    (targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+      if (action !== "remove") {
+        return;
+      }
+      closeDetailTab(String(targetKey));
+    },
+    [closeDetailTab],
+  );
+
+  const detailTabs = useMemo<NonNullable<TabsProps["items"]>>(
+    () =>
+      detailTabsData.map((tab) => ({
+        key: tab.key,
+        label: (
+          <Tooltip title={tab.title}>
+            <span>{tab.title.length > 14 ? `${tab.title.slice(0, 14)}...` : tab.title}</span>
+          </Tooltip>
+        ),
+        closable: true,
+        children: <WindLightningDensityDetailView batchId={tab.key} onClose={() => closeDetailTab(tab.key)} />,
+      })),
+    [closeDetailTab, detailTabsData],
+  );
 
   const buildCreateFormData = useCallback(
     (values: CreateFormValues): FormData | null => {
@@ -218,13 +279,13 @@ export default function WindLightningDensityListPage() {
       setLightningFiles([]);
       form.resetFields();
       refreshList();
-      router.push(`/admin/wind-lightning-density/${result.batch_id}`);
+      openDetail(result.batch_id, (values.batch_name || values.wind_farm_name || "").trim() || result.batch_id);
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setSubmitting(false);
     }
-  }, [buildCreateFormData, fetchWithAuth, form, message, refreshList, router, t]);
+  }, [buildCreateFormData, fetchWithAuth, form, message, openDetail, refreshList, t]);
 
   const handleRecompute = useCallback(
     (record: WindLightningDensityBatchSummary) => {
@@ -299,7 +360,13 @@ export default function WindLightningDensityListPage() {
         width: 240,
         render: (_value, record) => (
           <Space direction="vertical" size={0}>
-            <Link href={`/admin/wind-lightning-density/${record.id}`}>{record.batch_name || record.id}</Link>
+            <Button
+              type="link"
+              style={{ padding: 0, height: "auto" }}
+              onClick={() => openDetail(record.id, record.batch_name || record.id)}
+            >
+              {record.batch_name || record.id}
+            </Button>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {record.wind_farm_name || "-"}
             </Text>
@@ -327,15 +394,8 @@ export default function WindLightningDensityListPage() {
         title: t("统计年限"),
         dataIndex: "data_years",
         key: "data_years",
-        width: 150,
-        render: (value: number | null, record) => (
-          <Space size={4}>
-            <span>{value ? `${value} ${t("年")}` : "-"}</span>
-            <Tag color={record.years_source === "fixed" ? "default" : "blue"} bordered={false}>
-              {yearsSourceLabel(record.years_source, value, t)}
-            </Tag>
-          </Space>
-        ),
+        width: 120,
+        render: (value: number | null) => (value ? `${value} ${t("年")}` : "-"),
       },
       {
         title: t("整体密度"),
@@ -397,7 +457,7 @@ export default function WindLightningDensityListPage() {
               size="small"
               type="link"
               icon={<EyeOutlined />}
-              onClick={() => router.push(`/admin/wind-lightning-density/${record.id}`)}
+              onClick={() => openDetail(record.id, record.batch_name || record.id)}
             >
               {t("详情")}
             </Button>
@@ -435,8 +495,148 @@ export default function WindLightningDensityListPage() {
         ),
       },
     ],
-    [canManage, handleDelete, handleExport, handleRecompute, router, t],
+    [canManage, handleDelete, handleExport, handleRecompute, openDetail, t],
   );
+
+  const paginationNode = (
+    <ModoPagination
+      current={page}
+      pageSize={pageSize}
+      total={listQuery.data?.total ?? 0}
+      showSizeChanger
+      pageSizeOptions={[10, 20, 50, 100]}
+      onChange={(nextPage, nextSize) => {
+        setPage(nextPage);
+        if (nextSize && nextSize !== pageSize) {
+          setPageSize(nextSize);
+          setPage(1);
+        }
+      }}
+      style={{ marginTop: 0 }}
+    />
+  );
+
+  const renderRecordCard = (record: WindLightningDensityBatchSummary) => {
+    const meta = STATUS_META[record.status] ?? STATUS_META.pending;
+    return (
+      <Card
+        key={record.id}
+        className="admin-lightning-distribution-event-card"
+        size="small"
+        hoverable
+        onClick={() => openDetail(record.id, record.batch_name || record.id)}
+      >
+        <div className="flex flex-col">
+          <div className="admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <ThunderboltOutlined className="text-base text-gray-500" />
+            <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+              <Tooltip title={record.batch_name || record.id}>
+                <Text strong className="truncate min-w-0">
+                  {record.batch_name || record.id}
+                </Text>
+              </Tooltip>
+              <Tag color={meta.color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                {t(meta.label)}
+              </Tag>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1 px-4 py-3">
+            <Text type="secondary" className="text-xs truncate">
+              {t("风电场")}：{record.wind_farm_name || "-"}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("风机数")}：{record.turbine_count} · {t("有效落雷")}：{record.valid_records}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("统计年限")}：{record.data_years ? `${record.data_years} ${t("年")}` : "-"}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("整体密度")}：{formatNumber(record.overall_density)} · {t("峰值密度")}：
+              {formatNumber(record.peak_density)}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("创建时间")}：{formatDateTime(record.create_date)}
+            </Text>
+          </div>
+
+          <div className="admin-lightning-distribution-event-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {record.status === "processing" || record.status === "pending" ? (
+              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
+            ) : (
+              <div />
+            )}
+            <Space size="small" className="flex-wrap">
+              <Tooltip title={t("详情")}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openDetail(record.id, record.batch_name || record.id);
+                  }}
+                />
+              </Tooltip>
+              {canManage ? (
+                <Tooltip title={t("重算")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRecompute(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {record.status === "completed" ? (
+                <Tooltip title={t("导出")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleExport(record, "all");
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {record.status === "completed" && canManage ? (
+                <Tooltip title={t("核心文件")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloudUploadOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleExport(record, "core");
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {canManage ? (
+                <Tooltip title={t("删除")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDelete(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+            </Space>
+          </div>
+        </div>
+      </Card>
+    );
+  };
 
   if (initializing) {
     return null;
@@ -447,7 +647,9 @@ export default function WindLightningDensityListPage() {
       <ModoTabs
         type="editable-card"
         hideAdd
-        activeKey={LIST_TAB_KEY}
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
         className="modo-page-tabs"
         items={[
           {
@@ -455,7 +657,7 @@ export default function WindLightningDensityListPage() {
             label: <>{t("风电场地闪密度统计")}</>,
             closable: false,
             children: (
-              <div className="modo-page-card">
+              <div className="modo-page-card admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -499,57 +701,80 @@ export default function WindLightningDensityListPage() {
                       </Space>
                     </Form.Item>
                   </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
+                    ]}
+                  />
                 </div>
 
-                <Table<WindLightningDensityBatchSummary>
-                  rowKey="id"
-                  size="middle"
-                  loading={listQuery.isLoading}
-                  columns={columns}
-                  dataSource={listQuery.data?.items ?? []}
-                  pagination={false}
-                  scroll={{ x: 1500 }}
-                  locale={{
-                    emptyText: (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description={t("暂无统计批次，点击「新建统计」上传风机点位与雷电定位数据")}
-                      />
-                    ),
-                  }}
-                  footer={() => (
-                    <ModoPagination
-                      current={page}
-                      pageSize={pageSize}
-                      total={listQuery.data?.total ?? 0}
-                      showSizeChanger
-                      pageSizeOptions={[10, 20, 50, 100]}
-                      onChange={(nextPage, nextSize) => {
-                        setPage(nextPage);
-                        if (nextSize && nextSize !== pageSize) {
-                          setPageSize(nextSize);
-                          setPage(1);
-                        }
-                      }}
-                      style={{ marginTop: 0 }}
-                    />
-                  )}
-                />
+                {viewMode === "card" ? (
+                  <>
+                    <div className="admin-lightning-distribution-card-scroll">
+                      {listQuery.isLoading && records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Spin />
+                        </div>
+                      ) : records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={t("暂无统计批次，点击「新建统计」上传风机点位与雷电定位数据")}
+                          />
+                        </div>
+                      ) : (
+                        /* 查询/轮询刷新时不清空已有卡片，仅叠加 loading 遮罩 */
+                        <Spin spinning={listQuery.isLoading || listQuery.isPlaceholderData} className="admin-card-view-spin">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {records.map(renderRecordCard)}
+                          </div>
+                        </Spin>
+                      )}
+                    </div>
+                    {records.length > 0 ? (
+                      <div className="admin-lightning-distribution-pagination">{paginationNode}</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <Table<WindLightningDensityBatchSummary>
+                    rowKey="id"
+                    size="middle"
+                    loading={listQuery.isLoading || listQuery.isPlaceholderData}
+                    columns={columns}
+                    dataSource={records}
+                    pagination={false}
+                    scroll={{ x: 1500 }}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t("暂无统计批次，点击「新建统计」上传风机点位与雷电定位数据")}
+                        />
+                      ),
+                    }}
+                    footer={() => paginationNode}
+                  />
+                )}
               </div>
             ),
           },
+          ...detailTabs,
         ]}
       />
 
-      <Drawer
+      <Modal
         title={t("新建风电场地闪密度统计")}
-        width={640}
+        width={760}
         open={createOpen}
         destroyOnHidden
-        onClose={() => {
+        onCancel={() => {
           setCreateOpen(false);
           setPreview(null);
         }}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
           <Space style={{ display: "flex", justifyContent: "flex-end" }}>
             <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
@@ -688,7 +913,7 @@ export default function WindLightningDensityListPage() {
             ) : null}
           </Card>
         ) : null}
-      </Drawer>
+      </Modal>
     </div>
   );
 }
