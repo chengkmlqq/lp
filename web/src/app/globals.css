@@ -6446,3 +6446,43 @@ h5.ant-typography,
   background: transparent !important;
   color: #79879c;
 }
+
+/* 风电场四页（数据准备 / 风电场计算 / 地闪密度 / 单风机）列表视图：
+   分页条始终固定页面右下角，参照线路管理（power-lines）表格视图布局。
+   机制：容器 flex 撑高 → ant-table-wrapper 填满 → 表体 min-height（JS 写入 CSS 变量）
+   → .ant-table-pagination 的 margin-top:auto 把分页钉到底部右下角。 */
+.admin-wind-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-wind-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-wind-table-view .ant-table-body {
+  min-height: var(--admin-wind-table-body-min-height, 180px);
+}
+
+.admin-wind-table-view .ant-table-wrapper,
+.admin-wind-table-view .ant-spin-nested-loading,
+.admin-wind-table-view .ant-spin-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-wind-table-view .ant-table {
+  flex: 0 0 auto;
+}
+
+.admin-wind-table-view .ant-table-pagination {
+  margin: auto 0 8px !important;
+  flex-shrink: 0;
+}

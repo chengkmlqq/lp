@@ -4,7 +4,9 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -50,7 +52,7 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { WindDataPrepDetailView } from "@/components/wind-data-prep-detail-view";
 import { useI18n } from "@/lib/i18n";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import type {
@@ -109,6 +111,11 @@ function isAligned(value: number | undefined): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 }
 
+const WIND_TABLE_MIN_SCROLL_Y = 180;
+const WIND_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const WIND_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const WIND_TABLE_BOTTOM_GAP = 8;
+
 export default function WindDataPrepListPage() {
   const { t } = useI18n();
   const { message, modal } = App.useApp();
@@ -162,6 +169,49 @@ export default function WindDataPrepListPage() {
   });
 
   const records = listQuery.data?.items ?? [];
+
+  // 列表视图分页钉底（参考线路管理 pages/power-lines）：动态算表体高度，
+  // 让分页条始终固定在页面右下角，表格体在剩余空间内滚动（不产生整页滚动条）。
+  const [tableScrollY, setTableScrollY] = useState(WIND_TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const updateTableScrollHeight = useCallback(() => {
+    if (typeof window === "undefined") {
+      return WIND_TABLE_MIN_SCROLL_Y;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return WIND_TABLE_MIN_SCROLL_Y;
+    }
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-lightning-distribution-list-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? WIND_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight = pagination?.getBoundingClientRect().height ?? WIND_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const available = containerRect.bottom - containerPadBottom - anchorTop - WIND_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
+    return Math.max(WIND_TABLE_MIN_SCROLL_Y, nextHeight);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onViewportChange = () => window.requestAnimationFrame(updateTableScrollHeight);
+    window.addEventListener("resize", onViewportChange);
+    return () => window.removeEventListener("resize", onViewportChange);
+  }, [updateTableScrollHeight]);
+  useEffect(() => {
+    if (viewMode !== "list") {
+      return;
+    }
+    setTableScrollY(updateTableScrollHeight());
+    const raf = window.requestAnimationFrame(() => setTableScrollY(updateTableScrollHeight()));
+    return () => window.cancelAnimationFrame(raf);
+  }, [viewMode, records.length, updateTableScrollHeight]);
+
 
   const refreshList = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["wind-data-prep"] });
@@ -914,14 +964,15 @@ export default function WindDataPrepListPage() {
                     ) : null}
                   </>
                 ) : (
+                  <div ref={tableScrollAnchorRef} className="admin-wind-table-view" style={{ "--admin-wind-table-body-min-height": `${tableScrollY}px` } as CSSProperties}>
                   <Table<WindDataPrepBatchSummary>
                     rowKey="id"
                     size="middle"
                     loading={listQuery.isLoading || listQuery.isPlaceholderData}
                     columns={columns}
                     dataSource={records}
-                    pagination={false}
-                    scroll={{ x: 1500 }}
+                    pagination={modoTablePagination({ current: page, pageSize, total: listQuery.data?.total ?? 0, onChange: (nextPage, nextSize) => { setPage(nextPage); if (nextSize && nextSize !== pageSize) { setPageSize(nextSize); setPage(1); } } })}
+                    scroll={{ x: 1500, y: tableScrollY }}
                     locale={{
                       emptyText: (
                         <Empty
@@ -930,8 +981,8 @@ export default function WindDataPrepListPage() {
                         />
                       ),
                     }}
-                    footer={() => paginationNode}
                   />
+                  </div>
                 )}
               </div>
             ),
