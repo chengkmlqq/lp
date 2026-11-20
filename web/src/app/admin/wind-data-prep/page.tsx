@@ -1,8 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -10,20 +15,23 @@ import {
   Button,
   Card,
   Descriptions,
-  Drawer,
   Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Progress,
+  Segmented,
   Select,
   Space,
+  Spin,
   Steps,
   Table,
   Tag,
   Tooltip,
   Typography,
   Upload,
+  type TabsProps,
   type TableColumnsType,
   type UploadFile,
 } from "antd";
@@ -40,6 +48,7 @@ import {
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { WindDataPrepDetailView } from "@/components/wind-data-prep-detail-view";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
@@ -76,6 +85,11 @@ type WizardValues = {
   terrain_mode?: "zero" | "tif";
 };
 
+type DetailTabData = {
+  key: string;
+  title: string;
+};
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -97,7 +111,6 @@ function isAligned(value: number | undefined): boolean {
 
 export default function WindDataPrepListPage() {
   const { t } = useI18n();
-  const router = useRouter();
   const { message, modal } = App.useApp();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_data_prep.read") || hasPermission("wind_data_prep.manage");
@@ -109,6 +122,10 @@ export default function WindDataPrepListPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  const [detailTabsData, setDetailTabsData] = useState<DetailTabData[]>([]);
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -127,6 +144,9 @@ export default function WindDataPrepListPage() {
   const listQuery = useQuery({
     queryKey: ["wind-data-prep", keyword, statusFilter, page, pageSize],
     enabled: Boolean(user) && canRead,
+    // 查询/翻页时保留上一份数据作占位，卡片/列表不清空，仅叠加 loading 遮罩，避免闪空。
+    // 后台同 key 轮询属于静默刷新，不触发占位态。
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(pageSize));
@@ -141,9 +161,56 @@ export default function WindDataPrepListPage() {
     },
   });
 
+  const records = listQuery.data?.items ?? [];
+
   const refreshList = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["wind-data-prep"] });
   }, [queryClient]);
+
+  const openDetail = useCallback((batchId: string, title: string) => {
+    setDetailTabsData((previous) =>
+      previous.some((tab) => tab.key === batchId) ? previous : [...previous, { key: batchId, title }],
+    );
+    setActiveTabKey(batchId);
+  }, []);
+
+  const closeDetailTab = useCallback(
+    (key: string) => {
+      const removedIndex = detailTabsData.findIndex((tab) => tab.key === key);
+      const next = detailTabsData.filter((tab) => tab.key !== key);
+      setDetailTabsData(next);
+      if (activeTabKey === key) {
+        const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+        setActiveTabKey(fallback);
+      }
+    },
+    [activeTabKey, detailTabsData],
+  );
+
+  const handleTabsEdit = useCallback(
+    (targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+      if (action !== "remove") {
+        return;
+      }
+      closeDetailTab(String(targetKey));
+    },
+    [closeDetailTab],
+  );
+
+  const detailTabs = useMemo<NonNullable<TabsProps["items"]>>(
+    () =>
+      detailTabsData.map((tab) => ({
+        key: tab.key,
+        label: (
+          <Tooltip title={tab.title}>
+            <span>{tab.title.length > 14 ? `${tab.title.slice(0, 14)}...` : tab.title}</span>
+          </Tooltip>
+        ),
+        closable: true,
+        children: <WindDataPrepDetailView batchId={tab.key} onClose={() => closeDetailTab(tab.key)} />,
+      })),
+    [closeDetailTab, detailTabsData],
+  );
 
   const openWizard = useCallback(
     (record?: WindDataPrepBatchSummary) => {
@@ -256,14 +323,19 @@ export default function WindDataPrepListPage() {
       const result = (await response.json()) as WindDataPrepImportResponse;
       message.success(t("已提交数据准备任务，正在后台生成五文件"));
       setWizardOpen(false);
+      setPreview(null);
+      setTurbineFiles([]);
+      setLightningFiles([]);
+      setTerrainFiles([]);
+      form.resetFields();
       refreshList();
-      router.push(`/admin/wind-data-prep/${result.batch_id}`);
+      openDetail(result.batch_id, (values.name || values.wind_farm_name || "").trim() || result.batch_id);
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setSubmitting(false);
     }
-  }, [buildFormData, fetchWithAuth, form, message, refreshList, router, t]);
+  }, [buildFormData, fetchWithAuth, form, message, openDetail, refreshList, t]);
 
   const handleRecompute = useCallback(
     (record: WindDataPrepBatchSummary) => {
@@ -308,6 +380,16 @@ export default function WindDataPrepListPage() {
     [fetchWithAuth, message, modal, refreshList, t],
   );
 
+  const handleDownloadPackage = useCallback(
+    (record: WindDataPrepBatchSummary) => {
+      void downloadFileWithAuth(
+        `${API_BASE}/${record.id}/package`,
+        `${record.name || "wind-data-prep"}-five-files.zip`,
+      );
+    },
+    [],
+  );
+
   const columns = useMemo<TableColumnsType<WindDataPrepBatchSummary>>(
     () => [
       {
@@ -317,7 +399,13 @@ export default function WindDataPrepListPage() {
         width: 220,
         render: (_value, record) => (
           <Space direction="vertical" size={0}>
-            <Link href={`/admin/wind-data-prep/${record.id}`}>{record.name || record.id}</Link>
+            <Button
+              type="link"
+              style={{ padding: 0, height: "auto" }}
+              onClick={() => openDetail(record.id, record.name || record.id)}
+            >
+              {record.name || record.id}
+            </Button>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {record.wind_farm_name || "-"}
             </Text>
@@ -399,16 +487,11 @@ export default function WindDataPrepListPage() {
         width: 300,
         render: (_value, record) => (
           <Space size={4} wrap>
-            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => router.push(`/admin/wind-data-prep/${record.id}`)}>
+            <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openDetail(record.id, record.name || record.id)}>
               {t("详情")}
             </Button>
             {record.status === "completed" ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<DownloadOutlined />}
-                onClick={() => void downloadFileWithAuth(`${API_BASE}/${record.id}/package`, `${record.name || "wind-data-prep"}-five-files.zip`)}
-              >
+              <Button size="small" type="link" icon={<DownloadOutlined />} onClick={() => handleDownloadPackage(record)}>
                 {t("下载 zip")}
               </Button>
             ) : null}
@@ -431,8 +514,152 @@ export default function WindDataPrepListPage() {
         ),
       },
     ],
-    [canManage, handleDelete, handleRecompute, openWizard, router, t],
+    [canManage, handleDelete, handleDownloadPackage, handleRecompute, openDetail, openWizard, t],
   );
+
+  const paginationNode = (
+    <ModoPagination
+      current={page}
+      pageSize={pageSize}
+      total={listQuery.data?.total ?? 0}
+      showSizeChanger
+      pageSizeOptions={[10, 20, 50, 100]}
+      onChange={(nextPage, nextSize) => {
+        setPage(nextPage);
+        if (nextSize && nextSize !== pageSize) {
+          setPageSize(nextSize);
+          setPage(1);
+        }
+      }}
+      style={{ marginTop: 0 }}
+    />
+  );
+
+  const renderRecordCard = (record: WindDataPrepBatchSummary) => {
+    const meta = STATUS_META[record.status] ?? STATUS_META.pending;
+    return (
+      <Card
+        key={record.id}
+        className="admin-lightning-distribution-event-card"
+        size="small"
+        hoverable
+        onClick={() => openDetail(record.id, record.name || record.id)}
+      >
+        <div className="flex flex-col">
+          <div className="admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <CloudUploadOutlined className="text-base text-gray-500" />
+            <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+              <Tooltip title={record.name || record.id}>
+                <Text strong className="truncate min-w-0">
+                  {record.name || record.id}
+                </Text>
+              </Tooltip>
+              <Tag color={meta.color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                {t(meta.label)}
+              </Tag>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1 px-4 py-3">
+            <Text type="secondary" className="text-xs truncate">
+              {t("风电场")}：{record.wind_farm_name || "-"}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("风机数")}：{record.turbine_count} · {t("网格")}：{record.grid_nx} × {record.grid_ny}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("范围内落雷数")}：{record.lightning_in_scope}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("产物齐全度")}：{record.files_ready}/5 · {t("S 基准值")}：{formatNumber(record.risk_base_s, 3)}
+            </Text>
+            <Text type="secondary" className="text-xs">
+              {t("创建时间")}：{formatDateTime(record.create_date)}
+            </Text>
+            {record.status === "failed" && record.error_message ? (
+              <Text type="danger" className="text-xs" ellipsis={{ tooltip: record.error_message }}>
+                {record.error_message}
+              </Text>
+            ) : null}
+          </div>
+
+          <div className="admin-lightning-distribution-event-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {record.status === "processing" || record.status === "pending" ? (
+              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
+            ) : (
+              <div />
+            )}
+            <Space size="small" className="flex-wrap">
+              <Tooltip title={t("详情")}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openDetail(record.id, record.name || record.id);
+                  }}
+                />
+              </Tooltip>
+              {record.status === "completed" ? (
+                <Tooltip title={t("下载 zip")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDownloadPackage(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {canManage ? (
+                <Tooltip title={t("重跑")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRecompute(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {canManage ? (
+                <Tooltip title={t("复制参数")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CopyOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openWizard(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+              {canManage ? (
+                <Tooltip title={t("删除")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDelete(record);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
+            </Space>
+          </div>
+        </div>
+      </Card>
+    );
+  };
 
   if (initializing) return null;
 
@@ -602,7 +829,9 @@ export default function WindDataPrepListPage() {
       <ModoTabs
         type="editable-card"
         hideAdd
-        activeKey={LIST_TAB_KEY}
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
         className="modo-page-tabs"
         items={[
           {
@@ -610,7 +839,7 @@ export default function WindDataPrepListPage() {
             label: <>{t("风电场数据准备")}</>,
             closable: false,
             children: (
-              <div className="modo-page-card">
+              <div className="modo-page-card admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -647,53 +876,80 @@ export default function WindDataPrepListPage() {
                       </Space>
                     </Form.Item>
                   </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
+                    ]}
+                  />
                 </div>
-                <Table<WindDataPrepBatchSummary>
-                  rowKey="id"
-                  size="middle"
-                  loading={listQuery.isLoading}
-                  columns={columns}
-                  dataSource={listQuery.data?.items ?? []}
-                  pagination={false}
-                  scroll={{ x: 1500 }}
-                  locale={{
-                    emptyText: (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description={t("暂无数据准备批次，点击「新建数据准备」上传风机与雷电数据")}
-                      />
-                    ),
-                  }}
-                  footer={() => (
-                    <ModoPagination
-                      current={page}
-                      pageSize={pageSize}
-                      total={listQuery.data?.total ?? 0}
-                      showSizeChanger
-                      pageSizeOptions={[10, 20, 50, 100]}
-                      onChange={(nextPage, nextSize) => {
-                        setPage(nextPage);
-                        if (nextSize && nextSize !== pageSize) {
-                          setPageSize(nextSize);
-                          setPage(1);
-                        }
-                      }}
-                      style={{ marginTop: 0 }}
-                    />
-                  )}
-                />
+
+                {viewMode === "card" ? (
+                  <>
+                    <div className="admin-lightning-distribution-card-scroll">
+                      {listQuery.isLoading && records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Spin />
+                        </div>
+                      ) : records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={t("暂无数据准备批次，点击「新建数据准备」上传风机与雷电数据")}
+                          />
+                        </div>
+                      ) : (
+                        /* 查询/轮询刷新时不清空已有卡片，仅叠加 loading 遮罩 */
+                        <Spin spinning={listQuery.isLoading || listQuery.isPlaceholderData} className="admin-card-view-spin">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {records.map(renderRecordCard)}
+                          </div>
+                        </Spin>
+                      )}
+                    </div>
+                    {records.length > 0 ? (
+                      <div className="admin-lightning-distribution-pagination">{paginationNode}</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <Table<WindDataPrepBatchSummary>
+                    rowKey="id"
+                    size="middle"
+                    loading={listQuery.isLoading || listQuery.isPlaceholderData}
+                    columns={columns}
+                    dataSource={records}
+                    pagination={false}
+                    scroll={{ x: 1500 }}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t("暂无数据准备批次，点击「新建数据准备」上传风机与雷电数据")}
+                        />
+                      ),
+                    }}
+                    footer={() => paginationNode}
+                  />
+                )}
               </div>
             ),
           },
+          ...detailTabs,
         ]}
       />
 
-      <Drawer
+      <Modal
         title={t("新建风电场数据准备")}
-        width={680}
+        width={760}
         open={wizardOpen}
         destroyOnHidden
-        onClose={() => setWizardOpen(false)}
+        onCancel={() => {
+          setWizardOpen(false);
+          setPreview(null);
+        }}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
           <Space style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
             <Space>
@@ -717,7 +973,7 @@ export default function WindDataPrepListPage() {
         }
       >
         {wizardContent}
-      </Drawer>
+      </Modal>
     </div>
   );
 }
