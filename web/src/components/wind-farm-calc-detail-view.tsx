@@ -23,7 +23,6 @@ import {
   type TableColumnsType,
 } from "antd";
 import {
-  CloseOutlined,
   DownloadOutlined,
   FileTextOutlined,
   ReloadOutlined,
@@ -157,18 +156,6 @@ export function WindFarmCalcDetailView({
     }
   }, [fetchWithAuth, jobId, message]);
 
-  const topRiskQuery = useQuery({
-    queryKey: ["wind-farm-calc", "top-risk", jobId],
-    enabled: Boolean(user) && Boolean(jobId) && detail?.status === "completed",
-    queryFn: async () => {
-      const query = new URLSearchParams();
-      query.set("limit", "5");
-      query.set("sort_by", "value_v");
-      query.set("order", "desc");
-      return getJson<WindFarmCalcResultListResponse>(`${API_BASE}/${jobId}/results?${query.toString()}`);
-    },
-  });
-
   const resultColumns = useMemo<TableColumnsType<WindFarmCalcResultRow>>(
     () => [
       { title: t("序号"), dataIndex: "seq", key: "seq", width: 70, sorter: true },
@@ -202,15 +189,9 @@ export function WindFarmCalcDetailView({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" style={{ gap: 12, paddingBottom: 24 }}>
+    <div className="admin-lightning-distribution-detail-view" style={{ gap: 12, paddingBottom: 24 }}>
       <div>
-        {onClose ? (
-          <Button type="link" icon={<CloseOutlined />} onClick={onClose} style={{ paddingLeft: 0 }}>
-            {t("关闭")}
-          </Button>
-        ) : (
-          <Link href="/admin/wind-farm-calc">{t("返回列表")}</Link>
-        )}
+        {onClose ? null : <Link href="/admin/wind-farm-calc">{t("返回列表")}</Link>}
       </div>
 
       <Card size="small" title={t("状态卡")} extra={<Button icon={<ReloadOutlined />} size="small" onClick={() => void detailQuery.refetch()}>{t("刷新")}</Button>}>
@@ -270,17 +251,6 @@ export function WindFarmCalcDetailView({
               </Card>
             </Col>
           </Row>
-          {topRiskQuery.data?.items?.length ? (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginTop: 12 }}
-              message={t("风险最高的风机")}
-              description={topRiskQuery.data.items
-                .map((row) => `${row.turbine_no || `#${row.seq}`}  V=${formatNumber(row.value_v, 5)}  风险 ${RISK_LABELS[row.risk_level]}`)
-                .join("；")}
-            />
-          ) : null}
           {detail.risk_mismatch_count > 0 ? (
             <Alert
               type="info"
