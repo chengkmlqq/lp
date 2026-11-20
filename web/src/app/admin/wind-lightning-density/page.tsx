@@ -58,6 +58,7 @@ import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
+import { generateWindLightningTemplate, generateWindTurbineTemplate } from "@/lib/excel-import-utils";
 import type {
   WindLightningDensityBatchListResponse,
   WindLightningDensityBatchSummary,
@@ -155,7 +156,6 @@ export default function WindLightningDensityListPage() {
   const [detailTabsData, setDetailTabsData] = useState<DetailTabData[]>([]);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
   const [turbineFiles, setTurbineFiles] = useState<UploadFile[]>([]);
   const [lightningFiles, setLightningFiles] = useState<UploadFile[]>([]);
@@ -166,13 +166,6 @@ export default function WindLightningDensityListPage() {
   useEffect(() => {
     setPage(1);
   }, [keyword, statusFilter]);
-
-  // 新建弹窗关闭时一并收起高级参数弹窗，避免下次打开时它仍处于展开状态。
-  useEffect(() => {
-    if (!createOpen) {
-      setAdvancedOpen(false);
-    }
-  }, [createOpen]);
 
   const listQuery = useQuery({
     queryKey: ["wind-lightning-density", keyword, statusFilter, page, pageSize],
@@ -342,6 +335,24 @@ export default function WindLightningDensityListPage() {
       setPreviewing(false);
     }
   }, [buildCreateFormData, fetchWithAuth, form, message]);
+
+  const handleDownloadTurbineTemplate = useCallback(() => {
+    try {
+      generateWindTurbineTemplate();
+      message.success(t("风机点位模板下载成功"));
+    } catch {
+      message.error(t("风机点位模板下载失败"));
+    }
+  }, [message, t]);
+
+  const handleDownloadLightningTemplate = useCallback(() => {
+    try {
+      generateWindLightningTemplate();
+      message.success(t("雷电定位数据模板下载成功"));
+    } catch {
+      message.error(t("雷电定位数据模板下载失败"));
+    }
+  }, [message, t]);
 
   const handleSubmit = useCallback(async () => {
     const values = await form.validateFields();
@@ -883,18 +894,15 @@ export default function WindLightningDensityListPage() {
         }}
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
-          <div className="flex items-center justify-between gap-2">
-            <Button onClick={() => setAdvancedOpen(true)}>{t("高级参数")}</Button>
-            <Space>
-              <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
-              <Button onClick={handlePreview} loading={previewing}>
-                {t("解析预览")}
-              </Button>
-              <Button type="primary" onClick={handleSubmit} loading={submitting}>
-                {t("提交统计")}
-              </Button>
-            </Space>
-          </div>
+          <Space style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
+            <Button onClick={handlePreview} loading={previewing}>
+              {t("解析预览")}
+            </Button>
+            <Button type="primary" onClick={handleSubmit} loading={submitting}>
+              {t("提交统计")}
+            </Button>
+          </Space>
         }
       >
         <Form<CreateFormValues>
@@ -902,61 +910,14 @@ export default function WindLightningDensityListPage() {
           layout="vertical"
           initialValues={{ grid_step_deg: 0.01, margin_deg: 0.01, years_source: "auto" }}
         >
-          <Form.Item label={t("风电场名称")} name="wind_farm_name">
-            <Input placeholder={t("例如：江苏A3风电场")} maxLength={128} />
-          </Form.Item>
-          <Form.Item label={t("备注")} name="notes">
-            <Input.TextArea rows={2} maxLength={500} />
-          </Form.Item>
+          <div className="fl-create-form-grid">
+            <Form.Item label={t("风电场名称")} name="wind_farm_name">
+              <Input placeholder={t("例如：江苏A3风电场")} maxLength={128} />
+            </Form.Item>
+            <Form.Item label={t("备注")} name="notes">
+              <Input.TextArea rows={2} maxLength={500} />
+            </Form.Item>
 
-          <Form.Item label={t("风机点位文件（txt 11 列 / Excel）")} required>
-            <Upload.Dragger
-              accept=".txt,.csv,.xlsx,.xlsm"
-              maxCount={1}
-              fileList={turbineFiles}
-              beforeUpload={() => false}
-              onChange={({ fileList }) => setTurbineFiles(fileList.slice(-1))}
-            >
-              <p className="ant-upload-drag-icon">
-                <InboxOutlined />
-              </p>
-              <p className="ant-upload-text">{t("点击或拖拽 file_2.txt / 风机点位表到此区域")}</p>
-              <p className="ant-upload-hint">
-                {t("txt 按 11 列空白分隔（前 6 列为经纬度度分秒）；Excel 支持「经度/纬度」或「经度度/分/秒」列名")}
-              </p>
-            </Upload.Dragger>
-          </Form.Item>
-
-          <Form.Item label={t("雷电定位 CSV（LONGITUDE / LATITUDE）")} required>
-            <Upload.Dragger
-              accept=".csv,.txt"
-              maxCount={1}
-              fileList={lightningFiles}
-              beforeUpload={() => false}
-              onChange={({ fileList }) => setLightningFiles(fileList.slice(-1))}
-            >
-              <p className="ant-upload-drag-icon">
-                <InboxOutlined />
-              </p>
-              <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
-              <p className="ant-upload-hint">{t("支持 UTF-8 / GBK 编码，含 DATETIME 列时可自动推断统计年限")}</p>
-            </Upload.Dragger>
-          </Form.Item>
-
-          {/* 高级参数：独立弹窗展示（不在新建表单中平铺），字段仍注册到同一个 form */}
-          <Modal
-            title={t("高级参数")}
-            open={advancedOpen}
-            onCancel={() => setAdvancedOpen(false)}
-            width={720}
-            forceRender
-            destroyOnHidden={false}
-            footer={
-              <Button type="primary" onClick={() => setAdvancedOpen(false)}>
-                {t("确定")}
-              </Button>
-            }
-          >
             <Form.Item
               label={t("网格步长（度）")}
               name="grid_step_deg"
@@ -971,6 +932,7 @@ export default function WindLightningDensityListPage() {
             >
               <InputNumber min={0} max={0.5} step={0.005} style={{ width: "100%" }} />
             </Form.Item>
+
             <Form.Item
               label={t("统计年限来源")}
               name="years_source"
@@ -983,7 +945,76 @@ export default function WindLightningDensityListPage() {
                 ]}
               />
             </Form.Item>
-          </Modal>
+            {/* 第 3 行第 2 列留空 */}
+
+            <Form.Item
+              className="fl-span-2"
+              required
+              label={
+                <span className="inline-flex items-center gap-2">
+                  {t("风机点位文件（txt 11 列 / Excel）")}
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    style={{ padding: 0, height: "auto" }}
+                    onClick={handleDownloadTurbineTemplate}
+                  >
+                    {t("下载模板")}
+                  </Button>
+                </span>
+              }
+            >
+              <Upload.Dragger
+                accept=".txt,.csv,.xlsx,.xlsm"
+                maxCount={1}
+                fileList={turbineFiles}
+                beforeUpload={() => false}
+                onChange={({ fileList }) => setTurbineFiles(fileList.slice(-1))}
+              >
+                <p className="ant-upload-drag-icon">
+                  <InboxOutlined />
+                </p>
+                <p className="ant-upload-text">{t("点击或拖拽 file_2.txt / 风机点位表到此区域")}</p>
+                <p className="ant-upload-hint">
+                  {t("txt 按 11 列空白分隔（前 6 列为经纬度度分秒）；Excel 支持「经度/纬度」或「经度度/分/秒」列名")}
+                </p>
+              </Upload.Dragger>
+            </Form.Item>
+
+            <Form.Item
+              className="fl-span-2"
+              required
+              label={
+                <span className="inline-flex items-center gap-2">
+                  {t("雷电定位 CSV（LONGITUDE / LATITUDE）")}
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    style={{ padding: 0, height: "auto" }}
+                    onClick={handleDownloadLightningTemplate}
+                  >
+                    {t("下载模板")}
+                  </Button>
+                </span>
+              }
+            >
+              <Upload.Dragger
+                accept=".csv,.txt"
+                maxCount={1}
+                fileList={lightningFiles}
+                beforeUpload={() => false}
+                onChange={({ fileList }) => setLightningFiles(fileList.slice(-1))}
+              >
+                <p className="ant-upload-drag-icon">
+                  <InboxOutlined />
+                </p>
+                <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
+                <p className="ant-upload-hint">{t("支持 UTF-8 / GBK 编码，含 DATETIME 列时可自动推断统计年限")}</p>
+              </Upload.Dragger>
+            </Form.Item>
+          </div>
         </Form>
 
         {preview ? (

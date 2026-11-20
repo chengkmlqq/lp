@@ -215,9 +215,12 @@ export function generateWaveDataTemplate() {
 
 /**
  * 生成雷电定位数据模板
+ *
+ * `headersOverride` 用于需要特定表头口径的场景（如风电场地闪密度统计要求
+ * `经度` / `纬度` 精确匹配，见 `generateWindLightningTemplate`）；不传保持原默认表头。
  */
-export function generateLightningTemplate() {
-  const headers = ['时间', '经度(°)', '纬度(°)', '雷电流幅值(kA)', '极性', '距离(km)'];
+export function generateLightningTemplate(headersOverride?: string[]) {
+  const headers = headersOverride ?? ['时间', '经度(°)', '纬度(°)', '雷电流幅值(kA)', '极性', '距离(km)'];
 
   const exampleData = [
     '2023-03-27 20:20:30',
@@ -238,6 +241,38 @@ export function generateLightningTemplate() {
   XLSX.utils.book_append_sheet(wb, ws, '雷电定位数据模板');
 
   XLSX.writeFile(wb, '雷电定位数据模板.xlsx');
+}
+
+/**
+ * 生成风机点位数据模板（风电场地闪密度统计 / 数据准备通用）。
+ *
+ * 表头与 file_2 口径一致：经度、纬度两列是该页解析所必需，其余列便于同一张表复用到数据准备模块。
+ */
+export function generateWindTurbineTemplate() {
+  const headers = ['风机编号', '经度', '纬度', '输入高程(m)', '风机高度(m)', '叶片长度(m)', '动静状态', '回路编号'];
+
+  const exampleData = ['1', '114.50476', '23.79996', '50', '90', '45', '1', '1'];
+
+  const wsData = [headers, exampleData];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  const colWidths = headers.map(() => ({ wch: 18 }));
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '风机点位模板');
+
+  XLSX.writeFile(wb, '风机点位模板.xlsx');
+}
+
+/**
+ * 生成风电场地闪密度统计的雷电定位模板。
+ *
+ * 复用 `generateLightningTemplate`，但改用无单位表头：后端 `wind_grid.parse_lightning_csv`
+ * 按 `经度` / `纬度` / `时间` 精确匹配，带 `(°)` 会被判为缺少经纬度列，故这里覆盖表头以保证可解析。
+ */
+export function generateWindLightningTemplate() {
+  generateLightningTemplate(['时间', '经度', '纬度', '雷电流幅值(kA)', '极性', '距离(km)']);
 }
 
 /**

@@ -2590,6 +2590,8 @@ export const EN_DICT: Record<string, string> = {
   "雷电定位数据模板": "Lightning location data template",
   "雷电定位数据模板下载失败": "Failed to download the lightning location data template",
   "雷电定位数据模板下载成功": "Lightning location data template downloaded successfully",
+  "风机点位模板下载失败": "Failed to download the turbine point template",
+  "风机点位模板下载成功": "Turbine point template downloaded successfully",
   "雷电定位时刻": "Lightning location time",
   "雷电定位最近杆塔": "Nearest tower by lightning location",
   "雷电定位最近杆塔号": "Nearest tower number by lightning location",
