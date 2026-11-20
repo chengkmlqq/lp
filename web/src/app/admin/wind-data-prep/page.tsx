@@ -43,6 +43,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
+  FileTextOutlined,
   InboxOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -51,6 +52,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { WindDataPrepDetailView } from "@/components/wind-data-prep-detail-view";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
@@ -122,6 +124,21 @@ export default function WindDataPrepListPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_data_prep.read") || hasPermission("wind_data_prep.manage");
   const canManage = hasPermission("wind_data_prep.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+  const [logOpen, setLogOpen] = useState(false);
+  const [logTaskId, setLogTaskId] = useState<string | null>(null);
+  const [logTitle, setLogTitle] = useState(t("任务执行日志"));
+  const openLogViewer = useCallback(
+    (taskId: string | null | undefined, label: string, title: string) => {
+      if (!taskId || !canReadLogs) {
+        return;
+      }
+      setLogTaskId(taskId);
+      setLogTitle(label ? `${label} - ${title}` : title);
+      setLogOpen(true);
+    },
+    [canReadLogs],
+  );
 
   const queryClient = useQueryClient();
   const [keywordInput, setKeywordInput] = useState("");
@@ -540,6 +557,16 @@ export default function WindDataPrepListPage() {
             <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openDetail(record.id, record.name || record.id)}>
               {t("详情")}
             </Button>
+            {canReadLogs && record.task_id ? (
+              <Button
+                size="small"
+                type="link"
+                icon={<FileTextOutlined />}
+                onClick={() => openLogViewer(record.task_id, t("任务执行日志"), record.name || record.id)}
+              >
+                {t("日志")}
+              </Button>
+            ) : null}
             {record.status === "completed" ? (
               <Button size="small" type="link" icon={<DownloadOutlined />} onClick={() => handleDownloadPackage(record)}>
                 {t("下载 zip")}
@@ -564,7 +591,7 @@ export default function WindDataPrepListPage() {
         ),
       },
     ],
-    [canManage, handleDelete, handleDownloadPackage, handleRecompute, openDetail, openWizard, t],
+    [canManage, canReadLogs, openLogViewer, handleDelete, handleDownloadPackage, handleRecompute, openDetail, openWizard, t],
   );
 
   const paginationNode = (
@@ -651,6 +678,19 @@ export default function WindDataPrepListPage() {
                   }}
                 />
               </Tooltip>
+              {canReadLogs && record.task_id ? (
+                <Tooltip title={t("运行日志")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openLogViewer(record.task_id, t("任务执行日志"), record.name || record.id);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
               {record.status === "completed" ? (
                 <Tooltip title={t("下载 zip")}>
                   <Button
@@ -1025,6 +1065,13 @@ export default function WindDataPrepListPage() {
       >
         {wizardContent}
       </Modal>
+
+      <TaskLogViewerDrawer
+        taskId={logTaskId}
+        title={logTitle}
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+      />
     </div>
   );
 }

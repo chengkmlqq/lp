@@ -24,7 +24,6 @@ import {
 } from "antd";
 import {
   ArrowLeftOutlined,
-  CloseOutlined,
   CloudDownloadOutlined,
   DownloadOutlined,
   EyeOutlined,
@@ -33,7 +32,6 @@ import {
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
-import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useI18n } from "@/lib/i18n";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
@@ -84,7 +82,6 @@ export function WindDataPrepDetailView({
   const canManage = hasPermission("wind_data_prep.manage");
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
-  const [logOpen, setLogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("");
   const [previewText, setPreviewText] = useState("");
@@ -219,15 +216,11 @@ export function WindDataPrepDetailView({
   if (initializing) return null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="admin-lightning-distribution-detail-view">
       <Card size="small">
         <Space direction="vertical" size={8} style={{ width: "100%" }}>
           <Space wrap>
-            {onClose ? (
-              <Button icon={<CloseOutlined />} onClick={onClose}>
-                {t("关闭")}
-              </Button>
-            ) : (
+            {onClose ? null : (
               <Link href="/admin/wind-data-prep">
                 <Button icon={<ArrowLeftOutlined />}>{t("返回列表")}</Button>
               </Link>
@@ -257,9 +250,6 @@ export function WindDataPrepDetailView({
             </Button>
             <Button icon={<FileTextOutlined />} onClick={() => void handleReport("excel")} disabled={!detail?.has_report}>
               {t("校验报告 Excel")}
-            </Button>
-            <Button icon={<FileTextOutlined />} onClick={() => setLogOpen(true)} disabled={!detail?.task_id}>
-              {t("运行日志")}
             </Button>
             {canManage ? (
               <Button icon={<ReloadOutlined />} onClick={handleRecompute}>
@@ -403,8 +393,6 @@ export function WindDataPrepDetailView({
           {previewText}
         </pre>
       </Modal>
-
-      <TaskLogViewerDrawer taskId={detail?.task_id ?? null} title={t("运行日志")} open={logOpen} onClose={() => setLogOpen(false)} />
     </div>
   );
 }
