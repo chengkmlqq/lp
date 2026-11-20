@@ -13,7 +13,11 @@ function ATPAssetDetailPage() {
   const params = useParams();
   const assetId = params.id as string;
 
-  return <AtpModelDetailTab assetId={assetId} />;
+  return (
+    <div className="admin-atp-models-detail-standalone">
+      <AtpModelDetailTab assetId={assetId} />
+    </div>
+  );
 }
 
 export default ATPAssetDetailPage;

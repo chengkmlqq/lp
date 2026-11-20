@@ -879,11 +879,8 @@ export function AtpModelDetailTab({
                         rowKey="relative_path"
                         loading={filesQuery.isFetching}
                         dataSource={filteredFiles}
-                        pagination={{
-                          pageSize: 20,
-                          showSizeChanger: false,
-                          showTotal: (total) => t("共 {n} 个文件").replace("{n}", String(total)),
-                        }}
+                        // 文件数通常很少，Tab 标题已显示数量，去掉分页全部展示，由 Tab 内容区滚动承载
+                        pagination={false}
                         className="admin-atp-models-files-table"
                         columns={fileColumns}
                       />

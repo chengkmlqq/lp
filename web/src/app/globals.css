@@ -3442,7 +3442,8 @@ body {
   white-space: nowrap;
 }
 
-/* ATP 模型详情页容器：对齐雷电流幅值详情页——24px 内边距、块间 12px、整体纵向滚动（表格自身不出滚动条） */
+/* ATP 模型详情页容器：顶部概览带固定、下方分区 Tabs 的内容面板内部滚动；
+   容器自身不再滚动（overflow:hidden），滚动交给 .ant-tabs-content 面板 */
 .admin-atp-models-detail-pane {
   display: flex;
   flex: 1;
@@ -3450,8 +3451,21 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 24px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
+}
+
+/* 概览带下方的告警（加载失败 / 后台检测失败 / 模型检查提示）一并固定在顶部，不参与滚动 */
+.admin-atp-models-detail-pane > .ant-alert {
+  flex: 0 0 auto;
+}
+
+/* 独立详情页（/admin/atp-models/[id]）补一层明确高度：admin 外壳给到 .admin-design-page-body
+   已是定高 flex 列，这里 height:100% 为内部 flex:1 提供边界，保证与列表内详情 Tab 行为一致 */
+.admin-atp-models-detail-standalone {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .admin-atp-models-detail-pane .ant-typography-title {
@@ -3582,9 +3596,41 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 分区 Tabs：间距交给 detail-pane 的 gap，nav 自带 margin 归零 */
+/* 分区 Tabs：撑满详情容器剩余高度，Tab 栏固定在顶部，滚动交给内容面板 */
+.admin-atp-models-detail-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .admin-atp-models-detail-tabs > .ant-tabs-nav {
+  flex: 0 0 auto;
   margin-bottom: 0;
+}
+
+/* antd v6 结构：.ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content（面板即旧 tabpane）。
+   让内容面板承担纵向滚动；未激活面板的 .ant-tabs-content-hidden { display:none } 不受影响。 */
+.admin-atp-models-detail-tabs .ant-tabs-body-holder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-atp-models-detail-tabs .ant-tabs-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-atp-models-detail-tabs .ant-tabs-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .admin-atp-models-detail-tabs .ant-tabs-tab {
