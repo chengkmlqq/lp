@@ -282,47 +282,44 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
 
   const completed = detail?.status === "completed";
 
+  const summaryCards = (
+    <div className="wind-detail-tab-content" style={{ flex: "0 0 auto" }}>
+      <Row gutter={[12, 12]}>
+        <Col xs={12} md={8} lg={4}>
+          <Card size="small">
+            <Statistic title={t("风机数")} value={detail?.turbine_count ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} md={8} lg={4}>
+          <Card size="small">
+            <Statistic title={t("有效落雷")} value={detail?.valid_records ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} md={8} lg={4}>
+          <Card size="small">
+            <Statistic title={t("范围面积 (km²)")} value={formatNumber(detail?.area_km2, 2)} />
+          </Card>
+        </Col>
+        <Col xs={12} md={8} lg={4}>
+          <Card size="small">
+            <Statistic title={t("平均密度 次/(km²·年)")} value={formatNumber(detail?.overall_density, 4)} />
+          </Card>
+        </Col>
+        <Col xs={12} md={8} lg={4}>
+          <Card size="small">
+            <Statistic title={t("峰值密度 次/(km²·年)")} value={formatNumber(detail?.peak_density, 4)} />
+          </Card>
+        </Col>
+        <Col xs={12} md={8} lg={4}>
+          <Card size="small">
+            <Statistic title={t("统计年限")} value={detail?.data_years ?? "-"} suffix={t("年")} />
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
+
   const tabItems: NonNullable<TabsProps["items"]> = [
-    {
-      key: "overview",
-      label: t("概览"),
-      children: (
-        <div className="wind-detail-tab-content">
-          <Row gutter={[12, 12]}>
-            <Col xs={12} md={8} lg={4}>
-              <Card size="small">
-                <Statistic title={t("风机数")} value={detail?.turbine_count ?? 0} />
-              </Card>
-            </Col>
-            <Col xs={12} md={8} lg={4}>
-              <Card size="small">
-                <Statistic title={t("有效落雷")} value={detail?.valid_records ?? 0} />
-              </Card>
-            </Col>
-            <Col xs={12} md={8} lg={4}>
-              <Card size="small">
-                <Statistic title={t("范围面积 (km²)")} value={formatNumber(detail?.area_km2, 2)} />
-              </Card>
-            </Col>
-            <Col xs={12} md={8} lg={4}>
-              <Card size="small">
-                <Statistic title={t("平均密度 次/(km²·年)")} value={formatNumber(detail?.overall_density, 4)} />
-              </Card>
-            </Col>
-            <Col xs={12} md={8} lg={4}>
-              <Card size="small">
-                <Statistic title={t("峰值密度 次/(km²·年)")} value={formatNumber(detail?.peak_density, 4)} />
-              </Card>
-            </Col>
-            <Col xs={12} md={8} lg={4}>
-              <Card size="small">
-                <Statistic title={t("统计年限")} value={detail?.data_years ?? "-"} suffix={t("年")} />
-              </Card>
-            </Col>
-          </Row>
-        </div>
-      ),
-    },
     ...(completed
       ? [
           {
@@ -479,6 +476,8 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
             description={detail.error_message}
           />
         ) : null}
+
+        {detail ? summaryCards : null}
 
         {detail ? <WindDetailMeta items={metaItems} /> : null}
 
