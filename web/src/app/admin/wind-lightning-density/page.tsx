@@ -285,9 +285,9 @@ export default function WindLightningDensityListPage() {
           </Tooltip>
         ),
         closable: true,
-        children: <WindLightningDensityDetailView batchId={tab.key} />,
+        children: <WindLightningDensityDetailView batchId={tab.key} onClose={() => closeDetailTab(tab.key)} />,
       })),
-    [detailTabsData],
+    [closeDetailTab, detailTabsData],
   );
 
   const buildCreateFormData = useCallback(

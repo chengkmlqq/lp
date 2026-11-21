@@ -1,7 +1,10 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
-import { Space } from "antd";
+import { Button, Dropdown, Space } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
+
+import { ModoPagination } from "@/components/biz/modo-pagination";
 
 /**
  * 风电四个详情页的共用版式零件（LP-49）。
@@ -118,5 +121,116 @@ export function WindDetailMeta({ items }: { items: WindDetailMetaItem[] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** 关键指标条条目：大数字 + 小灰标签，复用 ATP 统计行视觉。 */
+export type WindDetailMetricItem = {
+  label: ReactNode;
+  value: ReactNode;
+  tone?: "success" | "danger" | "running" | "muted";
+  suffix?: ReactNode;
+};
+
+/**
+ * 统一关键指标条（LP-59）：最多 6 项，6/3/2 列自适应，因列数整除 6 不会出现单个孤项。
+ * 放在 Hero 与基本信息之间的固定区域，四个页面只传数据，不再各自拼 Row/Col/Statistic。
+ */
+export function WindDetailMetricStrip({
+  items,
+  max = 6,
+}: {
+  items: WindDetailMetricItem[];
+  max?: number;
+}) {
+  const visible = items.slice(0, max);
+  if (!visible.length) return null;
+  return (
+    <div className="wind-detail-metric-strip">
+      {visible.map((item, index) => (
+        <div className="admin-atp-models-detail-stat" key={index}>
+          <span
+            className={`admin-atp-models-detail-stat-value${item.tone ? ` is-${item.tone}` : ""}`}
+          >
+            {item.value}
+            {item.suffix ? <span className="wind-detail-metric-suffix">{item.suffix}</span> : null}
+          </span>
+          <span className="admin-atp-models-detail-stat-label">{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 常驻分页底栏配置：由当前激活 Tab 的表格状态驱动。 */
+export type WindDetailPaginationConfig = {
+  current: number;
+  pageSize: number;
+  total: number;
+  pageSizeOptions?: number[];
+  onChange: (page: number, pageSize: number) => void;
+};
+
+/**
+ * 常驻分页底栏（LP-59）：作为 .wind-detail-pane 的直接子节点渲染，
+ * 位于 Tabs 之后、flex:0 0 auto，因此固定在面板右下角，Tab 内容滚动/切换时都不移动。
+ * 没有可分页表格（total<=0）时整体不渲染，不留空条。
+ */
+export function WindDetailPaginationFooter({
+  pagination,
+}: {
+  pagination: WindDetailPaginationConfig | null | undefined;
+}) {
+  if (!pagination || !pagination.total) return null;
+  return (
+    <ModoPagination
+      current={pagination.current}
+      pageSize={pagination.pageSize}
+      total={pagination.total}
+      showSizeChanger
+      pageSizeOptions={pagination.pageSizeOptions ?? [10, 20, 50, 100]}
+      onChange={pagination.onChange}
+      containerClassName="wind-detail-pagination"
+    />
+  );
+}
+
+/** 次要操作条目：收进 Hero 右侧的「更多」下拉。 */
+export type WindDetailAction = {
+  key: string;
+  label: ReactNode;
+  icon?: ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+};
+
+/** 收敛后的次要操作区（LP-59）：主操作直接平铺，次要操作传入此组件。 */
+export function WindDetailMoreActions({
+  items,
+  label,
+}: {
+  items: WindDetailAction[];
+  label: ReactNode;
+}) {
+  if (!items.length) return null;
+  return (
+    <Dropdown
+      trigger={["click"]}
+      menu={{
+        items: items.map((item) => ({
+          key: item.key,
+          label: item.label,
+          icon: item.icon,
+          onClick: item.onClick,
+          danger: item.danger,
+          disabled: item.disabled,
+        })),
+      }}
+    >
+      <Button size="small" icon={<MoreOutlined />}>
+        {label}
+      </Button>
+    </Dropdown>
   );
 }

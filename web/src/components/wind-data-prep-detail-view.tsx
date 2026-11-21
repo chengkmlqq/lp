@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -8,14 +8,10 @@ import {
   App,
   Button,
   Card,
-  Col,
-  Descriptions,
   Empty,
   Modal,
   Progress,
-  Row,
   Space,
-  Statistic,
   Table,
   Tabs,
   Tag,
@@ -35,13 +31,17 @@ import {
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
-import { ModoPagination } from "@/components/biz/modo-pagination";
 import {
   WindDetailHero,
   WindDetailMeta,
+  WindDetailMetricStrip,
+  WindDetailMoreActions,
+  WindDetailPaginationFooter,
   WindDetailSubline,
   WindStatusChip,
   type WindDetailMetaItem,
+  type WindDetailMetricItem,
+  type WindDetailPaginationConfig,
 } from "@/components/wind-detail-layout";
 import { useI18n } from "@/lib/i18n";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
@@ -87,9 +87,11 @@ export function WindDataPrepDetailView({
   onClose?: () => void;
 }) {
   const { t } = useI18n();
+  const router = useRouter();
   const { message, modal } = App.useApp();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canManage = hasPermission("wind_data_prep.manage");
+  const [activeTab, setActiveTab] = useState("overview");
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -226,6 +228,7 @@ export function WindDataPrepDetailView({
   if (initializing) return null;
 
   const titleText = detail?.name || batchId;
+  // 创建时间已进 Hero 副行，属性网格不再重复。
   const metaItems: WindDetailMetaItem[] = [
     { label: t("风电场"), value: detail?.wind_farm_name || "-" },
     { label: t("风机文件"), value: detail?.turbine_file_name || "-" },
@@ -238,35 +241,45 @@ export function WindDataPrepDetailView({
     { label: t("风险基准 S"), value: formatNumber(detail?.risk_base_s, 4) },
     { label: t("统计年限"), value: t("固定 6 年") },
     { label: t("地形模式"), value: detail?.terrain_mode === "tif" ? t("上传 tif") : t("零高程") },
-    { label: t("创建时间"), value: formatDateTime(detail?.create_date) },
   ];
 
   const completed = detail?.status === "completed";
+
+  // 关键指标条：固定区域最多 6 项，其余在概览 Tab 内紧凑展示，不再拼 8 张 Statistic 卡片。
+  const metricItems: WindDetailMetricItem[] = [
+    { label: t("风机数"), value: detail?.turbine_count ?? 0 },
+    { label: t("范围内落雷数"), value: detail?.lightning_in_scope ?? 0 },
+    { label: t("非零网格数"), value: detail?.nonzero_cell_count ?? 0 },
+    { label: t("零 Nl 风机数"), value: detail?.zero_nl_turbine_count ?? 0 },
+    { label: t("Nl 最大"), value: formatNumber(detail?.nl_max, 4) },
+    { label: t("Nl 最小"), value: formatNumber(detail?.nl_min, 4) },
+    { label: t("Nl 均值"), value: formatNumber(detail?.nl_avg, 4) },
+    { label: t("数据时间跨度"), value: (detail?.stats_json?.time_span as string) || "-" },
+  ];
+
+  // 分页底栏由当前激活 Tab 驱动，仅风机明细 Tab 需要分页。
+  const activePagination: WindDetailPaginationConfig | null =
+    completed && activeTab === "turbines"
+      ? {
+          current: turbinePage,
+          pageSize: turbinePageSize,
+          total: turbineQuery.data?.total ?? 0,
+          pageSizeOptions: [20, 50, 100, 500],
+          onChange: (nextPage, nextSize) => {
+            setTurbinePage(nextPage);
+            if (nextSize && nextSize !== turbinePageSize) {
+              setTurbinePageSize(nextSize);
+              setTurbinePage(1);
+            }
+          },
+        }
+      : null;
 
   const tabItems: NonNullable<TabsProps["items"]> = [
     {
       key: "overview",
       label: t("概览"),
-      children: (
-        <Row gutter={[12, 12]}>
-          {[
-            { title: t("风机数"), value: detail?.turbine_count ?? 0 },
-            { title: t("范围内落雷数"), value: detail?.lightning_in_scope ?? 0 },
-            { title: t("非零网格数"), value: detail?.nonzero_cell_count ?? 0 },
-            { title: t("零 Nl 风机数"), value: detail?.zero_nl_turbine_count ?? 0 },
-            { title: t("Nl 最大"), value: formatNumber(detail?.nl_max, 4) },
-            { title: t("Nl 最小"), value: formatNumber(detail?.nl_min, 4) },
-            { title: t("Nl 均值"), value: formatNumber(detail?.nl_avg, 4) },
-            { title: t("数据时间跨度"), value: (detail?.stats_json?.time_span as string) || "-" },
-          ].map((item) => (
-            <Col key={item.title} xs={24} sm={12} md={8} lg={6}>
-              <Card size="small">
-                <Statistic title={item.title} value={item.value} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      ),
+      children: <WindDetailMetricStrip items={metricItems.slice(6)} />,
     },
     {
       key: "params-validation",
@@ -364,23 +377,6 @@ export function WindDataPrepDetailView({
                   dataSource={turbineQuery.data?.items ?? []}
                   pagination={false}
                   scroll={{ x: 1500 }}
-                  footer={() => (
-                    <ModoPagination
-                      current={turbinePage}
-                      pageSize={turbinePageSize}
-                      total={turbineQuery.data?.total ?? 0}
-                      showSizeChanger
-                      pageSizeOptions={[20, 50, 100, 500]}
-                      onChange={(nextPage, nextSize) => {
-                        setTurbinePage(nextPage);
-                        if (nextSize && nextSize !== turbinePageSize) {
-                          setTurbinePageSize(nextSize);
-                          setTurbinePage(1);
-                        }
-                      }}
-                      style={{ marginTop: 0 }}
-                    />
-                  )}
                 />
               </Card>
             ),
@@ -422,17 +418,6 @@ export function WindDataPrepDetailView({
           }
           actions={
             <>
-              {onClose ? (
-                <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
-                  {t("关闭")}
-                </Button>
-              ) : (
-                <Link href="/admin/wind-data-prep">
-                  <Button size="small" icon={<ArrowLeftOutlined />}>
-                    {t("返回列表")}
-                  </Button>
-                </Link>
-              )}
               <Button
                 size="small"
                 type="primary"
@@ -442,17 +427,36 @@ export function WindDataPrepDetailView({
               >
                 {t("下载五文件 zip")}
               </Button>
-              <Button size="small" icon={<FileTextOutlined />} onClick={() => void handleReport("json")} disabled={!detail?.has_report}>
-                {t("校验报告 JSON")}
-              </Button>
-              <Button size="small" icon={<FileTextOutlined />} onClick={() => void handleReport("excel")} disabled={!detail?.has_report}>
-                {t("校验报告 Excel")}
-              </Button>
-              {canManage ? (
-                <Button size="small" icon={<ReloadOutlined />} onClick={handleRecompute}>
-                  {t("重跑")}
-                </Button>
-              ) : null}
+              <WindDetailMoreActions
+                label={t("更多")}
+                items={[
+                  {
+                    key: "report-json",
+                    label: t("校验报告 JSON"),
+                    icon: <FileTextOutlined />,
+                    disabled: !detail?.has_report,
+                    onClick: () => void handleReport("json"),
+                  },
+                  {
+                    key: "report-excel",
+                    label: t("校验报告 Excel"),
+                    icon: <FileTextOutlined />,
+                    disabled: !detail?.has_report,
+                    onClick: () => void handleReport("excel"),
+                  },
+                  ...(canManage
+                    ? [{ key: "recompute", label: t("重跑"), icon: <ReloadOutlined />, onClick: handleRecompute }]
+                    : []),
+                  onClose
+                    ? { key: "close", label: t("关闭"), icon: <CloseOutlined />, onClick: onClose }
+                    : {
+                        key: "back",
+                        label: t("返回列表"),
+                        icon: <ArrowLeftOutlined />,
+                        onClick: () => router.push("/admin/wind-data-prep"),
+                      },
+                ]}
+              />
             </>
           }
         />
@@ -467,9 +471,18 @@ export function WindDataPrepDetailView({
           />
         ) : null}
 
+        {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
+
         {detail ? <WindDetailMeta items={metaItems} /> : null}
 
-        <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
+        <Tabs
+          className="admin-atp-models-detail-tabs wind-detail-tabs"
+          items={tabItems}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key)}
+        />
+
+        <WindDetailPaginationFooter pagination={activePagination} />
       </div>
 
       <Modal title={previewTitle} open={previewOpen} onCancel={() => setPreviewOpen(false)} footer={null} width={720}>

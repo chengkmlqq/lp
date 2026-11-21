@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -8,14 +8,11 @@ import {
   App,
   Button,
   Card,
-  Col,
   Empty,
   Modal,
   Progress,
-  Row,
   Select,
   Space,
-  Statistic,
   Table,
   Tabs,
   Tag,
@@ -34,13 +31,17 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
-import { ModoPagination } from "@/components/biz/modo-pagination";
 import {
   WindDetailHero,
   WindDetailMeta,
+  WindDetailMetricStrip,
+  WindDetailMoreActions,
+  WindDetailPaginationFooter,
   WindDetailSubline,
   WindStatusChip,
   type WindDetailMetaItem,
+  type WindDetailMetricItem,
+  type WindDetailPaginationConfig,
 } from "@/components/wind-detail-layout";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -107,7 +108,9 @@ export function WindFarmCalcDetailView({
   const { message } = App.useApp();
   const { user, fetchWithAuth } = useAuth();
   const { t } = useI18n();
+  const router = useRouter();
 
+  const [activeTab, setActiveTab] = useState("results");
   const [riskFilter, setRiskFilter] = useState<number | undefined>();
   const [suggestionFilter, setSuggestionFilter] = useState<number | undefined>();
   const [sortBy, setSortBy] = useState("seq");
@@ -200,15 +203,12 @@ export function WindFarmCalcDetailView({
   );
 
   const titleText = detail?.name || jobId;
+  // 任务名称/状态已在 Hero；开始/结束时间已在副行，属性网格只留真正的基本属性。
   const metaItems: WindDetailMetaItem[] = [
-    { label: t("任务名称"), value: detail?.name || "-" },
-    { label: t("状态"), value: <Tag color={statusMeta.color}>{t(statusMeta.label)}</Tag> },
     { label: t("阶段"), value: detail?.stage || "-" },
     { label: t("风机数"), value: detail?.turbine_count ?? 0 },
     { label: t("耗时"), value: formatDuration(detail?.duration_seconds) },
-    { label: t("任务 ID"), value: detail?.task_id || "-" },
-    { label: t("开始时间"), value: formatDateTime(detail?.started_at) },
-    { label: t("结束时间"), value: formatDateTime(detail?.finished_at) },
+    { label: t("集电线停运"), value: detail?.circuit_shutdown_count ?? 0 },
     { label: t("引擎 MD5"), value: detail?.engine_md5 || "-" },
     { label: t("来源批次"), span: 2, value: detail?.prep_batch_id || "-" },
     ...(detail?.error_message
@@ -218,84 +218,42 @@ export function WindFarmCalcDetailView({
 
   const completed = detail?.status === "completed";
 
+  // 关键指标条：风险 I~IV + 需停运 + 全场停运，6 项一组无孤项；
+  // 原「概览」Tab 只有统计卡，去掉后默认落在逐台结果表，消除下半屏空白。
+  const metricItems: WindDetailMetricItem[] = [
+    ...[1, 2, 3, 4].map((level) => ({
+      label: `${t("风险")} ${RISK_LABELS[level]}`,
+      value: (detail?.[RISK_COUNT_KEYS[level]] as number) ?? 0,
+      tone: (RISK_COLORS[level] === "red" ? "danger" : undefined) as WindDetailMetricItem["tone"],
+    })),
+    { label: t("需停运"), value: detail?.shutdown_count ?? 0 },
+    { label: t("全场停运"), value: detail?.farm_shutdown_count ?? 0 },
+  ];
+
+  // 分页底栏由当前激活 Tab 驱动，仅逐台结果 Tab 需要分页。
+  const activePagination: WindDetailPaginationConfig | null =
+    activeTab === "results"
+      ? {
+          current: page,
+          pageSize,
+          total: resultsQuery.data?.total ?? 0,
+          pageSizeOptions: [20, 50, 100],
+          onChange: (nextPage, nextSize) => {
+            setPage(nextPage);
+            if (nextSize && nextSize !== pageSize) {
+              setPageSize(nextSize);
+              setPage(1);
+            }
+          },
+        }
+      : null;
+
   const tabItems: NonNullable<TabsProps["items"]> = [
-    {
-      key: "overview",
-      label: t("概览"),
-      children: (
-        <div className="wind-detail-tab-content">
-          <Row gutter={[12, 12]}>
-            {[1, 2, 3, 4].map((level) => (
-              <Col key={level} xs={12} sm={6} md={4}>
-                <Card size="small">
-                  <Statistic
-                    title={`${t("风险")} ${RISK_LABELS[level]}`}
-                    value={(detail?.[RISK_COUNT_KEYS[level]] as number) ?? 0}
-                    valueStyle={{ color: RISK_COLORS[level] === "red" ? "#cf1322" : undefined }}
-                  />
-                </Card>
-              </Col>
-            ))}
-            <Col xs={12} sm={6} md={4}>
-              <Card size="small">
-                <Statistic title={t("需停运")} value={detail?.shutdown_count ?? 0} />
-              </Card>
-            </Col>
-            <Col xs={12} sm={6} md={4}>
-              <Card size="small">
-                <Statistic title={t("集电线停运")} value={detail?.circuit_shutdown_count ?? 0} />
-              </Card>
-            </Col>
-            <Col xs={12} sm={6} md={4}>
-              <Card size="small">
-                <Statistic title={t("全场停运")} value={detail?.farm_shutdown_count ?? 0} />
-              </Card>
-            </Col>
-          </Row>
-          {detail && detail.risk_mismatch_count > 0 ? (
-            <Alert
-              type="info"
-              showIcon
-              message={t("GBK 风险列与后端重算不一致")}
-              description={t("以后端按 V 与 S 重算的风险等级为准，GBK 原文保留在结果表 raw_line 列。")}
-            />
-          ) : null}
-        </div>
-      ),
-    },
     {
       key: "results",
       label: `${t("逐台结果")} (${resultsQuery.data?.total ?? 0})`,
       children: (
-        <Card
-          size="small"
-          title={t("逐台结果")}
-          extra={
-            <Space>
-              <Button size="small" icon={<FileTextOutlined />} loading={rawLoading} onClick={() => void showRaw()}>
-                {t("原始输出预览")}
-              </Button>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt")}
-              >
-                {t("下载 file_out.txt")}
-              </Button>
-              {completed ? (
-                <Button
-                  size="small"
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/export`, `${detail.name || "wind-farm-calc"}-results.xlsx`)}
-                >
-                  {t("导出 Excel")}
-                </Button>
-              ) : null}
-              <Button size="small" onClick={() => setLogOpen(true)}>{t("运行日志")}</Button>
-            </Space>
-          }
-        >
+        <Card size="small" title={t("逐台结果")}>
           <Space style={{ marginBottom: 12 }} wrap>
             <span>{t("风险等级")}:</span>
             <Select
@@ -337,23 +295,6 @@ export function WindFarmCalcDetailView({
               setOrder(s.order === "descend" ? "desc" : "asc");
               setPage(1);
             }}
-            footer={() => (
-              <ModoPagination
-                current={page}
-                pageSize={pageSize}
-                total={resultsQuery.data?.total ?? 0}
-                showSizeChanger
-                pageSizeOptions={[20, 50, 100]}
-                onChange={(nextPage, nextSize) => {
-                  setPage(nextPage);
-                  if (nextSize && nextSize !== pageSize) {
-                    setPageSize(nextSize);
-                    setPage(1);
-                  }
-                }}
-                style={{ marginTop: 0 }}
-              />
-            )}
           />
         </Card>
       ),
@@ -424,6 +365,7 @@ export function WindFarmCalcDetailView({
                 <span key="prep">{t("来源批次")} {detail?.prep_batch_id || "-"}</span>,
                 <span key="task">{t("任务 ID")} {detail?.task_id || "-"}</span>,
                 <span key="start">{t("开始时间")} {formatDateTime(detail?.started_at)}</span>,
+                <span key="finish">{t("结束时间")} {formatDateTime(detail?.finished_at)}</span>,
                 detail && (detail.status === "processing" || detail.status === "pending") ? (
                   <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
                 ) : null,
@@ -432,31 +374,6 @@ export function WindFarmCalcDetailView({
           }
           actions={
             <>
-              {onClose ? (
-                <Button size="small" icon={<CloseOutlined />} onClick={onClose}>
-                  {t("关闭")}
-                </Button>
-              ) : (
-                <Link href="/admin/wind-farm-calc">
-                  <Button size="small" icon={<ArrowLeftOutlined />}>
-                    {t("返回列表")}
-                  </Button>
-                </Link>
-              )}
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => void detailQuery.refetch()}>
-                {t("刷新")}
-              </Button>
-              <Button size="small" onClick={() => setLogOpen(true)}>{t("运行日志")}</Button>
-              <Button size="small" icon={<FileTextOutlined />} loading={rawLoading} onClick={() => void showRaw()}>
-                {t("原始输出预览")}
-              </Button>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt")}
-              >
-                {t("下载 file_out.txt")}
-              </Button>
               {completed ? (
                 <Button
                   size="small"
@@ -466,7 +383,35 @@ export function WindFarmCalcDetailView({
                 >
                   {t("导出 Excel")}
                 </Button>
-              ) : null}
+              ) : (
+                <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => void detailQuery.refetch()}>
+                  {t("刷新")}
+                </Button>
+              )}
+              <WindDetailMoreActions
+                label={t("更多")}
+                items={[
+                  ...(completed
+                    ? [{ key: "refresh", label: t("刷新"), icon: <ReloadOutlined />, onClick: () => void detailQuery.refetch() }]
+                    : []),
+                  { key: "log", label: t("运行日志"), onClick: () => setLogOpen(true) },
+                  { key: "raw", label: t("原始输出预览"), icon: <FileTextOutlined />, onClick: () => void showRaw() },
+                  {
+                    key: "download",
+                    label: t("下载 file_out.txt"),
+                    icon: <DownloadOutlined />,
+                    onClick: () => void downloadFileWithAuth(`${API_BASE}/${jobId}/output`, "file_out.txt"),
+                  },
+                  onClose
+                    ? { key: "close", label: t("关闭"), icon: <CloseOutlined />, onClick: onClose }
+                    : {
+                        key: "back",
+                        label: t("返回列表"),
+                        icon: <ArrowLeftOutlined />,
+                        onClick: () => router.push("/admin/wind-farm-calc"),
+                      },
+                ]}
+              />
             </>
           }
         />
@@ -481,9 +426,28 @@ export function WindFarmCalcDetailView({
           />
         ) : null}
 
+        {detail && detail.risk_mismatch_count > 0 ? (
+          <Alert
+            className="wind-detail-alert"
+            type="info"
+            showIcon
+            message={t("GBK 风险列与后端重算不一致")}
+            description={t("以后端按 V 与 S 重算的风险等级为准，GBK 原文保留在结果表 raw_line 列。")}
+          />
+        ) : null}
+
+        {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
+
         {detail ? <WindDetailMeta items={metaItems} /> : null}
 
-        <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
+        <Tabs
+          className="admin-atp-models-detail-tabs wind-detail-tabs"
+          items={tabItems}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key)}
+        />
+
+        <WindDetailPaginationFooter pagination={activePagination} />
       </div>
 
       <TaskLogViewerDrawer

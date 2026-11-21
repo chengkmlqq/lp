@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -7,27 +8,37 @@ import {
   App,
   Button,
   Card,
-  Col,
   Empty,
   Image,
-  Row,
+  Progress,
   Segmented,
   Skeleton,
   Space,
-  Statistic,
   Table,
   Tabs,
   Typography,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  CloseOutlined,
+  CloudOutlined,
+  DownloadOutlined,
+} from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
-import { ModoPagination } from "@/components/biz/modo-pagination";
 import {
+  WindDetailHero,
   WindDetailMeta,
+  WindDetailMetricStrip,
+  WindDetailMoreActions,
+  WindDetailPaginationFooter,
+  WindDetailSubline,
+  WindStatusChip,
   type WindDetailMetaItem,
+  type WindDetailMetricItem,
+  type WindDetailPaginationConfig,
 } from "@/components/wind-detail-layout";
 import { useI18n } from "@/lib/i18n";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
@@ -67,12 +78,20 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
  * 风电场地闪密度统计详情视图。
  * 独立路由页与列表页的动态详情标签共用此组件，避免复制详情页逻辑。
  */
-export function WindLightningDensityDetailView({ batchId }: { batchId: string }) {
+export function WindLightningDensityDetailView({
+  batchId,
+  onClose,
+}: {
+  batchId: string;
+  onClose?: () => void;
+}) {
   const { t } = useI18n();
+  const router = useRouter();
   const { message } = App.useApp();
   const { user, fetchWithAuth: authFetch, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
 
+  const [activeTab, setActiveTab] = useState("image");
   const [interpolation, setInterpolation] = useState<"bilinear" | "nearest">("bilinear");
   const [unit, setUnit] = useState<"km2" | "cell">("km2");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -263,7 +282,6 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
         { label: t("风电场"), value: detail.wind_farm_name || "-" },
         { label: t("风机文件"), value: detail.turbine_source_file_name || "-" },
         { label: t("雷电文件"), value: detail.lightning_source_file_name || "-" },
-        { label: t("创建时间"), value: formatDateTime(detail.create_date) },
         {
           label: t("统计范围"),
           span: 2,
@@ -282,42 +300,47 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
 
   const completed = detail?.status === "completed";
 
-  const summaryCards = (
-    <div className="wind-detail-tab-content" style={{ flex: "0 0 auto" }}>
-      <Row gutter={[12, 12]}>
-        <Col xs={12} md={8} lg={4}>
-          <Card size="small">
-            <Statistic title={t("风机数")} value={detail?.turbine_count ?? 0} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8} lg={4}>
-          <Card size="small">
-            <Statistic title={t("有效落雷")} value={detail?.valid_records ?? 0} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8} lg={4}>
-          <Card size="small">
-            <Statistic title={t("范围面积 (km²)")} value={formatNumber(detail?.area_km2, 2)} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8} lg={4}>
-          <Card size="small">
-            <Statistic title={t("平均密度 次/(km²·年)")} value={formatNumber(detail?.overall_density, 4)} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8} lg={4}>
-          <Card size="small">
-            <Statistic title={t("峰值密度 次/(km²·年)")} value={formatNumber(detail?.peak_density, 4)} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8} lg={4}>
-          <Card size="small">
-            <Statistic title={t("统计年限")} value={detail?.data_years ?? "-"} suffix={t("年")} />
-          </Card>
-        </Col>
-      </Row>
-    </div>
-  );
+  // 关键指标条：最多 6 项，统一走共用组件，不再各页自己拼 Statistic 卡片。
+  const metricItems: WindDetailMetricItem[] = [
+    { label: t("风机数"), value: detail?.turbine_count ?? 0 },
+    { label: t("有效落雷"), value: detail?.valid_records ?? 0 },
+    { label: t("范围面积 (km²)"), value: formatNumber(detail?.area_km2, 2) },
+    { label: t("平均密度 次/(km²·年)"), value: formatNumber(detail?.overall_density, 4) },
+    { label: t("峰值密度 次/(km²·年)"), value: formatNumber(detail?.peak_density, 4) },
+    { label: t("统计年限"), value: detail?.data_years ?? "-", suffix: t("年") },
+  ];
+
+  // 分页底栏由当前激活 Tab 的表格状态驱动；无表格的 Tab 不渲染底栏。
+  const activePagination: WindDetailPaginationConfig | null =
+    completed && activeTab === "cells"
+      ? {
+          current: cellPage,
+          pageSize: cellPageSize,
+          total: cellsQuery.data?.total ?? 0,
+          pageSizeOptions: [10, 20, 50, 100],
+          onChange: (nextPage, nextSize) => {
+            setCellPage(nextPage);
+            if (nextSize && nextSize !== cellPageSize) {
+              setCellPageSize(nextSize);
+              setCellPage(1);
+            }
+          },
+        }
+      : completed && activeTab === "turbines"
+        ? {
+            current: turbinePage,
+            pageSize: turbinePageSize,
+            total: turbinesQuery.data?.total ?? 0,
+            pageSizeOptions: [10, 20, 50, 100],
+            onChange: (nextPage, nextSize) => {
+              setTurbinePage(nextPage);
+              if (nextSize && nextSize !== turbinePageSize) {
+                setTurbinePageSize(nextSize);
+                setTurbinePage(1);
+              }
+            },
+          }
+        : null;
 
   const tabItems: NonNullable<TabsProps["items"]> = [
     ...(completed
@@ -348,9 +371,6 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
                           { label: t("次/(格·年)"), value: "cell" },
                         ]}
                       />
-                      <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadImage}>
-                        {t("下载图片")}
-                      </Button>
                     </Space>
                   }
                 >
@@ -403,22 +423,6 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
                     setCellSort({ field, order });
                     setCellPage(1);
                   }}
-                  footer={() => (
-                    <ModoPagination
-                      current={cellPage}
-                      pageSize={cellPageSize}
-                      total={cellsQuery.data?.total ?? 0}
-                      pageSizeOptions={[10, 20, 50, 100]}
-                      onChange={(nextPage, nextSize) => {
-                        setCellPage(nextPage);
-                        if (nextSize && nextSize !== cellPageSize) {
-                          setCellPageSize(nextSize);
-                          setCellPage(1);
-                        }
-                      }}
-                      style={{ marginTop: 0 }}
-                    />
-                  )}
                 />
               </Card>
             ),
@@ -440,22 +444,6 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
                   loading={turbinesQuery.isLoading}
                   pagination={false}
                   scroll={{ x: 900 }}
-                  footer={() => (
-                    <ModoPagination
-                      current={turbinePage}
-                      pageSize={turbinePageSize}
-                      total={turbinesQuery.data?.total ?? 0}
-                      pageSizeOptions={[10, 20, 50, 100]}
-                      onChange={(nextPage, nextSize) => {
-                        setTurbinePage(nextPage);
-                        if (nextSize && nextSize !== turbinePageSize) {
-                          setTurbinePageSize(nextSize);
-                          setTurbinePage(1);
-                        }
-                      }}
-                      style={{ marginTop: 0 }}
-                    />
-                  )}
                 />
               </Card>
             ),
@@ -465,25 +453,92 @@ export function WindLightningDensityDetailView({ batchId }: { batchId: string })
   ];
 
   return (
-    <>
-      <div className="wind-detail-pane">
-        {detail?.status === "failed" ? (
-          <Alert
-            className="wind-detail-alert"
-            type="error"
-            showIcon
-            message={t("统计失败")}
-            description={detail.error_message}
+    <div className="wind-detail-pane">
+      <WindDetailHero
+        icon={<CloudOutlined />}
+        title={detail?.batch_name || batchId}
+        titleTooltip={detail?.batch_name || batchId}
+        statusChip={
+          detail ? (
+            <WindStatusChip
+              status={detail.status}
+              label={
+                t(
+                  { pending: "待处理", processing: "处理中", completed: "已完成", failed: "失败" }[
+                    detail.status
+                  ] ?? detail.status,
+                )
+              }
+            />
+          ) : null
+        }
+        subline={
+          <WindDetailSubline
+            items={[
+              <span key="farm">{detail?.wind_farm_name || "-"}</span>,
+              <span key="id" title={batchId}>{batchId}</span>,
+              detail ? (
+                <span key="created">
+                  {t("创建时间")} {formatDateTime(detail.create_date)}
+                </span>
+              ) : null,
+              detail && (detail.status === "pending" || detail.status === "processing") ? (
+                <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
+              ) : null,
+            ]}
           />
-        ) : null}
+        }
+        actions={
+          <>
+            <Button
+              size="small"
+              type="primary"
+              icon={<DownloadOutlined />}
+              disabled={!completed}
+              onClick={() => void handleDownloadImage()}
+            >
+              {t("下载密度图")}
+            </Button>
+            <WindDetailMoreActions
+              label={t("更多")}
+              items={[
+                onClose
+                  ? { key: "close", label: t("关闭"), icon: <CloseOutlined />, onClick: onClose }
+                  : {
+                      key: "back",
+                      label: t("返回列表"),
+                      icon: <ArrowLeftOutlined />,
+                      onClick: () => router.push("/admin/wind-lightning-density"),
+                    },
+              ]}
+            />
+          </>
+        }
+      />
 
-        {detail ? summaryCards : null}
+      {detail?.status === "failed" ? (
+        <Alert
+          className="wind-detail-alert"
+          type="error"
+          showIcon
+          message={t("统计失败")}
+          description={detail.error_message}
+        />
+      ) : null}
 
-        {detail ? <WindDetailMeta items={metaItems} /> : null}
+      {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
 
-        <Tabs className="admin-atp-models-detail-tabs wind-detail-tabs" items={tabItems} />
-      </div>
-    </>
+      {detail ? <WindDetailMeta items={metaItems} /> : null}
+
+      <Tabs
+        className="admin-atp-models-detail-tabs wind-detail-tabs"
+        items={tabItems}
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key)}
+      />
+
+      <WindDetailPaginationFooter pagination={activePagination} />
+    </div>
   );
 }
 

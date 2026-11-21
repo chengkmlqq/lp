@@ -3716,6 +3716,70 @@ body {
   gap: 12px;
 }
 
+/* ── LP-59 风电详情页统一版式 ── */
+
+/* 关键指标条：6/3/2 列自适应，列数整除 6 保证不出现单个孤项；
+   放在 Hero 与基本信息之间，固定不滚动，四页共用同一套视觉。 */
+.wind-detail-metric-strip {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--fquiz-theme-border);
+  border-radius: 8px;
+}
+
+.wind-detail-metric-strip .admin-atp-models-detail-stat-value {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+.wind-detail-metric-suffix {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fquiz-theme-text-muted);
+}
+
+@media (max-width: 1200px) {
+  .wind-detail-metric-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .wind-detail-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 常驻分页底栏：钉在详情面板右下角，不随 Tab 内容滚动。
+   ModoPagination 自身已带 flex-shrink:0 / justify-content:flex-end / 顶部发丝线。 */
+.wind-detail-pane > .wind-detail-pagination {
+  flex: 0 0 auto;
+}
+
+/* 单风机提示条紧凑化：保留警示但不占用整行视觉重心 */
+.wind-detail-hint-alert {
+  padding: 6px 12px;
+}
+.wind-detail-hint-alert .ant-alert-message {
+  font-size: 13px;
+}
+.wind-detail-hint-alert .ant-alert-description {
+  font-size: 12px;
+}
+
+/* 列表页详情 Tab：让承载详情页的 tabpane 撑满高度，
+   这样 .wind-detail-pane 的 flex:1 才生效，分页底栏才能真正钉在右下角。 */
+.modo-page-tabs .ant-tabs-content > .ant-tabs-tabpane:has(.wind-detail-pane) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* 文件列表工具栏：左筛选右计数 */
 .admin-atp-models-detail-toolbar {
   display: flex;
