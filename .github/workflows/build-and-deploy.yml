@@ -159,23 +159,28 @@ jobs:
           cache-to: type=gha,mode=max,scope=fquiz-worker
 
   # ───── MATLAB Worker 镜像（fquiz-mcr-base + 判别系统，Linux 原生） ─────
-  # MATLAB Runtime 基础镜像 fquiz-mcr-base 基本不变；matlab-worker 镜像仅在
-  # Dockerfile.matlab 或 api/services/ 中判别相关代码变更时重新构建，否则
-  # 沿用上次构建的 tag，避免每次部署拉取 17.6GB 全量镜像。
+  # 策略（LP-60）：相关变更自动构建，无变更跳过，手动触发强制构建。
+  # push 到 dev 且未改判别相关文件时跳过，避免每次部署都从 MathWorks 拉取
+  # 17.6GB MCR 底座；workflow_dispatch 无条件全量重建。
   build-matlab-worker:
     needs: [build-base]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # before..HEAD 的 diff 需要 BEFORE 提交在本地，浅克隆会让 git diff 报错
+          # 并退化成「每次都构建」，与跳过策略相反。
+          fetch-depth: 0
 
-      - name: 检查是否需构建（仅 Dockerfile.matlab 或判别相关代码变更时）
+      - name: 检查是否需构建（仅 Dockerfile.matlab/.mcrbase 或判别相关代码变更时）
         id: check
         shell: bash
         run: |
           # 之前 skip 是死代码（无任何 if 引用），导致每次 push 都全量重建 17.6GB MCR 镜像（LP-530）。
           # 修复：workflow_dispatch 永远构建；push 事件用 github.event.before..HEAD 对比
           # （相对 HEAD~1..HEAD 更准确，避免同批多次提交时漏判中间 commit 的 matlab 变更）。
+          # Dockerfile.mcrbase 也纳入判断：底座变化同样需要重建判别 worker。
           BEFORE="${{ github.event.before }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
              || [ -z "$BEFORE" ] \
@@ -183,6 +188,7 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           elif git diff --quiet "$BEFORE" HEAD -- \
             api/Dockerfile.matlab \
+            api/Dockerfile.mcrbase \
             api/app/services/fault_diagnosis*.py \
             api/app/services/fl_analysis*.py \
             api/app/services/minio_storage.py \
@@ -402,11 +408,36 @@ jobs:
   # 33.2 上 containers.mathworks.com 超时，无法按原方案直接 docker pull；
   # GitHub Actions runner 可匿名拉取 MathWorks 官方镜像，retag 后推送 ACR，
   # 33.2 再从 ACR 拉取（runner 为 linux/amd64，与 33.2 架构一致）。
+  #
+  # 策略（LP-60）：相关变更自动构建，无变更跳过，手动触发强制构建。
+  # 本 job 只是官方镜像的 retag，源码变化与它无关；仅当 workflow 里的
+  # 源/目标 tag 或转存逻辑本身被改动时才需要重新拉取 2.7GB 镜像。
   import-matlab-runtime-r2025a:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 检查是否需转存（仅 workflow 改动时）
+        id: check-runtime
+        shell: bash
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             || [ -z "$BEFORE" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE" HEAD -- \
+            .github/workflows/build-and-deploy.yml; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 清理 runner 磁盘（MCR 镜像压缩 ~2.7G / 解压 ~5G）
+        if: steps.check-runtime.outputs.skip != 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -418,6 +449,7 @@ jobs:
           swap-storage: true
 
       - name: 登录 ACR
+        if: steps.check-runtime.outputs.skip != 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -425,6 +457,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: 拉取 MathWorks r2025a 运行时并推送 ACR
+        if: steps.check-runtime.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -438,14 +471,50 @@ jobs:
           docker push "$DST"
 
   # ───── 单风机 wind worker 镜像（MCR r2025a + Python + celery，推 ACR） ─────
+  # 策略（LP-60）：相关变更自动构建，无变更跳过，手动触发强制构建。
+  # 注意 needs 的 job 被跳过时 GitHub 会默认连带跳过本 job，因此用 !cancelled()
+  # 守卫：只要上游没有失败/取消就继续，由本 job 自己的 check（独立 output）
+  # 决定是否构建。上游转存被跳过时，使用 ACR 上已有的
+  # fquiz-matlab-runtime:r2025a 作为底座，无需重新从 MathWorks 拉取。
+  # （用 !cancelled() 而非 always()：本 workflow 开了 cancel-in-progress，
+  #  被新提交取消的旧 run 不应再启动这个耗时 job。）
   build-matlab-wind-worker:
     needs: [import-matlab-runtime-r2025a]
+    if: ${{ !cancelled() && (needs.import-matlab-runtime-r2025a.result == 'success' || needs.import-matlab-runtime-r2025a.result == 'skipped') }}
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # before..HEAD 的 diff 需要 BEFORE 提交在本地，浅克隆会让 git diff 报错
+          # 并退化成「每次都构建」，与跳过策略相反。
+          fetch-depth: 0
+
+      - name: 检查是否需构建（仅单风机相关代码/入口变更时）
+        id: check
+        shell: bash
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             || [ -z "$BEFORE" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE" HEAD -- \
+            .github/workflows/build-and-deploy.yml \
+            api/Dockerfile.matlab.wind \
+            api/docker-entrypoint.sh \
+            api/app/core/celery_app.py \
+            api/app/tasks/ \
+            api/app/services/wind_turbine_calc*.py \
+            api/app/services/fault_matlab_engine_service.py \
+            api/app/services/minio_storage.py; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 清理 runner 磁盘（基础 MCR 镜像 ~5G，构建峰值需额外空间）
+        if: steps.check.outputs.skip != 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -457,9 +526,11 @@ jobs:
           swap-storage: true
 
       - name: 安装 Buildx
+        if: steps.check.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: 登录 ACR
+        if: steps.check.outputs.skip != 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -467,6 +538,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: 构建并推送单风机 worker 镜像
+        if: steps.check.outputs.skip != 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./api
