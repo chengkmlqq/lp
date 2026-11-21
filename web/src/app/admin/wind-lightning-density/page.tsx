@@ -114,6 +114,48 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
   return Number(value).toFixed(digits);
 }
 
+function formatDegDraft(value: number | undefined, fallback: number): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return formatDegDraft(fallback, fallback);
+  }
+  return number.toFixed(10).replace(/0+$/, "").replace(/\.$/, "") || "0";
+}
+
+/** 与后端 build_batch_name 同口径的草稿名（真正批次名以后端返回为准）。 */
+function buildBatchNameDraft(
+  values: Pick<CreateFormValues, "wind_farm_name" | "grid_step_deg" | "margin_deg" | "years_source">,
+  turbineFileName: string,
+  dataYears: number | null | undefined,
+  now: Date = new Date(),
+): string {
+  let farm = (values.wind_farm_name || "").trim();
+  if (!farm) {
+    const stem = turbineFileName.split(/[\\/]/).pop() || "";
+    farm = stem.replace(/\.[^.]*$/, "").trim();
+  }
+  const safeFarm =
+    farm
+      .replace(/[^\p{L}\p{N}_-]+/gu, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 20) || "未命名风电场";
+
+  const fixed = values.years_source === "fixed";
+  const years =
+    fixed || dataYears === null || dataYears === undefined
+      ? 6
+      : Math.max(1, Math.round(dataYears));
+  const pad = (input: number) => String(input).padStart(2, "0");
+  const stamp = `${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(
+    now.getMinutes(),
+  )}`;
+  return `${safeFarm}_Y${years}${fixed ? "F" : "A"}_G${formatDegDraft(
+    values.grid_step_deg,
+    0.01,
+  )}_M${formatDegDraft(values.margin_deg, 0.01)}_${stamp}`.slice(0, 250);
+}
+
 const WIND_TABLE_MIN_SCROLL_Y = 180;
 const WIND_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const WIND_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -316,6 +358,24 @@ export default function WindLightningDensityListPage() {
     [lightningFiles, message, t, turbineFiles],
   );
 
+  // 草稿名：字段/文件/预览结果变化时联动刷新；最终名称由后端生成并覆盖。
+  const syncDraftName = useCallback(
+    (incomingPreview?: WindLightningDensityPreviewResponse | null) => {
+      const values = form.getFieldsValue(true) as CreateFormValues;
+      const source = incomingPreview === undefined ? preview : incomingPreview;
+      const draft = buildBatchNameDraft(values, turbineFiles[0]?.name || "", source?.data_years);
+      form.setFieldsValue({ batch_name: draft });
+      return draft;
+    },
+    [form, preview, turbineFiles],
+  );
+
+  useEffect(() => {
+    if (createOpen) {
+      syncDraftName();
+    }
+  }, [createOpen, syncDraftName]);
+
   const handlePreview = useCallback(async () => {
     const values = await form.validateFields();
     const formData = buildCreateFormData(values);
@@ -328,13 +388,15 @@ export default function WindLightningDensityListPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      setPreview((await response.json()) as WindLightningDensityPreviewResponse);
+      const data = (await response.json()) as WindLightningDensityPreviewResponse;
+      setPreview(data);
+      syncDraftName(data); // 预览成功后用真实统计年限刷新草稿名
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setPreviewing(false);
     }
-  }, [buildCreateFormData, fetchWithAuth, form, message]);
+  }, [buildCreateFormData, fetchWithAuth, form, message, syncDraftName]);
 
   const handleDownloadTurbineTemplate = useCallback(() => {
     try {
@@ -356,6 +418,7 @@ export default function WindLightningDensityListPage() {
 
   const handleSubmit = useCallback(async () => {
     const values = await form.validateFields();
+    values.batch_name = syncDraftName(); // 提交前再同步一次表单值
     const formData = buildCreateFormData(values);
     if (!formData) {
       return;
@@ -374,13 +437,13 @@ export default function WindLightningDensityListPage() {
       setLightningFiles([]);
       form.resetFields();
       refreshList();
-      openDetail(result.batch_id, (values.batch_name || values.wind_farm_name || "").trim() || result.batch_id);
+      openDetail(result.batch_id, result.batch_name || result.batch_id);
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setSubmitting(false);
     }
-  }, [buildCreateFormData, fetchWithAuth, form, message, openDetail, refreshList, t]);
+  }, [buildCreateFormData, fetchWithAuth, form, message, openDetail, refreshList, syncDraftName, t]);
 
   const handleRecompute = useCallback(
     (record: WindLightningDensityBatchSummary) => {
@@ -909,8 +972,25 @@ export default function WindLightningDensityListPage() {
           form={form}
           layout="vertical"
           initialValues={{ grid_step_deg: 0.01, margin_deg: 0.01, years_source: "auto" }}
+          onValuesChange={(_changed, allValues) => {
+            form.setFieldsValue({
+              batch_name: buildBatchNameDraft(
+                allValues,
+                turbineFiles[0]?.name || "",
+                preview?.data_years,
+              ),
+            });
+          }}
         >
           <div className="fl-create-form-grid">
+            <Form.Item
+              className="fl-span-2"
+              label={t("批次名称")}
+              name="batch_name"
+              tooltip={t("系统根据风电场、年限和布场参数自动生成，同名时自动加序号")}
+            >
+              <Input readOnly />
+            </Form.Item>
             <Form.Item label={t("风电场名称")} name="wind_farm_name">
               <Input placeholder={t("例如：江苏A3风电场")} maxLength={128} />
             </Form.Item>

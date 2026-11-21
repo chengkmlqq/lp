@@ -29,6 +29,8 @@ class WindLightningDensityBatch(Base):
         Index("idx_wld_batch_status", "status"),
         Index("idx_wld_batch_create_date", "create_date"),
         Index("idx_wld_batch_is_deleted", "is_deleted"),
+        # 批次名后端生成且全局唯一；并发撞名由 create_batch 捕获 IntegrityError 后重试。
+        Index("uq_wld_batch_name", "batch_name", unique=True),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid4().hex)

@@ -12,6 +12,8 @@ class WindLightningDensityImportResponse(BaseModel):
     batch_id: str
     task_id: str | None = None
     status: str = "processing"
+    # 后端生成的真实批次名（前端详情 Tab 标题用此值，不用本地草稿名）
+    batch_name: str = ""
 
 
 class WindLightningDensityPreviewResponse(BaseModel):

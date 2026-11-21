@@ -3344,6 +3344,8 @@ export const EN_DICT: Record<string, string> = {
   "防雷报告": "Lightning-protection report",
   "防雷改造详情": "Lightning retrofit details",
   "页面。": " page.",
+  "批次名称": "Batch name",
+  "系统根据风电场、年限和布场参数自动生成，同名时自动加序号": "Auto-generated from wind farm, data years and layout parameters; a serial suffix is added on name conflicts",
 }
 
 export const MENU_LABELS_EN: Record<string, string> = {

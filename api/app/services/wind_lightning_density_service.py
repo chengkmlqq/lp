@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Sequence
@@ -22,6 +23,7 @@ from uuid import uuid4
 import numpy as np
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..core.file_upload import validate_upload
@@ -52,6 +54,92 @@ TASK_NAME = "app.tasks.wind_lightning_density_tasks.run_wind_lightning_density_j
 
 # 与 lightning_distribution 的 /lightning-currents/distributions 完全独立的 API 前缀
 API_PREFIX = "/api/v1/wind-lightning-density"
+
+
+# ---------------------------------------------------------------------------
+# 批次名：后端统一生成（前端传来的值只作草稿提示，不信任）
+# ---------------------------------------------------------------------------
+# 格式：<风电场>_Y<年限><A|F>_G<网格步长>_M<外扩边距>_<MMDD-HHmm>[-序号]
+# Y/G/M 为中性字符，中英文界面均无需改词条。
+_BATCH_NAME_BASE_MAX = 250  # 预留 -2/-3/... 后缀空间，保证总长 <= 255
+
+
+def _sanitize_farm_name(raw: str | None, fallback_filename: str) -> str:
+    """风电场名：去首尾空白、空格/非法字符替换为 `_`，最多 20 字。
+
+    为空时退化为风机点位文件名主名（去扩展名），再兜底 `未命名风电场`。
+    """
+    name = (raw or "").strip()
+    if not name:
+        name = fallback_filename.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+        name = name.rsplit(".", 1)[0] if "." in name else name
+        name = name.strip()
+    cleaned = "".join(ch if (ch.isalnum() or ch in "_-") else "_" for ch in name)
+    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+    return (cleaned or "未命名风电场")[:20]
+
+
+def _format_deg(value: float | None, default: float) -> str:
+    """把度数格式化为去掉末尾无意义 0 的字符串（0.010 -> 0.01）。"""
+    try:
+        number = float(value) if value is not None else default
+    except (TypeError, ValueError):
+        number = default
+    text = f"{number:.10f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def build_batch_name(
+    *,
+    wind_farm_name: str | None,
+    turbine_filename: str,
+    years: float | None,
+    years_source: str,
+    grid_step_deg: float | None,
+    margin_deg: float | None,
+    now: datetime | None = None,
+) -> str:
+    """依据校验后的字段生成批次名基名（不含同名序号）。"""
+    farm = _sanitize_farm_name(wind_farm_name, turbine_filename)
+    if years_source == "fixed" or years is None:
+        year_count = 6
+    else:
+        try:
+            year_count = max(1, int(round(float(years))))
+        except (TypeError, ValueError):
+            year_count = 6
+    flag = "F" if years_source == "fixed" else "A"
+    stamp = (now or datetime.now()).strftime("%m%d-%H%M")
+    return (
+        f"{farm}_Y{year_count}{flag}"
+        f"_G{_format_deg(grid_step_deg, 0.01)}"
+        f"_M{_format_deg(margin_deg, 0.01)}"
+        f"_{stamp}"
+    )[:_BATCH_NAME_BASE_MAX]
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def ensure_unique_batch_name(db: Session, base: str) -> str:
+    """查表追加 `-2/-3/...` 直到唯一（含逻辑删除行，避免唯一索引冲突）。"""
+    base = base[:_BATCH_NAME_BASE_MAX]
+    taken = set(
+        db.execute(
+            select(WindLightningDensityBatch.batch_name).where(
+                WindLightningDensityBatch.batch_name.like(_escape_like(base) + "%", escape="\\")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if base not in taken:
+        return base
+    serial = 2
+    while f"{base}-{serial}" in taken:
+        serial += 1
+    return f"{base}-{serial}"
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +628,18 @@ def create_batch(
         years_source=years_source,
     )
 
+    # 批次名一律后端生成：前端传来的 batch_name 只作草稿提示，绝不信任。
+    final_wind_farm_name = (wind_farm_name or "").strip() or None
+    base_name = build_batch_name(
+        wind_farm_name=final_wind_farm_name,
+        turbine_filename=turbine_name,
+        years=analysis.years,
+        years_source=analysis.years_source,
+        grid_step_deg=grid_step_deg,
+        margin_deg=margin_deg,
+    )
+    final_batch_name = ensure_unique_batch_name(db, base_name)
+
     batch_id = uuid4().hex
     turbine_key = _turbine_object_key(batch_id, turbine_name)
     lightning_key = _lightning_object_key(batch_id, lightning_name)
@@ -547,38 +647,50 @@ def create_batch(
     minio_storage.put_object(lightning_key, lightning_content, content_type="text/csv")
 
     now = utcnow()
-    batch = WindLightningDensityBatch(
-        id=batch_id,
-        batch_name=(batch_name or "").strip() or (wind_farm_name or "").strip() or turbine_name,
-        wind_farm_name=(wind_farm_name or "").strip() or None,
-        notes=(notes or "").strip() or None,
-        grid_step_deg=float(grid_step_deg),
-        margin_deg=float(margin_deg),
-        data_years=analysis.years,
-        years_source=analysis.years_source,
-        turbine_source_file_name=turbine_name,
-        turbine_object_key=turbine_key,
-        lightning_source_file_name=lightning_name,
-        lightning_object_key=lightning_key,
-        turbine_count=analysis.turbine_count,
-        total_records=analysis.total_records,
-        valid_records=analysis.valid_records,
-        skipped_records=analysis.skipped_records,
-        bbox_min_lon=analysis.bbox.min_lon,
-        bbox_max_lon=analysis.bbox.max_lon,
-        bbox_min_lat=analysis.bbox.min_lat,
-        bbox_max_lat=analysis.bbox.max_lat,
-        grid_x_count=analysis.x_count,
-        grid_y_count=analysis.y_count,
-        status="pending",
-        stage="parsing",
-        progress=0,
-        create_user=actor_user_id,
-        create_date=now,
-        update_date=now,
-    )
+
+    def _new_batch(name: str) -> WindLightningDensityBatch:
+        return WindLightningDensityBatch(
+            id=batch_id,
+            batch_name=name,
+            wind_farm_name=final_wind_farm_name,
+            notes=(notes or "").strip() or None,
+            grid_step_deg=float(grid_step_deg),
+            margin_deg=float(margin_deg),
+            data_years=analysis.years,
+            years_source=analysis.years_source,
+            turbine_source_file_name=turbine_name,
+            turbine_object_key=turbine_key,
+            lightning_source_file_name=lightning_name,
+            lightning_object_key=lightning_key,
+            turbine_count=analysis.turbine_count,
+            total_records=analysis.total_records,
+            valid_records=analysis.valid_records,
+            skipped_records=analysis.skipped_records,
+            bbox_min_lon=analysis.bbox.min_lon,
+            bbox_max_lon=analysis.bbox.max_lon,
+            bbox_min_lat=analysis.bbox.min_lat,
+            bbox_max_lat=analysis.bbox.max_lat,
+            grid_x_count=analysis.x_count,
+            grid_y_count=analysis.y_count,
+            status="pending",
+            stage="parsing",
+            progress=0,
+            create_user=actor_user_id,
+            create_date=now,
+            update_date=now,
+        )
+
+    batch = _new_batch(final_batch_name)
     db.add(batch)
-    db.commit()
+    try:
+        db.commit()  # 批次名生成与批次写入同一事务，失败不留半成品
+    except IntegrityError:
+        # 并发撞名：回滚后重新避让一次（仍失败则向上抛出，不产生半成品）
+        db.rollback()
+        final_batch_name = ensure_unique_batch_name(db, base_name)
+        batch = _new_batch(final_batch_name)
+        db.add(batch)
+        db.commit()
 
     write_audit_log(
         db,
@@ -586,7 +698,7 @@ def create_batch(
         actor_user_id=actor_user_id,
         detail=compose_audit_detail(
             f"batch_id={batch.id}",
-            f"batch_name={batch.batch_name}",
+            f"batch_name={final_batch_name}",
             f"turbine_file={turbine_name}",
             f"lightning_file={lightning_name}",
             f"grid_step_deg={grid_step_deg}",
@@ -601,7 +713,10 @@ def create_batch(
     batch.status = "processing"
     db.commit()
     return WindLightningDensityImportResponse(
-        batch_id=batch.id, task_id=task_id, status="processing"
+        batch_id=batch.id,
+        task_id=task_id,
+        status="processing",
+        batch_name=final_batch_name,
     )
 
 
@@ -655,7 +770,7 @@ def recompute_batch(
     batch.status = "processing"
     db.commit()
     return WindLightningDensityImportResponse(
-        batch_id=batch.id, task_id=task_id, status="processing"
+        batch_id=batch.id, task_id=task_id, status="processing", batch_name=batch.batch_name
     )
 
 

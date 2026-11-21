@@ -119,6 +119,8 @@ export type WindLightningDensityImportResponse = {
   batch_id: string;
   task_id: string | null;
   status: string;
+  /** 后端生成的真实批次名（详情 Tab 标题用此值，不用本地草稿名） */
+  batch_name: string;
 };
 
 export type WindLightningDensityExportType = "cells" | "turbines" | "all";

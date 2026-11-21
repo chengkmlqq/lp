@@ -342,3 +342,150 @@ def test_no_core_file_export_entrypoint() -> None:
 
     assert not hasattr(service, "export_core_files")
     assert not any("export-core" in route.path for route in router.routes)
+
+
+# ---------------------------------------------------------------------------
+# 7) 批次名称自动生成（LP-62）
+# ---------------------------------------------------------------------------
+def test_build_batch_name_format() -> None:
+    from datetime import datetime
+
+    from app.services.wind_lightning_density_service import build_batch_name
+
+    now = datetime(2026, 11, 21, 15, 42)
+    common = dict(
+        wind_farm_name="江苏A3",
+        turbine_filename="x.xlsx",
+        now=now,
+    )
+    assert build_batch_name(
+        **common, years=6.0, years_source="auto", grid_step_deg=0.01, margin_deg=0.01
+    ) == "江苏A3_Y6A_G0.01_M0.01_1121-1542"
+    assert build_batch_name(
+        **common, years=6.0, years_source="fixed", grid_step_deg=0.01, margin_deg=0.01
+    ) == "江苏A3_Y6F_G0.01_M0.01_1121-1542"
+    # 年限四舍五入；未预览(years=None)按 6；G/M 去掉末尾无意义的 0
+    assert build_batch_name(
+        **common, years=4.6, years_source="auto", grid_step_deg=0.01, margin_deg=0.01
+    ) == "江苏A3_Y5A_G0.01_M0.01_1121-1542"
+    assert build_batch_name(
+        **common, years=None, years_source="auto", grid_step_deg=0.010, margin_deg=0
+    ) == "江苏A3_Y6A_G0.01_M0_1121-1542"
+
+
+def test_build_batch_name_sanitizes_farm_name() -> None:
+    from datetime import datetime
+
+    from app.services.wind_lightning_density_service import build_batch_name
+
+    now = datetime(2026, 11, 21, 15, 42)
+
+    def make(farm: str | None, fallback: str) -> str:
+        return build_batch_name(
+            wind_farm_name=farm,
+            turbine_filename=fallback,
+            years=6,
+            years_source="auto",
+            grid_step_deg=0.01,
+            margin_deg=0.01,
+            now=now,
+        )
+
+    messy = make("  江苏 A3(一期)风电场  ", "x.txt")
+    assert messy.startswith("江苏_A3_一期_风电场_Y")
+    assert " " not in messy and "(" not in messy and ")" not in messy
+    assert len(messy.split("_Y")[0]) <= 20
+
+    assert make("", "风机点位-v2.xlsx").startswith("风机点位-v2_Y")
+    assert make("()", "!!!.csv").startswith("未命名风电场_Y")
+    assert make("超" * 40, "x.txt").split("_Y")[0] == "超" * 20
+
+
+def test_ensure_unique_batch_name() -> None:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    from app.models.wind_lightning_density import WindLightningDensityBatch
+    from app.services.wind_lightning_density_service import ensure_unique_batch_name
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        base = "江苏A3_Y6A_G0.01_M0.01_1121-1542"
+        assert ensure_unique_batch_name(db, base) == base
+        db.add(WindLightningDensityBatch(id="b1", batch_name=base))
+        db.add(WindLightningDensityBatch(id="b2", batch_name=f"{base}-2"))
+        db.commit()
+        assert ensure_unique_batch_name(db, base) == f"{base}-3"
+
+        # `_` 在 LIKE 中是通配符：必须转义，否则会被形状相近但不同的名字误判为已占用。
+        decoy_base = "江苏A3_Y6F_G0.01_M0.01_1121-1542"
+        decoy = decoy_base.replace("_", "X")
+        db.add(WindLightningDensityBatch(id="b3", batch_name=decoy))
+        db.commit()
+        assert ensure_unique_batch_name(db, decoy_base) == decoy_base
+    finally:
+        db.close()
+
+
+def test_create_batch_ignores_client_name_and_dedupes() -> None:
+    from unittest.mock import patch
+
+    from fastapi import UploadFile
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    from app.services import wind_lightning_density_service as service
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
+    def uploads() -> tuple[UploadFile, UploadFile]:
+        return (
+            UploadFile(filename="file_2.txt", file=io.BytesIO(TURBINE_FILE.read_bytes())),
+            UploadFile(filename="lightning.csv", file=io.BytesIO(FUJIAN_CSV.read_bytes())),
+        )
+
+    try:
+        with (
+            patch.object(service.minio_storage, "put_object"),
+            patch.object(service, "_dispatch_batch_task", return_value=None),
+        ):
+            turbine, lightning = uploads()
+            first = service.create_batch(
+                db,
+                turbine_file=turbine,
+                lightning_file=lightning,
+                batch_name="FAKE_CLIENT_NAME",
+                wind_farm_name="江苏A3",
+                notes=None,
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+                actor_user_id="tester",
+            )
+            turbine, lightning = uploads()
+            second = service.create_batch(
+                db,
+                turbine_file=turbine,
+                lightning_file=lightning,
+                batch_name="FAKE_CLIENT_NAME",
+                wind_farm_name="江苏A3",
+                notes=None,
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+                actor_user_id="tester",
+            )
+
+        assert first.batch_name.startswith("江苏A3_Y6A_G0.01_M0.01_")
+        assert first.batch_name != "FAKE_CLIENT_NAME"
+        assert second.batch_name.startswith("江苏A3_Y6A_G0.01_M0.01_")
+        assert second.batch_name.endswith("-2")
+        assert first.batch_id != second.batch_id
+    finally:
+        db.close()
