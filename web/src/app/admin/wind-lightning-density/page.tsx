@@ -914,21 +914,17 @@ export default function WindLightningDensityListPage() {
             <Form.Item label={t("风电场名称")} name="wind_farm_name">
               <Input placeholder={t("例如：江苏A3风电场")} maxLength={128} />
             </Form.Item>
-            <Form.Item label={t("备注")} name="notes">
-              <Input.TextArea rows={2} maxLength={500} />
-            </Form.Item>
-
             <Form.Item
               label={t("网格步长（度）")}
               name="grid_step_deg"
-              extra={t("默认 0.01°（约 1km），与核心程序一致；单边网格数超过 500 会被拒绝")}
+              tooltip={t("默认 0.01°（约 1km），与核心程序一致；单边网格数超过 500 会被拒绝")}
             >
               <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item
               label={t("外扩边距（度）")}
               name="margin_deg"
-              extra={t("统计范围为风机经/纬度 min/max 四周各外扩该值，默认 0.01°")}
+              tooltip={t("统计范围为风机经/纬度 min/max 四周各外扩该值，默认 0.01°")}
             >
               <InputNumber min={0} max={0.5} step={0.005} style={{ width: "100%" }} />
             </Form.Item>
@@ -936,7 +932,7 @@ export default function WindLightningDensityListPage() {
             <Form.Item
               label={t("统计年限来源")}
               name="years_source"
-              extra={t("自动：能从时间列推断则用实际覆盖年数，否则 6 年；固定：始终 6 年")}
+              tooltip={t("自动：能从时间列推断则用实际覆盖年数，否则 6 年；固定：始终 6 年")}
             >
               <Select
                 options={[
@@ -945,25 +941,15 @@ export default function WindLightningDensityListPage() {
                 ]}
               />
             </Form.Item>
-            {/* 第 3 行第 2 列留空 */}
+
+            <Form.Item className="fl-span-2" label={t("备注")} name="notes">
+              <Input.TextArea rows={2} maxLength={500} />
+            </Form.Item>
 
             <Form.Item
               className="fl-span-2"
               required
-              label={
-                <span className="inline-flex items-center gap-2">
-                  {t("风机点位文件（txt 11 列 / Excel）")}
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    style={{ padding: 0, height: "auto" }}
-                    onClick={handleDownloadTurbineTemplate}
-                  >
-                    {t("下载模板")}
-                  </Button>
-                </span>
-              }
+              label={t("风机点位文件（txt 11 列 / Excel）")}
             >
               <Upload.Dragger
                 accept=".txt,.csv,.xlsx,.xlsm"
@@ -979,26 +965,18 @@ export default function WindLightningDensityListPage() {
                 <p className="ant-upload-hint">
                   {t("txt 按 11 列空白分隔（前 6 列为经纬度度分秒）；Excel 支持「经度/纬度」或「经度度/分/秒」列名")}
                 </p>
+                <div className="flex items-center justify-center gap-2">
+                  <Button type="link" size="small" icon={<DownloadOutlined />} onClick={handleDownloadTurbineTemplate}>
+                    {t("下载模板")}
+                  </Button>
+                </div>
               </Upload.Dragger>
             </Form.Item>
 
             <Form.Item
               className="fl-span-2"
               required
-              label={
-                <span className="inline-flex items-center gap-2">
-                  {t("雷电定位 CSV（LONGITUDE / LATITUDE）")}
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    style={{ padding: 0, height: "auto" }}
-                    onClick={handleDownloadLightningTemplate}
-                  >
-                    {t("下载模板")}
-                  </Button>
-                </span>
-              }
+              label={t("雷电定位 CSV（LONGITUDE / LATITUDE）")}
             >
               <Upload.Dragger
                 accept=".csv,.txt"
@@ -1012,6 +990,11 @@ export default function WindLightningDensityListPage() {
                 </p>
                 <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
                 <p className="ant-upload-hint">{t("支持 UTF-8 / GBK 编码，含 DATETIME 列时可自动推断统计年限")}</p>
+                <div className="flex items-center justify-center gap-2">
+                  <Button type="link" size="small" icon={<DownloadOutlined />} onClick={handleDownloadLightningTemplate}>
+                    {t("下载模板")}
+                  </Button>
+                </div>
               </Upload.Dragger>
             </Form.Item>
           </div>
