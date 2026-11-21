@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
-  Badge,
+  AutoComplete,
   Button,
   Card,
   Col,
@@ -68,10 +68,12 @@ import {
   downloadMatlabPackage,
   fetchMatlabModuleVersions,
   fetchMatlabModules,
+  fetchMatlabQueueWorkers,
   syncMatlabVersion,
   updateMatlabModule,
   uploadMatlabRelease,
 } from "@/lib/matlab-engine-api";
+import { resolveSyncPhase } from "@/lib/matlab-sync-status";
 import type { MatlabModule, MatlabUploadPayload, MatlabVersion } from "@/types/matlab-engine";
 
 // 简易 slug 生成：转小写、空白/符号替换为连字符、压缩连续连字符
@@ -90,13 +92,21 @@ type ModuleFormValues = {
   name: string;
   description?: string;
   worker_deploy_path?: string;
+  worker_queue?: string;
   required_files?: string[];
 };
+
+/** 同步队列默认值：判别模块的历史默认队列，后端对缺失 worker_queue 的老模块也按此归一化。 */
+const DEFAULT_WORKER_QUEUE = "matlab-diagnostics";
+
+/** 新建/编辑模块时可选的已知队列（仍允许手填，便于验证无消费者队列的超时提示）。 */
+const KNOWN_WORKER_QUEUES = ["matlab-diagnostics", "matlab-wind"];
 
 const DEFAULT_MODULE_FORM_VALUES: ModuleFormValues = {
   name: "",
   description: "",
   worker_deploy_path: "",
+  worker_queue: DEFAULT_WORKER_QUEUE,
   required_files: [],
 };
 
@@ -181,6 +191,8 @@ export default function AdminMatlabEnginePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
   const [syncingHash, setSyncingHash] = useState<string | null>(null);
+  // 同步超时判定依赖当前时间：定时推进，避免「同步中」永远停在同步中。
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -229,6 +241,16 @@ export default function AdminMatlabEnginePage() {
   // 当前生效的模块：优先用户显式选择，未选择时自动取第一个模块
   const effectiveSlug = selectedSlug ?? modules[0]?.slug ?? null;
 
+  // 各同步队列的在线 worker（来自 Flower 快照，后端聚合）；30 秒刷新一次。
+  const queueWorkersQuery = useQuery({
+    queryKey: ["admin.matlab.queueWorkers"],
+    enabled: !!user && canRead,
+    queryFn: async () => fetchMatlabQueueWorkers(),
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+    retry: false,
+  });
+
   const versionsQuery = useQuery({
     queryKey: ["admin.matlab.versions", effectiveSlug, searchNonce],
     enabled: Boolean(user && canRead && effectiveSlug),
@@ -262,6 +284,10 @@ export default function AdminMatlabEnginePage() {
           void modulesQuery.refetch();
         }
 
+        if (event.name?.startsWith("engine.sync_")) {
+          setNowTick(Date.now());
+        }
+
         if (event.name === "engine.sync_completed") {
           setSuccess(t("同步完成"));
         }
@@ -282,7 +308,10 @@ export default function AdminMatlabEnginePage() {
       await syncMatlabVersion(effectiveSlug, version.version_hash);
     },
     onSuccess: async () => {
-      setSuccess(t("同步任务已提交，请等待 Worker 处理"));
+      setSuccess(
+        `${t("同步任务已提交，请等待 Worker 处理")}（${t("同步队列")}：${selectedQueue}）`,
+      );
+      setNowTick(Date.now());
       if (effectiveSlug) {
         await queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", effectiveSlug] });
       }
@@ -313,12 +342,14 @@ export default function AdminMatlabEnginePage() {
         name: string;
         description: string;
         worker_deploy_path: string;
+        worker_queue: string;
         required_files: string[];
         slug?: string;
       } = {
         name: values.name.trim(),
         description: values.description?.trim() || "",
         worker_deploy_path: values.worker_deploy_path?.trim() || "",
+        worker_queue: values.worker_queue?.trim() || DEFAULT_WORKER_QUEUE,
         required_files: (values.required_files || [])
           .map((item) => item.trim())
           .filter(Boolean),
@@ -414,6 +445,25 @@ export default function AdminMatlabEnginePage() {
     [modules, effectiveSlug],
   );
 
+  // 当前模块的同步队列与在线 worker 快照（历史模块无 worker_queue 时按默认队列展示）
+  const selectedQueue = selectedModule?.worker_queue || DEFAULT_WORKER_QUEUE;
+  const selectedQueueWorkers = useMemo(() => {
+    const queues = queueWorkersQuery.data?.queues ?? [];
+    return queues.find((item) => item.queue === selectedQueue) ?? null;
+  }, [queueWorkersQuery.data, selectedQueue]);
+
+  const queueOptions = useMemo(() => {
+    const names = new Set<string>(KNOWN_WORKER_QUEUES);
+    (queueWorkersQuery.data?.queues ?? []).forEach((item) => names.add(item.queue));
+    modules.forEach((item) => {
+      if (item.worker_queue) names.add(item.worker_queue);
+    });
+    return Array.from(names)
+      .filter(Boolean)
+      .sort()
+      .map((name) => ({ value: name }));
+  }, [modules, queueWorkersQuery.data]);
+
   const filteredModules = useMemo(() => {
     const keyword = moduleKeyword.trim().toLowerCase();
     if (!keyword) return modules;
@@ -430,6 +480,23 @@ export default function AdminMatlabEnginePage() {
     () => releases.find((item) => item.is_active) ?? null,
     [releases],
   );
+
+  // 有版本处于「已提交、等待 worker」时，每 15 秒推进一次时钟以触发超时提示。
+  const hasPendingSync = useMemo(
+    () =>
+      releases.some(
+        (item) =>
+          !item.is_active
+          && (item.sync_state?.status === "pending" || item.sync_state?.status === "running"),
+      ),
+    [releases],
+  );
+
+  useEffect(() => {
+    if (!hasPendingSync) return;
+    const timer = window.setInterval(() => setNowTick(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [hasPendingSync]);
 
   const allVersions = useMemo(() => {
     // 同一 hash 可能出现多条发布记录（历史回退后重新发布），按 hash 去重避免表格 rowKey 冲突。
@@ -480,6 +547,7 @@ export default function AdminMatlabEnginePage() {
       name: item.name,
       description: item.description || "",
       worker_deploy_path: item.worker_deploy_path || "",
+      worker_queue: item.worker_queue || DEFAULT_WORKER_QUEUE,
       required_files: item.required_files || [],
     });
     setModuleModalOpen(true);
@@ -673,6 +741,112 @@ export default function AdminMatlabEnginePage() {
     </div>
   );
 
+  /**
+   * 版本同步状态标签（表格与卡片共用）：
+   * 已部署 > 同步失败（展示 error）> 等待 Worker 超时 > 同步中 > 未生效/非当前。
+   * 超时与失败都给出任务监控入口，便于检查队列是否有在线 consumer。
+   */
+  const renderVersionStatus = useCallback(
+    (record: MatlabVersion) => {
+      const phase = resolveSyncPhase(record, nowTick);
+      const sync = record.sync_state;
+      const queueName = sync?.queue || selectedQueue;
+      const monitorEntry = (
+        <Link
+          href="/admin/task-monitor"
+          onClick={(event) => event.stopPropagation()}
+          className="text-xs"
+        >
+          {t("去任务监控")}
+        </Link>
+      );
+
+      if (phase === "deployed") {
+        const tooltip = (
+          <div className="flex flex-col gap-1">
+            <span>
+              {record.deployed_at
+                ? `${t("已部署到 Worker")}（${formatDateTime(record.deployed_at)}）`
+                : t("已部署到 Worker")}
+            </span>
+            {record.deployed_worker && (
+              <span>{`${t("部署目标")}：${record.deployed_worker}`}</span>
+            )}
+          </div>
+        );
+        return (
+          <Tooltip title={tooltip}>
+            <Tag color="blue" style={{ marginRight: 0 }}>{t("Worker 已部署")}</Tag>
+          </Tooltip>
+        );
+      }
+
+      if (phase === "failed") {
+        return (
+          <Tooltip
+            title={
+              <div className="flex flex-col gap-1">
+                <span>{`${t("同步失败")}：${sync?.error || "-"}`}</span>
+                {sync?.task_id && <span>{`${t("任务 ID")}：${sync.task_id}`}</span>}
+                {monitorEntry}
+              </div>
+            }
+          >
+            <Tag color="red" style={{ marginRight: 0 }}>{t("同步失败")}</Tag>
+          </Tooltip>
+        );
+      }
+
+      if (phase === "timeout") {
+        return (
+          <Tooltip
+            title={
+              <div className="flex flex-col gap-1">
+                <span>{t("等待 Worker 超时，请检查该队列是否有在线 worker")}</span>
+                <span>{`${t("同步队列")}：${queueName}`}</span>
+                {monitorEntry}
+              </div>
+            }
+          >
+            <Tag color="orange" style={{ marginRight: 0 }}>{t("等待 Worker 超时")}</Tag>
+          </Tooltip>
+        );
+      }
+
+      if (phase === "syncing") {
+        return (
+          <Tooltip
+            title={
+              <div className="flex flex-col gap-1">
+                <span>{`${t("同步中")}：${t("同步队列")} ${queueName}`}</span>
+                {sync?.requested_at && (
+                  <span>{`${t("提交时间")}：${formatDateTime(sync.requested_at)}`}</span>
+                )}
+                {monitorEntry}
+              </div>
+            }
+          >
+            <Tag color="processing" style={{ marginRight: 0 }}>{t("同步中")}</Tag>
+          </Tooltip>
+        );
+      }
+
+      const isNewest = record === currentRelease;
+      return (
+        <Tooltip
+          title={
+            isNewest
+              ? t("最新版本尚未生效；点击行内「生效」按钮部署到 Worker")
+              : t("Worker 当前未部署该版本；点击行内「生效」按钮部署，带「Worker 已部署」标记的才是生效版本")
+          }
+        >
+          <Tag style={{ marginRight: 0 }}>{isNewest ? t("未生效") : t("非当前")}</Tag>
+        </Tooltip>
+      );
+    },
+    [currentRelease, nowTick, selectedQueue, t],
+  );
+
   const columns = useMemo<TableColumnsType<MatlabVersion>>(() => {
     const baseColumns: TableColumnsType<MatlabVersion> = [
       {
@@ -686,33 +860,7 @@ export default function AdminMatlabEnginePage() {
         title: t("Worker 状态"),
         key: "worker_status",
         width: 140,
-        render: (_, record) => {
-          if (record.is_active) {
-            return (
-              <Tooltip
-                title={
-                  record.deployed_at
-                    ? `${t("已部署到 Worker")}（${formatDateTime(record.deployed_at)}）`
-                    : t("已部署到 Worker")
-                }
-              >
-                <Tag color="blue">{t("Worker 已部署")}</Tag>
-              </Tooltip>
-            );
-          }
-          const isNewest = record === currentRelease;
-          return (
-            <Tooltip
-              title={
-                isNewest
-                  ? t("最新版本尚未生效；点击行内「生效」按钮部署到 Worker")
-                  : t("Worker 当前未部署该版本；点击行内「生效」按钮部署，带「Worker 已部署」标记的才是生效版本")
-              }
-            >
-              <Tag>{isNewest ? t("未生效") : t("非当前")}</Tag>
-            </Tooltip>
-          );
-        },
+        render: (_, record) => renderVersionStatus(record),
       },
       {
         title: t("变更日志"),
@@ -804,7 +952,7 @@ export default function AdminMatlabEnginePage() {
     });
 
     return baseColumns;
-  }, [canManage, currentRelease, deleteVersionMutation, handleDownload, handleSyncVersion, modalApi, syncingHash]);
+  }, [canManage, deleteVersionMutation, handleDownload, handleSyncVersion, modalApi, renderVersionStatus, syncingHash]);
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
@@ -890,12 +1038,7 @@ export default function AdminMatlabEnginePage() {
             <CodeOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate flex-1">{item.version_tag || t("未命名版本")}</Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
-              {item.is_active && (
-                <>
-                  <Badge status="success" />
-                  <Typography.Text type="secondary" className="text-xs">{t("Worker 已部署")}</Typography.Text>
-                </>
-              )}
+              {renderVersionStatus(item)}
             </div>
           </div>
 
@@ -984,9 +1127,16 @@ export default function AdminMatlabEnginePage() {
             {activeRelease && (
               <Tooltip
                 title={
-                  activeRelease.deployed_at
-                    ? `${t("部署时间")}：${formatDateTime(activeRelease.deployed_at)}`
-                    : undefined
+                  activeRelease.deployed_at || activeRelease.deployed_worker ? (
+                    <div className="flex flex-col gap-1">
+                      {activeRelease.deployed_at && (
+                        <span>{`${t("部署时间")}：${formatDateTime(activeRelease.deployed_at)}`}</span>
+                      )}
+                      {activeRelease.deployed_worker && (
+                        <span>{`${t("部署目标")}：${activeRelease.deployed_worker}`}</span>
+                      )}
+                    </div>
+                  ) : undefined
                 }
               >
                 <Typography.Text type="secondary" style={{ fontSize: 13 }}>
@@ -1059,6 +1209,9 @@ export default function AdminMatlabEnginePage() {
                                 >
                                   <div className="admin-matlab-module-info">
                                     <div className="admin-matlab-module-name">{item.name}</div>
+                                    <div className="admin-matlab-module-slug">
+                                      {item.worker_queue || DEFAULT_WORKER_QUEUE}
+                                    </div>
                                   </div>
                                   <Dropdown
                                     menu={{ items: getModuleMoreMenuItems(item) }}
@@ -1146,6 +1299,32 @@ export default function AdminMatlabEnginePage() {
                         />
                       </div>
                     </div>
+
+                    {selectedModule && (
+                      <div className="flex flex-wrap items-center gap-2" style={{ padding: "0 2px 8px" }}>
+                        <Tag style={{ marginRight: 0 }}>{`${t("同步队列")}：${selectedQueue}`}</Tag>
+                        {queueWorkersQuery.isLoading ? (
+                          <Typography.Text type="secondary" className="text-xs">
+                            {t("正在检查队列 worker…")}
+                          </Typography.Text>
+                        ) : !queueWorkersQuery.data?.available ? (
+                          <Typography.Text type="secondary" className="text-xs">
+                            {t("队列状态未知（无法连接 Flower）")}
+                          </Typography.Text>
+                        ) : selectedQueueWorkers && selectedQueueWorkers.online > 0 ? (
+                          <Typography.Text type="success" className="text-xs">
+                            {`${selectedQueueWorkers.online} ${t("个在线 worker")}`}
+                            {selectedQueueWorkers.workers.length > 0
+                              ? `（${selectedQueueWorkers.workers.join("、")}）`
+                              : ""}
+                          </Typography.Text>
+                        ) : (
+                          <Typography.Text type="danger" className="text-xs">
+                            {`${t("没有在线 worker")}，${t("同步任务会一直排队")}`}
+                          </Typography.Text>
+                        )}
+                      </div>
+                    )}
 
                     {selectedModule && viewMode === "table" ? (
                       <div
@@ -1275,6 +1454,18 @@ export default function AdminMatlabEnginePage() {
               <Input placeholder="/opt/worker/matlab/{module}/" />
             </Form.Item>
 
+            <Form.Item
+              label={t("同步队列")}
+              name="worker_queue"
+              extra={t("同步任务会投递到该队列，必须与挂载该模块部署路径的 worker 一致。")}
+            >
+              <AutoComplete
+                options={queueOptions}
+                placeholder={DEFAULT_WORKER_QUEUE}
+                allowClear
+              />
+            </Form.Item>
+
             <Form.Item label={t("必需文件")} required={false}>
               <Form.List name="required_files">
                 {(fields, { add, remove }) => (
@@ -1367,6 +1558,9 @@ export default function AdminMatlabEnginePage() {
             <p className="ant-upload-hint">
               {t("ZIP 包必须包含")} {(selectedModule?.required_files || []).join(", ") || t("必需文件")}，{t("上传成功后即为已发布版本")}
             </p>
+            <p className="ant-upload-hint">
+              {t("若产物是无后缀的可执行文件（如 main_angle），请把模块的必需文件改成实际文件名。")}
+            </p>
           </Upload.Dragger>
         </Modal>
       )}
@@ -1411,6 +1605,45 @@ export default function AdminMatlabEnginePage() {
             <Descriptions.Item label={t("描述")}>{detailModule.description || "-"}</Descriptions.Item>
             <Descriptions.Item label={t("Worker 部署路径")}>
               {detailModule.worker_deploy_path || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("同步队列")}>
+              <Space size={8} wrap>
+                <Typography.Text code>
+                  {detailModule.worker_queue || DEFAULT_WORKER_QUEUE}
+                </Typography.Text>
+                {(() => {
+                  const queue = detailModule.worker_queue || DEFAULT_WORKER_QUEUE;
+                  const snapshot = (queueWorkersQuery.data?.queues ?? []).find(
+                    (item) => item.queue === queue,
+                  );
+                  if (queueWorkersQuery.isLoading) {
+                    return (
+                      <Typography.Text type="secondary" className="text-xs">
+                        {t("正在检查队列 worker…")}
+                      </Typography.Text>
+                    );
+                  }
+                  if (!queueWorkersQuery.data?.available) {
+                    return (
+                      <Typography.Text type="secondary" className="text-xs">
+                        {t("队列状态未知（无法连接 Flower）")}
+                      </Typography.Text>
+                    );
+                  }
+                  if (snapshot && snapshot.online > 0) {
+                    return (
+                      <Typography.Text type="success" className="text-xs">
+                        {`${snapshot.online} ${t("个在线 worker")}（${snapshot.workers.join("、")}）`}
+                      </Typography.Text>
+                    );
+                  }
+                  return (
+                    <Typography.Text type="danger" className="text-xs">
+                      {`${t("没有在线 worker")}，${t("同步任务会一直排队")}`}
+                    </Typography.Text>
+                  );
+                })()}
+              </Space>
             </Descriptions.Item>
             <Descriptions.Item label={t("必需文件")}>
               {detailModule.required_files && detailModule.required_files.length > 0 ? (

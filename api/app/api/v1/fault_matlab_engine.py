@@ -18,6 +18,7 @@ from ...services.fault_matlab_engine_service import (
     get_module,
     get_version_files,
     list_modules,
+    list_queue_workers,
     list_versions,
     publish_draft,
     rollback_to_version,
@@ -83,6 +84,14 @@ def get_modules(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     return {"items": list_modules(db)}
+
+
+@router.get("/worker-queues")
+def get_matlab_worker_queues(
+    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+) -> dict[str, Any]:
+    """各同步队列的在线 worker 快照（供模块详情提示队列是否有消费者）。"""
+    return list_queue_workers()
 
 
 @router.post("/modules")

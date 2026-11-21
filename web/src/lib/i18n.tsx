@@ -2777,6 +2777,24 @@ export const EN_DICT: Record<string, string> = {
   "ZIP 包必须包含": "The ZIP package must contain",
   "上传成功后即为已发布版本": "and it becomes a published version after a successful upload",
   "模块详情": "Module Details",
+  // ===== MATLAB 引擎管理：同步队列与同步状态（LP-55）=====
+  "同步队列": "Sync queue",
+  "同步任务会投递到该队列，必须与挂载该模块部署路径的 worker 一致。":
+    "Sync tasks are delivered to this queue; it must match the worker that mounts this module's deploy path.",
+  "同步中": "Syncing",
+  "等待 Worker 超时": "Worker wait timed out",
+  "等待 Worker 超时，请检查该队列是否有在线 worker":
+    "Timed out waiting for a Worker. Check whether this queue has an online worker.",
+  "去任务监控": "Open task monitoring",
+  "部署目标": "Deployment target",
+  "提交时间": "Submitted at",
+  "个在线 worker": "online worker(s)",
+  "没有在线 worker": "No online worker",
+  "同步任务会一直排队": "sync tasks will keep queueing",
+  "队列状态未知（无法连接 Flower）": "Queue status unavailable (Flower unreachable)",
+  "正在检查队列 worker…": "Checking queue workers…",
+  "若产物是无后缀的可执行文件（如 main_angle），请把模块的必需文件改成实际文件名。":
+    "If your artifact is an extensionless executable (e.g. main_angle), set the module's required files to the actual filename.",
   "执行": "Execute",
   "新建用户": "New User",
   "上传 Logo": "Upload Logo",

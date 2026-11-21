@@ -9,6 +9,7 @@ import type {
   MatlabModule,
   MatlabModuleFilesResponse,
   MatlabModuleVersionsResponse,
+  MatlabQueueWorkersResponse,
   MatlabSyncResponse,
   MatlabVersion,
 } from "@/types/matlab-engine";
@@ -16,6 +17,11 @@ import type {
 export async function fetchMatlabModules(): Promise<MatlabModule[]> {
   const response = await getJson<{ items: MatlabModule[] }>("/api/v1/fault-matlab/modules");
   return response.items ?? [];
+}
+
+/** 各同步队列的在线 worker 快照（Flower 不可用时 available=false，页面降级提示）。 */
+export async function fetchMatlabQueueWorkers(): Promise<MatlabQueueWorkersResponse> {
+  return getJson<MatlabQueueWorkersResponse>("/api/v1/fault-matlab/worker-queues");
 }
 
 export async function createMatlabModule(

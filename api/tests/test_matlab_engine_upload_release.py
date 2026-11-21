@@ -133,6 +133,15 @@ class MatlabEngineUploadReleaseTest(unittest.TestCase):
             ),
             queue="matlab-diagnostics",
         )
+        # LP-55：提交同步后写入 pending 状态（页面据此显示同步中并可判定超时）
+        sync_state = next(
+            r for r in svc._load_versions(self.db, MODULE_SLUG)["releases"]
+            if r["version_hash"] == target["version_hash"]
+        )["sync_state"]
+        self.assertEqual(sync_state["status"], "pending")
+        self.assertEqual(sync_state["task_id"], "task-123")
+        self.assertEqual(sync_state["queue"], "matlab-diagnostics")
+        self.assertTrue(sync_state.get("requested_at"))
 
     def test_trigger_sync_for_version_unknown_version_raises(self) -> None:
         with self.assertRaises(svc.MatlabEngineError):

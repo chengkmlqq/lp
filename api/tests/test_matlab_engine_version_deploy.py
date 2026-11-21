@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -174,6 +175,170 @@ class MatlabEngineVersionDeployTest(unittest.TestCase):
         active = [r for r in releases if r["is_active"]]
         self.assertEqual(len(active), 1)
         self.assertEqual(active[0]["version_tag"], "v9.9.9")
+
+
+class MatlabEngineSyncStateTest(unittest.TestCase):
+    """LP-55：同步进度（pending/running/completed/failed）与部署 worker 记录。"""
+
+    def setUp(self) -> None:
+        self.db = _build_session()
+        svc.create_module(self.db, {
+            "slug": MODULE_SLUG,
+            "name": "波形判别模块",
+            "worker_deploy_path": "/app/matlab-wave",
+        }, actor_user_id="u1")
+        _seed_versions(self.db)
+        self.patches = [
+            patch.object(svc, "_load_manifest", return_value=None),
+            patch.object(svc, "_copy_package"),
+            patch.object(svc, "_write_manifest"),
+        ]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in self.patches:
+            p.stop()
+        self.db.close()
+
+    def _sync_state(self, version_hash: str) -> dict:
+        versions = svc._load_versions(self.db, MODULE_SLUG)
+        target = next(r for r in versions["releases"] if r["version_hash"] == version_hash)
+        return target.get("sync_state") or {}
+
+    def test_pending_then_running_then_completed(self) -> None:
+        svc.record_sync_state(
+            self.db, MODULE_SLUG, "aaa111",
+            status="pending", task_id="task-1", queue="matlab-wind",
+        )
+        state = self._sync_state("aaa111")
+        self.assertEqual(state["status"], "pending")
+        self.assertEqual(state["task_id"], "task-1")
+        self.assertEqual(state["queue"], "matlab-wind")
+        self.assertTrue(state.get("requested_at"))
+
+        svc.record_sync_state(
+            self.db, MODULE_SLUG, "aaa111",
+            status="running", task_id="task-1", worker="matlab-wind@ctyun-local",
+        )
+        state = self._sync_state("aaa111")
+        self.assertEqual(state["status"], "running")
+        self.assertEqual(state["worker"], "matlab-wind@ctyun-local")
+        self.assertTrue(state.get("started_at"))
+
+        # 完成时同时记录部署目标 worker
+        svc.mark_version_deployed(self.db, MODULE_SLUG, "aaa111", worker="matlab-wind@ctyun-local")
+        svc.record_sync_state(
+            self.db, MODULE_SLUG, "aaa111",
+            status="completed", task_id="task-1", worker="matlab-wind@ctyun-local",
+        )
+        state = self._sync_state("aaa111")
+        self.assertEqual(state["status"], "completed")
+        self.assertTrue(state.get("finished_at"))
+        self.assertNotIn("error", state)
+
+        releases = {r["version_hash"]: r for r in svc.list_versions(self.db, MODULE_SLUG)["releases"]}
+        self.assertTrue(releases["aaa111"]["is_active"])
+        self.assertEqual(releases["aaa111"]["deployed_worker"], "matlab-wind@ctyun-local")
+
+    def test_failed_keeps_error_text(self) -> None:
+        svc.record_sync_state(
+            self.db, MODULE_SLUG, "bbb222",
+            status="failed", task_id="task-2", error="deploy failed: disk full",
+        )
+        state = self._sync_state("bbb222")
+        self.assertEqual(state["status"], "failed")
+        self.assertEqual(state["error"], "deploy failed: disk full")
+
+    def test_new_pending_clears_previous_failure(self) -> None:
+        svc.record_sync_state(
+            self.db, MODULE_SLUG, "bbb222", status="failed", task_id="t-old", error="boom",
+        )
+        svc.record_sync_state(
+            self.db, MODULE_SLUG, "bbb222", status="pending", task_id="t-new", queue="matlab-wind",
+        )
+        state = self._sync_state("bbb222")
+        self.assertEqual(state["status"], "pending")
+        self.assertEqual(state["task_id"], "t-new")
+        self.assertNotIn("error", state)
+        self.assertNotIn("finished_at", state)
+
+    def test_record_sync_state_unknown_version_returns_false(self) -> None:
+        ok = svc.record_sync_state(self.db, MODULE_SLUG, "nope999", status="pending")
+        self.assertFalse(ok)
+
+    def test_list_versions_hides_deployed_worker_for_inactive(self) -> None:
+        svc.mark_version_deployed(self.db, MODULE_SLUG, "aaa111", worker="matlab-wind@ctyun-local")
+        svc.mark_version_deployed(self.db, MODULE_SLUG, "bbb222", worker="matlab-worker@matlab-local")
+        releases = {r["version_hash"]: r for r in svc.list_versions(self.db, MODULE_SLUG)["releases"]}
+        self.assertEqual(releases["bbb222"]["deployed_worker"], "matlab-worker@matlab-local")
+        self.assertNotIn("deployed_worker", releases["aaa111"])
+
+
+class MatlabEngineQueueWorkersTest(unittest.TestCase):
+    """LP-55：按队列聚合在线 worker（复用 Flower 快照，不可用时降级）。"""
+
+    @staticmethod
+    def _overview():
+        from app.schemas.flower_monitor import FlowerWorkerItem, FlowerWorkersOverviewResponse
+
+        return FlowerWorkersOverviewResponse(
+            generated_at=datetime.now(timezone.utc),
+            workers=[
+                FlowerWorkerItem(worker="matlab-wind@ctyun-local", status="ONLINE", queue_names=["matlab-wind"]),
+                FlowerWorkerItem(worker="matlab-worker@matlab-local", status="ONLINE", queue_names=["matlab-diagnostics"]),
+                FlowerWorkerItem(worker="stale@host", status="OFFLINE", queue_names=["matlab-wind"]),
+            ],
+        )
+
+    def test_aggregates_online_workers_by_queue(self) -> None:
+        with patch(
+            "app.services.flower_monitor_service.build_workers_overview",
+            return_value=self._overview(),
+        ):
+            data = svc.list_queue_workers()
+        self.assertTrue(data["available"])
+        queues = {item["queue"]: item for item in data["queues"]}
+        self.assertEqual(queues["matlab-wind"]["online"], 1)
+        self.assertEqual(queues["matlab-wind"]["workers"], ["matlab-wind@ctyun-local"])
+        self.assertEqual(queues["matlab-diagnostics"]["online"], 1)
+
+    def test_degrades_when_flower_unavailable(self) -> None:
+        with patch(
+            "app.services.flower_monitor_service.build_workers_overview",
+            side_effect=RuntimeError("flower down"),
+        ):
+            data = svc.list_queue_workers()
+        self.assertFalse(data["available"])
+        self.assertEqual(data["queues"], [])
+
+
+class MatlabEngineZipValidationTest(unittest.TestCase):
+    """LP-55：缺必需文件时提示缺失文件名，并给出 main_angle 无后缀产物的排查指引。"""
+
+    def test_missing_required_file_message_mentions_file_and_hint(self) -> None:
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("main_angle", b"binary")
+        ok, message = svc._validate_zip_content(buf.getvalue(), ["main_angle.exe"])
+        self.assertFalse(ok)
+        self.assertIn("main_angle.exe", message)
+        self.assertIn("main_angle", message)
+        self.assertIn("必需文件", message)
+
+    def test_valid_zip_with_linux_executable_passes(self) -> None:
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("main_angle", b"binary")
+        ok, message = svc._validate_zip_content(buf.getvalue(), ["main_angle"])
+        self.assertTrue(ok)
+        self.assertEqual(message, "")
 
 
 if __name__ == "__main__":

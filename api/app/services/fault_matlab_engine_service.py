@@ -132,7 +132,12 @@ def _validate_zip_content(data: bytes, required_files: list[str] | None = None) 
             basenames = {Path(fix_gbk_zip_filename(n)).name for n in names}
             for file_name in required:
                 if file_name not in basenames:
-                    return False, f"ZIP 包缺少必需文件: {file_name}"
+                    # LP-55：Linux 产物常为无后缀可执行文件（如 main_angle），而模块必需文件可能
+                    # 配的是 main_angle.exe。错误信息要指明缺哪个文件，并提示去模块里调整。
+                    return False, (
+                        f"ZIP 包缺少必需文件: {file_name}。"
+                        "若你的产物是可执行文件 main_angle（无后缀），请在模块的必需文件里调整。"
+                    )
             return True, ""
     except zipfile.BadZipFile:
         return False, "上传文件不是有效的 ZIP 包"
@@ -494,9 +499,11 @@ def publish_draft(db: Session, slug: str, version_hash: str, version_tag: str, c
     release = dict(draft)
     release["version_tag"] = tag
     release["changelog"] = str(changelog or "")
-    # 新发布版本尚未同步到 Worker，不得继承草稿可能携带的部署标记
+    # 新发布版本尚未同步到 Worker，不得继承草稿可能携带的部署标记与同步进度
     release.pop("is_active", None)
     release.pop("deployed_at", None)
+    release.pop("deployed_worker", None)
+    release.pop("sync_state", None)
     manifest = _load_manifest(module, version_hash, "draft")
     if manifest:
         release["file_list"] = manifest.get("file_list") or release.get("file_list") or []
@@ -523,9 +530,11 @@ def rollback_to_version(db: Session, slug: str, version_hash: str, *, actor_user
     draft["version_tag"] = ""
     draft["changelog"] = ""
     draft["upload_time"] = _utcnow_iso()
-    # 回退生成的新草稿不继承历史版本的部署标记
+    # 回退生成的新草稿不继承历史版本的部署标记与同步进度
     draft.pop("is_active", None)
     draft.pop("deployed_at", None)
+    draft.pop("deployed_worker", None)
+    draft.pop("sync_state", None)
     manifest = _load_manifest(module, version_hash, "release")
     if manifest:
         draft["file_list"] = manifest.get("file_list") or target.get("file_list") or []
@@ -621,6 +630,7 @@ def list_versions(db: Session, slug: str, *, limit: int | None = None, offset: i
         releases[index]["is_active"] = is_active
         if not is_active:
             releases[index].pop("deployed_at", None)
+            releases[index].pop("deployed_worker", None)
     # 补齐历史版本的「发布人」中文显示名（user_id -> username）
     _resolve_uploader_names(db, [item for item in releases] + ([draft] if draft else []))
     return {
@@ -630,12 +640,20 @@ def list_versions(db: Session, slug: str, *, limit: int | None = None, offset: i
     }
 
 
-def mark_version_deployed(db: Session, slug: str, version_hash: str) -> bool:
+def mark_version_deployed(
+    db: Session,
+    slug: str,
+    version_hash: str,
+    *,
+    worker: str | None = None,
+) -> bool:
     """标记某已发布版本为 Worker 当前生效版本（同步任务成功时调用）。
 
     仅允许标记 releases 中的版本；目标版本不存在时返回 False 且不改动数据。
     同 hash 可能出现多条发布记录（回退后重新发布），只标记列表中最靠前的一条，
-    其余 release 清除 is_active / deployed_at。
+    其余 release 清除 is_active / deployed_at / deployed_worker。
+    ``worker`` 为执行同步任务的 celery 节点名（如 matlab-wind@ctyun-local），
+    用于在页面上显示该版本实际部署到了哪台机器。
     """
     versions = _load_versions(db, slug)
     releases = versions.get("releases", [])
@@ -650,11 +668,92 @@ def mark_version_deployed(db: Session, slug: str, version_hash: str) -> bool:
         item["is_active"] = active
         if active:
             item["deployed_at"] = _utcnow_iso()
+            if worker:
+                item["deployed_worker"] = str(worker)
         else:
             item.pop("deployed_at", None)
+            item.pop("deployed_worker", None)
     versions["releases"] = releases
     _save_versions(db, slug, versions)
     return True
+
+
+SYNC_STATUSES = ("pending", "running", "completed", "failed")
+
+
+def record_sync_state(
+    db: Session,
+    slug: str,
+    version_hash: str,
+    *,
+    status: str,
+    task_id: str | None = None,
+    queue: str | None = None,
+    worker: str | None = None,
+    error: str | None = None,
+) -> bool:
+    """记录某版本最近一次同步（部署）任务的状态，供页面展示「同步中 / 超时 / 失败」。
+
+    - pending：提交同步任务时写入（带 task_id / queue / requested_at）；
+    - running：worker 开始执行时写入（带 worker 节点名）；
+    - completed：部署成功；
+    - failed：失败，保留 error 原文。
+    状态挂在 release 记录的 ``sync_state`` 上，随版本列表一起下发；目标版本不存在时返回 False。
+    """
+    if status not in SYNC_STATUSES:
+        raise ValueError(f"unknown sync status: {status}")
+    versions = _load_versions(db, slug)
+    releases = versions.get("releases", [])
+    target = next((item for item in releases if item.get("version_hash") == version_hash), None)
+    if target is None:
+        return False
+    now = _utcnow_iso()
+    state = dict(target.get("sync_state") or {})
+    state["status"] = status
+    if task_id is not None:
+        state["task_id"] = str(task_id)
+    if queue:
+        state["queue"] = str(queue)
+    if worker:
+        state["worker"] = str(worker)
+    if status == "pending":
+        # 新一轮同步从零开始，清掉上一轮的时间、worker 与错误
+        state["requested_at"] = now
+        state.pop("started_at", None)
+        state.pop("finished_at", None)
+        state.pop("worker", None)
+        state.pop("error", None)
+    elif status == "running":
+        state.setdefault("requested_at", now)
+        state["started_at"] = now
+        state.pop("finished_at", None)
+        state.pop("error", None)
+    elif status == "completed":
+        state.setdefault("requested_at", now)
+        state["finished_at"] = now
+        state.pop("error", None)
+    else:  # failed
+        state.setdefault("requested_at", now)
+        state["finished_at"] = now
+        state["error"] = str(error or "")
+    target["sync_state"] = state
+    versions["releases"] = releases
+    _save_versions(db, slug, versions)
+    return True
+
+
+def safe_record_sync_state(db: Session, slug: str, version_hash: str, **kwargs: Any) -> None:
+    """record_sync_state 的容错包装：同步进度记录失败不应中断任务提交或部署本身。"""
+    try:
+        record_sync_state(db, slug, version_hash, **kwargs)
+    except Exception:  # noqa: BLE001 —— 仅辅助展示信息，失败只告警
+        logger.warning(
+            "Failed to record MATLAB engine sync state (%s) for module %s version %s",
+            kwargs.get("status"),
+            slug,
+            version_hash,
+            exc_info=True,
+        )
 
 
 def trigger_sync_for_module(db: Session, slug: str, *, actor_user_id: str) -> str:
@@ -671,13 +770,23 @@ def trigger_sync_for_module(db: Session, slug: str, *, actor_user_id: str) -> st
     # 按模块的 worker_queue 动态路由到对应 worker（判别=matlab-diagnostics，
     # 单风机=matlab-wind）。不能用 .delay()——那会落到任务装饰器上的默认队列。
     queue = module.get("worker_queue") or DEFAULT_WORKER_QUEUE
+    version_hash = current.get("version_hash", "")
     result = sync_matlab_engine_module.apply_async(
         args=(
             slug,
-            current.get("version_hash", ""),
+            version_hash,
             current.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
             actor_user_id,
         ),
+        queue=queue,
+    )
+    # 记录「已提交、等待 worker」的同步状态，页面据此展示同步中/超时。
+    safe_record_sync_state(
+        db,
+        slug,
+        version_hash,
+        status="pending",
+        task_id=result.id,
         queue=queue,
     )
     return result.id
@@ -707,4 +816,47 @@ def trigger_sync_for_version(db: Session, slug: str, version_hash: str, *, actor
         ),
         queue=queue,
     )
+    # 记录「已提交、等待 worker」的同步状态，页面据此展示同步中/超时。
+    safe_record_sync_state(
+        db,
+        slug,
+        version_hash,
+        status="pending",
+        task_id=result.id,
+        queue=queue,
+    )
     return result.id
+
+
+def list_queue_workers() -> dict[str, Any]:
+    """按队列聚合 Flower 的 worker 快照，供模块详情提示「该队列是否有在线 worker」。
+
+    复用 flower_monitor_service（不引入新依赖）；Flower 不可用时返回 available=False，
+    页面降级为「队列状态未知」，不影响其它功能。
+    """
+    try:
+        from .flower_monitor_service import build_workers_overview
+
+        overview = build_workers_overview(force_refresh=False)
+    except Exception as exc:  # noqa: BLE001 —— 监控服务不可用不应阻塞引擎管理页面
+        logger.warning("Failed to load flower workers for matlab engine queues", exc_info=True)
+        return {"available": False, "generated_at": None, "error": str(exc), "queues": []}
+
+    by_queue: dict[str, dict[str, Any]] = {}
+    for worker in overview.workers:
+        for queue_name in worker.queue_names:
+            bucket = by_queue.setdefault(
+                queue_name,
+                {"queue": queue_name, "online": 0, "workers": []},
+            )
+            if worker.status == "ONLINE":
+                bucket["online"] += 1
+                bucket["workers"].append(worker.worker)
+    for bucket in by_queue.values():
+        bucket["workers"].sort()
+    return {
+        "available": True,
+        "generated_at": overview.generated_at.isoformat(),
+        "error": None,
+        "queues": [by_queue[name] for name in sorted(by_queue)],
+    }

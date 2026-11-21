@@ -48,6 +48,30 @@ def _publish_sync_event(event_name: str, payload: dict) -> None:
         pass
 
 
+def _record_sync_progress(slug: str, version_hash: str, **kwargs: str | None) -> None:
+    """把同步进度写回版本记录（running / completed / failed），失败只告警。
+
+    页面据此展示「同步中」「等待 Worker 超时」「同步失败（含 error）」，
+    以及成功版本实际部署到的 celery 节点。
+    """
+    try:
+        from ..core.database import SessionLocal
+        from ..services.fault_matlab_engine_service import record_sync_state
+
+        db = SessionLocal()
+        try:
+            record_sync_state(db, slug, version_hash, **kwargs)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 —— 进度记录失败不影响文件同步本身
+        logger.warning(
+            "Failed to record sync progress for MATLAB engine module %s version %s",
+            slug,
+            version_hash,
+            exc_info=True,
+        )
+
+
 def _extract_zip_with_fixed_names(zf: zipfile.ZipFile, target_dir: Path) -> None:
     """解压 zip 并修复 Windows 中文文件名的 GBK 乱码（LP-530）。"""
     from ..services.fault_matlab_engine_service import fix_gbk_zip_filename
@@ -96,9 +120,12 @@ def _flatten_wrapper_dir(target_dir: Path, log_parts: list[str]) -> None:
 )
 def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_path: str, actor_user_id: str) -> dict[str, str]:
     task_id = self.request.id
+    # 执行该任务的 celery 节点名（如 matlab-wind@ctyun-local），用于记录版本部署到哪台机器
+    worker_hostname = str(getattr(self.request, "hostname", "") or "")
     log_parts: list[str] = [
         f"[{task_id}] Syncing MATLAB engine module={slug} version={version_hash}",
         f"[{task_id}] Target deploy path={worker_deploy_path}",
+        f"[{task_id}] Executing on worker={worker_hostname or 'unknown'}",
     ]
 
     try:
@@ -108,7 +135,9 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
             "slug": slug,
             "version_hash": version_hash,
             "task_id": task_id,
+            "worker": worker_hostname,
         })
+        _record_sync_progress(slug, version_hash, status="running", task_id=task_id, worker=worker_hostname)
 
         target_dir = Path(worker_deploy_path) if worker_deploy_path else None
         if not target_dir:
@@ -160,16 +189,25 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
         else:
             log_parts.append(f"[{task_id}] Found executables: {', '.join(found)}")
 
-        # 同步成功后记录 Worker 当前生效版本（供页面展示“Worker 已部署”标记）。
+        # 同步成功后记录 Worker 当前生效版本（供页面展示“Worker 已部署”标记）
+        # 及执行节点名（供页面区分版本部署到了哪台 worker）。
         # 数据库记录失败不应影响已完成的文件同步，仅告警。
         try:
             from ..core.database import SessionLocal
-            from ..services.fault_matlab_engine_service import mark_version_deployed
+            from ..services.fault_matlab_engine_service import mark_version_deployed, record_sync_state
 
             db = SessionLocal()
             try:
-                mark_version_deployed(db, slug, version_hash)
-                log_parts.append(f"[{task_id}] Recorded version {version_hash} as deployed in worker")
+                mark_version_deployed(db, slug, version_hash, worker=worker_hostname or None)
+                record_sync_state(
+                    db,
+                    slug,
+                    version_hash,
+                    status="completed",
+                    task_id=task_id,
+                    worker=worker_hostname or None,
+                )
+                log_parts.append(f"[{task_id}] Recorded version {version_hash} as deployed on {worker_hostname or 'unknown worker'}")
             finally:
                 db.close()
         except Exception as exc:  # noqa: BLE001 —— 记录失败不影响同步结果
@@ -185,6 +223,7 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
             "slug": slug,
             "version_hash": version_hash,
             "task_id": task_id,
+            "worker": worker_hostname,
             "target_dir": str(target_dir),
             "executables_found": found,
         })
@@ -212,8 +251,17 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
             "slug": slug,
             "version_hash": version_hash,
             "task_id": task_id,
+            "worker": worker_hostname,
             "error": str(exc),
         })
+        _record_sync_progress(
+            slug,
+            version_hash,
+            status="failed",
+            task_id=task_id,
+            worker=worker_hostname,
+            error=str(exc),
+        )
 
         log_parts.append(f"[{task_id}] MATLAB engine sync FAILED: {exc}")
         log_parts.append(traceback.format_exc())
