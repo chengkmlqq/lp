@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -21,8 +20,6 @@ import {
   type TabsProps,
 } from "antd";
 import {
-  ArrowLeftOutlined,
-  CloseOutlined,
   CloudOutlined,
   DownloadOutlined,
 } from "@ant-design/icons";
@@ -32,7 +29,6 @@ import {
   WindDetailHero,
   WindDetailMeta,
   WindDetailMetricStrip,
-  WindDetailMoreActions,
   WindDetailPaginationFooter,
   WindDetailSubline,
   WindStatusChip,
@@ -80,13 +76,11 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
  */
 export function WindLightningDensityDetailView({
   batchId,
-  onClose,
 }: {
   batchId: string;
   onClose?: () => void;
 }) {
   const { t } = useI18n();
-  const router = useRouter();
   const { message } = App.useApp();
   const { user, fetchWithAuth: authFetch, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
@@ -476,7 +470,6 @@ export function WindLightningDensityDetailView({
           <WindDetailSubline
             items={[
               <span key="farm">{detail?.wind_farm_name || "-"}</span>,
-              <span key="id" title={batchId}>{batchId}</span>,
               detail ? (
                 <span key="created">
                   {t("创建时间")} {formatDateTime(detail.create_date)}
@@ -499,19 +492,6 @@ export function WindLightningDensityDetailView({
             >
               {t("下载密度图")}
             </Button>
-            <WindDetailMoreActions
-              label={t("更多")}
-              items={[
-                onClose
-                  ? { key: "close", label: t("关闭"), icon: <CloseOutlined />, onClick: onClose }
-                  : {
-                      key: "back",
-                      label: t("返回列表"),
-                      icon: <ArrowLeftOutlined />,
-                      onClick: () => router.push("/admin/wind-lightning-density"),
-                    },
-              ]}
-            />
           </>
         }
       />
