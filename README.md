@@ -13,6 +13,12 @@
 └── package.json         # Monorepo 根脚本
 ```
 
+## 文档
+
+- `docs/matlab-engine-packaging-wind-turbine.md` —— 单风机计算引擎（`wind_turbine_calc`）编译打包与上线说明
+- `docs/matlab-engine-packaging-waveform.md` —— 故障判别引擎（`waveform-engine`）编译打包与同步说明
+- `docs/atp-7.3-support-plan.md` —— ATPDraw 7.3 支持方案
+
 ## 技术栈
 
 - 前端：Next.js 16、React 19、TypeScript
