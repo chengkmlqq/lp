@@ -45,6 +45,11 @@ def _extract_queue_names(sender: object | None) -> list[str]:
         return []
     queues = getattr(consumer, "queues", None)
     if queues is None:
+        # Celery ≥5.4（实测 5.6.3）把队列挂在 kombu Consumer 上：worker.consumer 不再有
+        # queues 属性，导致注册表 queues_csv 一直为空、按队列查 worker 永远查不到。
+        task_consumer = getattr(consumer, "task_consumer", None)
+        queues = getattr(task_consumer, "queues", None)
+    if queues is None:
         return []
     names: list[str] = []
     try:

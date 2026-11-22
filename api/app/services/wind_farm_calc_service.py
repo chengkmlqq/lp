@@ -240,9 +240,14 @@ def _wait_for_wine_probe(deadline: float) -> dict[str, Any] | None:
     return read_wine_probe_cache()
 
 
-def _online_worker_for_queue(db: Session | None) -> str | None:
+def _online_wind_workers(db: Session | None) -> tuple[str | None, bool]:
+    """返回（订阅 wind_farm_calc 队列的在线 worker, 是否存在队列信息未知的在线 worker）。
+
+    旧版本注册表行的 ``queues_csv`` 可能为空（Celery 5.6 下队列提取失败的历史数据），
+    这类行无法判断是否订阅了目标队列，交由 :func:`_celery_worker_for_queue` 用控制消息确认。
+    """
     if db is None:
-        return None
+        return None, False
     threshold = utcnow() - timedelta(seconds=max(30, int(_settings().worker_registry_ttl_seconds)))
     queue_name = _settings().wind_farm_calc_queue or "wind_farm_calc"
     rows = (
@@ -257,10 +262,34 @@ def _online_worker_for_queue(db: Session | None) -> str | None:
         .scalars()
         .all()
     )
+    queues_unknown = False
     for row in rows:
-        queues = {item.strip() for item in (row.queues_csv or "").split(",") if item.strip()}
+        raw = (row.queues_csv or "").strip()
+        if not raw:
+            queues_unknown = True
+            continue
+        queues = {item.strip() for item in raw.split(",") if item.strip()}
         if queue_name in queues:
-            return row.worker_name
+            return row.worker_name, queues_unknown
+    return None, queues_unknown
+
+
+def _celery_worker_for_queue(queue_name: str) -> str | None:
+    """向 broker 的 worker 广播控制消息，按 active_queues 确认谁订阅了目标队列。"""
+    try:
+        from ..core.celery_app import celery_app as _celery_app
+
+        replies = _celery_app.control.inspect(timeout=1.0).active_queues() or {}
+    except Exception:  # noqa: BLE001 - 控制消息不可用时退回注册表结论
+        return None
+    for worker_name, queues in replies.items():
+        names = {
+            str(item.get("name", "")).strip()
+            for item in (queues or [])
+            if isinstance(item, dict)
+        }
+        if queue_name in names:
+            return str(worker_name)
     return None
 
 
@@ -285,7 +314,11 @@ def get_engine_info(db: Session | None = None) -> WindFarmCalcEngineInfo:
 
     payload = read_wine_probe_cache()
     fresh = _probe_is_fresh(payload)
-    worker_name = _online_worker_for_queue(db)
+    queue_name = _settings().wind_farm_calc_queue or "wind_farm_calc"
+    worker_name, queues_unknown = _online_wind_workers(db)
+    if worker_name is None and queues_unknown:
+        # 注册表里有在线 worker 但没记录队列（旧行）：用 Celery 控制消息确认，避免误报离线
+        worker_name = _celery_worker_for_queue(queue_name)
     # 60s 内有 worker 回写的探测结果，说明执行 worker 是活的（注册表心跳可能滞后）
     info.worker_online = worker_name is not None or fresh
 

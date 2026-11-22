@@ -278,7 +278,7 @@ def test_engine_info_uses_worker_probe_cache(tmp_path, monkeypatch) -> None:
     """API 容器没有 wine 也不影响判定：只要 worker 探测到 wine 就是就绪。"""
     monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
     monkeypatch.setattr(service, "read_wine_probe_cache", lambda: _probe_payload())
-    monkeypatch.setattr(service, "_online_worker_for_queue", lambda db: "wind-farm-calc@lp")
+    monkeypatch.setattr(service, "_online_wind_workers", lambda db: ("wind-farm-calc@lp", False))
 
     def _unexpected_dispatch() -> bool:
         raise AssertionError("60s 内已有新鲜探测结果时不应再派发探测任务")
@@ -297,7 +297,7 @@ def test_engine_info_uses_worker_probe_cache(tmp_path, monkeypatch) -> None:
 def test_engine_info_reports_worker_offline_without_dispatching(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
     monkeypatch.setattr(service, "read_wine_probe_cache", lambda: None)
-    monkeypatch.setattr(service, "_online_worker_for_queue", lambda db: None)
+    monkeypatch.setattr(service, "_online_wind_workers", lambda db: (None, False))
 
     dispatched: list[bool] = []
     monkeypatch.setattr(service, "_dispatch_wine_probe", lambda: dispatched.append(True) or True)
@@ -314,7 +314,7 @@ def test_engine_info_marks_probe_pending(tmp_path, monkeypatch) -> None:
     """worker 在线但探测结果还没回写（worker 忙）时，不误报 wine 不可用。"""
     monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
     monkeypatch.setattr(service, "read_wine_probe_cache", lambda: None)
-    monkeypatch.setattr(service, "_online_worker_for_queue", lambda db: "wind-farm-calc@lp")
+    monkeypatch.setattr(service, "_online_wind_workers", lambda db: ("wind-farm-calc@lp", False))
     monkeypatch.setattr(service, "_dispatch_wine_probe", lambda: True)
     monkeypatch.setattr(service, "_wait_for_wine_probe", lambda deadline: None)
 
@@ -427,3 +427,30 @@ def test_probe_wine_engine_task_writes_cache(monkeypatch) -> None:
     assert result["version"] == "wine-8.0.2"
     assert result["binary"] == "/usr/bin/wine"
     assert captured == result
+
+
+def test_engine_info_falls_back_to_celery_inspect(tmp_path, monkeypatch) -> None:
+    """注册表行缺队列信息时，用 Celery active_queues 确认执行 worker，避免误报离线。"""
+    monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
+    monkeypatch.setattr(service, "read_wine_probe_cache", lambda: _probe_payload())
+    monkeypatch.setattr(service, "_online_wind_workers", lambda db: (None, True))
+    monkeypatch.setattr(
+        service,
+        "_celery_worker_for_queue",
+        lambda queue_name: "wind-farm-calc@lp" if queue_name == "wind_farm_calc" else None,
+    )
+
+    info = service.get_engine_info()
+    assert info.worker_online is True
+    assert info.worker_wine_available is True
+
+
+def test_worker_signals_extracts_queues_from_task_consumer() -> None:
+    """Celery 5.6 的队列列表在 consumer.task_consumer.queues 上。"""
+    from app.core import worker_signals
+
+    class _TaskConsumer:
+        queues = [SimpleNamespace(name="wind_farm_calc"), SimpleNamespace(name="celery")]
+
+    sender = SimpleNamespace(consumer=SimpleNamespace(task_consumer=_TaskConsumer()))
+    assert worker_signals._extract_queue_names(sender) == ["wind_farm_calc", "celery"]
