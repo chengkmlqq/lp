@@ -23,15 +23,9 @@ INSERT INTO dimension_item (id, dimension_type, type_id, code, name, is_enabled,
 SELECT replace(gen_random_uuid()::text, '-', ''), 'voltage_level', t.id, v.code, v.name, TRUE, v.sort_order, NOW() AT TIME ZONE 'UTC', 'system', NOW() AT TIME ZONE 'UTC', 'system'
 FROM dimension_type t
 CROSS JOIN (VALUES
-  ('35', '35kV', 0),
-  ('66', '66kV', 1),
-  ('110', '110kV', 2),
-  ('220', '220kV', 3),
-  ('330', '330kV', 4),
-  ('500', '500kV', 5),
-  ('750', '750kV', 6),
-  ('800', '800kV', 7),
-  ('1000', '1000kV', 8)
+  -- 2026-11 交付口径：电压等级只保留非标 115/230 两档
+  ('115', '115kV', 0),
+  ('230', '230kV', 1)
 ) AS v(code, name, sort_order)
 WHERE t.code = 'voltage_level'
   AND NOT EXISTS (SELECT 1 FROM dimension_item i WHERE i.type_id = t.id AND i.code = v.code);
