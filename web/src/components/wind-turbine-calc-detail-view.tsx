@@ -33,7 +33,6 @@ import {
   WindDetailMoreActions,
   WindDetailPaginationFooter,
   WindDetailSubline,
-  WindStatusChip,
   type WindDetailMetaItem,
   type WindDetailMetricItem,
   type WindDetailPaginationConfig,
@@ -48,14 +47,6 @@ import type {
 
 const { Text } = Typography;
 const API_BASE = "/api/v1/wind-turbine-calc";
-
-const STATUS_META: Record<string, { color: string; label: string }> = {
-  pending: { color: "default", label: "待处理" },
-  processing: { color: "processing", label: "计算中" },
-  completed: { color: "success", label: "已完成" },
-  failed: { color: "error", label: "失败" },
-  cancelled: { color: "warning", label: "已取消" },
-};
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -123,7 +114,6 @@ export function WindTurbineCalcDetailView({
   });
 
   const detail = detailQuery.data;
-  const statusMeta = STATUS_META[detail?.status ?? "pending"] ?? STATUS_META.pending;
 
   // 曲线图带鉴权拉取，转成 blob URL 展示；gcTime: 0 保证关闭标签后重开必定重新请求，
   // 避免命中已 revoke 的死 URL。
@@ -314,12 +304,9 @@ export function WindTurbineCalcDetailView({
         icon={<ThunderboltOutlined />}
         title={detail?.name || t("单风机计算详情")}
         titleTooltip={detail?.name}
-        statusChip={<WindStatusChip status={detail?.status ?? "pending"} label={t(statusMeta.label)} />}
         subline={
           <WindDetailSubline
             items={[
-              <span key="task">{t("任务 ID")} {jobId}</span>,
-              <span key="stage">{t("阶段")} {detail?.stage || "-"}</span>,
               <span key="start">{t("开始时间")} {formatDateTime(detail?.started_at)}</span>,
               <span key="duration">{t("耗时")} {formatDuration(detail?.duration_seconds)}</span>,
               detail?.engine_version_tag ? <span key="engine">{detail.engine_version_tag}</span> : null,
