@@ -841,7 +841,7 @@ export default function WindDataPrepListPage() {
             label={t("起始经度（0.01° 对齐）")}
             name="start_lon"
             rules={[{ required: true, message: t("请填写起始经度") }]}
-            extra={t("必须是 0.01° 的整数倍，例如 119.34；P0.abc 头部以坐标×100 存为 2 字节整数")}
+            tooltip={t("必须是 0.01° 的整数倍，例如 119.34；P0.abc 头部以坐标×100 存为 2 字节整数")}
           >
             <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="119.34" />
           </Form.Item>
@@ -866,13 +866,13 @@ export default function WindDataPrepListPage() {
           >
             <InputNumber min={1} max={100} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item label={t("网格步长（度）")} name="grid_step_deg" extra={t("固定 0.01°，与核心程序一致")}>
+          <Form.Item label={t("网格步长（度）")} name="grid_step_deg" tooltip={t("固定 0.01°，与核心程序一致")}>
             <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
           </Form.Item>
           <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]}>
             <InputNumber min={0.000001} style={{ width: "100%" }} step={0.1} />
           </Form.Item>
-          <Form.Item label={t("统计年限")} extra={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
+          <Form.Item label={t("统计年限")} tooltip={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
             <Input value="6" readOnly />
           </Form.Item>
           <Form.Item label={t("地形模式")} name="terrain_mode">
