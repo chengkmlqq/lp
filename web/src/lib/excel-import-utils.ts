@@ -266,13 +266,27 @@ export function generateWindTurbineTemplate() {
 }
 
 /**
- * 生成风电场地闪密度统计的雷电定位模板。
+ * 生成风电场地闪密度统计的雷电定位模板（CSV）。
  *
- * 复用 `generateLightningTemplate`，但改用无单位表头：后端 `wind_grid.parse_lightning_csv`
- * 按 `经度` / `纬度` / `时间` 精确匹配，带 `(°)` 会被判为缺少经纬度列，故这里覆盖表头以保证可解析。
+ * 后端 `wind_grid.parse_lightning_csv` 只接受 CSV，并按 `经度` / `纬度` / `时间`
+ * 精确匹配表头（带 `(°)` 会被判为缺少经纬度列）。因此这里输出 UTF-8 BOM 的 CSV、
+ * 文件名用 `.csv`，保证下载后可直接拖回「雷电定位 CSV」上传组件并解析。
  */
 export function generateWindLightningTemplate() {
-  generateLightningTemplate(['时间', '经度', '纬度', '雷电流幅值(kA)', '极性', '距离(km)']);
+  const content =
+    '\uFEFF' +
+    '时间,经度,纬度,雷电流幅值(kA),极性,距离(km)\n' +
+    '2026-01-01 00:00:00,119.34,25.23,10,正,1.5\n';
+
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '雷电定位数据模板.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**

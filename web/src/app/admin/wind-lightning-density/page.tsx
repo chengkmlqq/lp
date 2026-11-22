@@ -1046,7 +1046,16 @@ export default function WindLightningDensityListPage() {
                   {t("txt 按 11 列空白分隔（前 6 列为经纬度度分秒）；Excel 支持「经度/纬度」或「经度度/分/秒」列名")}
                 </p>
                 <div className="flex items-center justify-center gap-2">
-                  <Button type="link" size="small" icon={<DownloadOutlined />} onClick={handleDownloadTurbineTemplate}>
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleDownloadTurbineTemplate();
+                    }}
+                  >
                     {t("下载模板")}
                   </Button>
                 </div>
@@ -1071,7 +1080,16 @@ export default function WindLightningDensityListPage() {
                 <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
                 <p className="ant-upload-hint">{t("支持 UTF-8 / GBK 编码，含 DATETIME 列时可自动推断统计年限")}</p>
                 <div className="flex items-center justify-center gap-2">
-                  <Button type="link" size="small" icon={<DownloadOutlined />} onClick={handleDownloadLightningTemplate}>
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleDownloadLightningTemplate();
+                    }}
+                  >
                     {t("下载模板")}
                   </Button>
                 </div>
