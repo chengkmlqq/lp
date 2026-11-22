@@ -3350,6 +3350,23 @@ export const EN_DICT: Record<string, string> = {
   "页面。": " page.",
   "批次名称": "Batch name",
   "系统根据风电场、年限和布场参数自动生成，同名时自动加序号": "Auto-generated from wind farm, data years and layout parameters; a serial suffix is added on name conflicts",
+  // ── LP-95 数据准备详情重组（概览三块 + file_2/file_3 表格 Tab） ──
+  "输入高程": "Input elevation",
+  "地形文件": "Terrain file",
+  "网格编号": "Grid ID",
+  "区域参数": "Regional parameters",
+  "风机数 N": "Turbine count N",
+  "经向网格数 nx": "Grid columns nx",
+  "纬向网格数 ny": "Grid rows ny",
+  "区域参数（来自 file_1）": "Regional parameters (from file_1)",
+  "落雷次数（来自 file_4）": "Strike counts (from file_4)",
+  "风机清单（file_2）": "Turbine list (file_2)",
+  "网格编号（file_3）": "Grid IDs (file_3)",
+  "雷电流概率参数": "Lightning current probability parameters",
+  "极性标志": "Polarity flag",
+  "概率": "Probability",
+  "度": "Deg",
+  "对应风机编号": "Turbine no.",
 }
 
 export const MENU_LABELS_EN: Record<string, string> = {

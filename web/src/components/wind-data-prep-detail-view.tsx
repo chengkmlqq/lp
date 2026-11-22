@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   Alert,
   App,
@@ -18,12 +17,9 @@ import {
   type TabsProps,
 } from "antd";
 import {
-  ArrowLeftOutlined,
-  CloseOutlined,
   CloudDownloadOutlined,
   DatabaseOutlined,
   DownloadOutlined,
-  ReloadOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -31,7 +27,6 @@ import {
   WindDetailHero,
   WindDetailMeta,
   WindDetailMetricStrip,
-  WindDetailMoreActions,
   WindDetailPaginationFooter,
   WindDetailSubline,
   type WindDetailMetaItem,
@@ -49,33 +44,22 @@ import type {
 const { Text } = Typography;
 const API_BASE = "/api/v1/wind-data-prep";
 
+// file_1 / file_4 的内容已并入概览，仅剩三个产物 Tab（file_2 / file_3 / P0.abc）。
 const FILES = [
-  { name: "file1", label: "file_1.txt（区域参数）" },
-  { name: "file2", label: "file_2.txt（风机清单）" },
-  { name: "file3", label: "file_3.txt（网格编号）" },
-  { name: "file4", label: "file_4.txt（落雷次数 Nl）" },
+  { name: "file2", label: "风机清单（file_2）" },
+  { name: "file3", label: "网格编号（file_3）" },
   { name: "p0abc", label: "P0.abc（地形高程）" },
 ];
-
-// 等宽文件内容区：限制高度并允许滚动，窄屏下也不会撑破页面。
-const FILE_CONTENT_STYLE: CSSProperties = {
-  margin: 0,
-  padding: 12,
-  minHeight: 320,
-  maxHeight: "60vh",
-  overflow: "auto",
-  background: "#fafafa",
-  whiteSpace: "pre",
-  wordBreak: "normal",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  fontSize: 12,
-  lineHeight: "18px",
-  borderRadius: 4,
-};
 
 function formatNumber(value: number | null | undefined, digits = 4): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
   return Number(value).toFixed(digits);
+}
+
+/** 与 file_1.txt 的序列化口径一致：保留指定精度但去掉末尾多余的 0。 */
+function formatFile1Number(value: number | null | undefined, digits = 6): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return Number(value).toFixed(digits).replace(/\.?0+$/, "") || "0";
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -86,21 +70,107 @@ function formatDateTime(value: string | null | undefined): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/**
- * 文本文件 Tab 内容：按需（Tab 激活且任务完成后）用 preview=1 接口取纯文本，等宽展示。
- */
-function FileTextPreview({
-  batchId,
-  name,
-  enabled,
-}: {
-  batchId: string;
-  name: string;
-  enabled: boolean;
-}) {
-  const { t } = useI18n();
+// ── 产物文件文本解析（与后端 file_2 / file_3 / file_4 序列化口径一致） ──
+
+type File2Row = {
+  seq: number;
+  turbine_no: string;
+  lon_d: string;
+  lon_m: string;
+  lon_s: string;
+  lat_d: string;
+  lat_m: string;
+  lat_s: string;
+  input_elev: string;
+  height: string;
+  blade: string;
+  motion: string;
+  circuit: string;
+};
+
+/** file_2.txt：每行 11 列（经度 度/分/秒、纬度 度/分/秒、输入高程、风机高度、叶片长度、动静状态、回路号）。 */
+function parseFile2(text: string, turbineNos: string[]): File2Row[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const c = line.split(/\s+/);
+      return {
+        seq: index + 1,
+        turbine_no: turbineNos[index] || "-",
+        lon_d: c[0] ?? "-",
+        lon_m: c[1] ?? "-",
+        lon_s: c[2] ?? "-",
+        lat_d: c[3] ?? "-",
+        lat_m: c[4] ?? "-",
+        lat_s: c[5] ?? "-",
+        input_elev: c[6] ?? "-",
+        height: c[7] ?? "-",
+        blade: c[8] ?? "-",
+        motion: c[9] ?? "-",
+        circuit: c[10] ?? "-",
+      };
+    });
+}
+
+type File3Row = {
+  seq: number;
+  grid_id: string;
+  polarity: string;
+  p1: string;
+  p2: string;
+  p3: string;
+  p4: string;
+  p5: string;
+  p6: string;
+};
+
+/** file_3.txt：网格编号 + 极性标志 + 6 个雷电流概率参数，共 8 列。 */
+function parseFile3(text: string): File3Row[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const c = line.split(/\s+/);
+      return {
+        seq: index + 1,
+        grid_id: c[0] ?? "-",
+        polarity: c[1] ?? "-",
+        p1: c[2] ?? "-",
+        p2: c[3] ?? "-",
+        p3: c[4] ?? "-",
+        p4: c[5] ?? "-",
+        p5: c[6] ?? "-",
+        p6: c[7] ?? "-",
+      };
+    });
+}
+
+type File4Row = {
+  seq: number;
+  nl: string;
+  turbine_no: string;
+};
+
+/** file_4.txt：每行一个 Nl，按行序对应风机。 */
+function parseFile4(text: string, turbineNos: string[]): File4Row[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => ({
+      seq: index + 1,
+      nl: line,
+      turbine_no: turbineNos[index] || "-",
+    }));
+}
+
+/** 按需（Tab 激活且任务完成后）用 preview=1 接口取纯文本。 */
+function useFileText(batchId: string, name: string, enabled: boolean) {
   const { user, fetchWithAuth } = useAuth();
-  const query = useQuery({
+  return useQuery({
     queryKey: ["wind-data-prep-file-content", batchId, name],
     enabled: enabled && Boolean(user),
     queryFn: async () => {
@@ -109,13 +179,22 @@ function FileTextPreview({
       return response.text();
     },
   });
+}
 
+/** 产物表格 Tab 共用的加载 / 错误 / 未完成外壳。 */
+function FileQueryBoundary({
+  query,
+  enabled,
+  children,
+}: {
+  query: UseQueryResult<string>;
+  enabled: boolean;
+  children: (text: string) => ReactNode;
+}) {
+  const { t } = useI18n();
   if (!enabled) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t("任务完成后显示文件内容")}
-      />
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("任务完成后显示文件内容")} />
     );
   }
   if (query.isLoading) {
@@ -135,7 +214,138 @@ function FileTextPreview({
       />
     );
   }
-  return <pre style={FILE_CONTENT_STYLE}>{query.data || t("（空文件）")}</pre>;
+  return <>{children(query.data || "")}</>;
+}
+
+/** file_2 风机清单：11 列拆分成结构化表格（经纬度各自展开为 度/分/秒）。 */
+function File2Table({
+  batchId,
+  enabled,
+  turbineNos,
+}: {
+  batchId: string;
+  enabled: boolean;
+  turbineNos: string[];
+}) {
+  const { t } = useI18n();
+  const query = useFileText(batchId, "file2", enabled);
+  const columns = useMemo<TableColumnsType<File2Row>>(
+    () => [
+      { title: t("序号"), dataIndex: "seq", key: "seq", width: 64 },
+      { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 100 },
+      {
+        title: t("经度"),
+        key: "lon",
+        children: [
+          { title: t("度"), dataIndex: "lon_d", key: "lon_d", width: 64 },
+          { title: t("分"), dataIndex: "lon_m", key: "lon_m", width: 64 },
+          { title: t("秒"), dataIndex: "lon_s", key: "lon_s", width: 72 },
+        ],
+      },
+      {
+        title: t("纬度"),
+        key: "lat",
+        children: [
+          { title: t("度"), dataIndex: "lat_d", key: "lat_d", width: 64 },
+          { title: t("分"), dataIndex: "lat_m", key: "lat_m", width: 64 },
+          { title: t("秒"), dataIndex: "lat_s", key: "lat_s", width: 72 },
+        ],
+      },
+      { title: t("输入高程"), dataIndex: "input_elev", key: "input_elev", width: 90 },
+      { title: t("风机高度"), dataIndex: "height", key: "height", width: 90 },
+      { title: t("叶片长度"), dataIndex: "blade", key: "blade", width: 90 },
+      { title: t("动静状态"), dataIndex: "motion", key: "motion", width: 90 },
+      { title: t("回路号"), dataIndex: "circuit", key: "circuit", width: 80 },
+    ],
+    [t],
+  );
+  return (
+    <FileQueryBoundary query={query} enabled={enabled}>
+      {(text) => (
+        <Table<File2Row>
+          rowKey="seq"
+          size="small"
+          columns={columns}
+          dataSource={parseFile2(text, turbineNos)}
+          pagination={false}
+          scroll={{ x: 980, y: "55vh" }}
+        />
+      )}
+    </FileQueryBoundary>
+  );
+}
+
+/** file_3 网格编号：网格编号 + 极性标志 + 6 个雷电流概率参数（共 8 列）。 */
+function File3Table({ batchId, enabled }: { batchId: string; enabled: boolean }) {
+  const { t } = useI18n();
+  const query = useFileText(batchId, "file3", enabled);
+  const columns = useMemo<TableColumnsType<File3Row>>(
+    () => [
+      { title: t("网格编号"), dataIndex: "grid_id", key: "grid_id", width: 110 },
+      { title: t("极性标志"), dataIndex: "polarity", key: "polarity", width: 100 },
+      {
+        title: t("雷电流概率参数"),
+        key: "prob",
+        children: [1, 2, 3, 4, 5, 6].map((i) => ({
+          title: `${t("概率")} ${i}`,
+          dataIndex: `p${i}` as keyof File3Row,
+          key: `p${i}`,
+          width: 90,
+        })),
+      },
+    ],
+    [t],
+  );
+  return (
+    <FileQueryBoundary query={query} enabled={enabled}>
+      {(text) => (
+        <Table<File3Row>
+          rowKey="seq"
+          size="small"
+          columns={columns}
+          dataSource={parseFile3(text)}
+          pagination={false}
+          scroll={{ x: 850, y: "55vh" }}
+        />
+      )}
+    </FileQueryBoundary>
+  );
+}
+
+/** file_4 落雷次数：概览内的紧凑表格，行多时内部滚动。 */
+function File4Table({
+  batchId,
+  enabled,
+  turbineNos,
+}: {
+  batchId: string;
+  enabled: boolean;
+  turbineNos: string[];
+}) {
+  const { t } = useI18n();
+  const query = useFileText(batchId, "file4", enabled);
+  const columns = useMemo<TableColumnsType<File4Row>>(
+    () => [
+      { title: t("序号"), dataIndex: "seq", key: "seq", width: 64 },
+      { title: "Nl", dataIndex: "nl", key: "nl", width: 120 },
+      { title: t("对应风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 130 },
+    ],
+    [t],
+  );
+  return (
+    <FileQueryBoundary query={query} enabled={enabled}>
+      {(text) => (
+        <Table<File4Row>
+          rowKey="seq"
+          size="small"
+          columns={columns}
+          dataSource={parseFile4(text, turbineNos)}
+          pagination={false}
+          scroll={{ y: 200 }}
+        />
+      )}
+    </FileQueryBoundary>
+  );
 }
 
 /**
@@ -190,18 +400,14 @@ function P0abcHeaderView({
  * 风电场数据准备详情视图。
  * 独立路由页与列表页的动态详情标签共用此组件，避免复制详情页逻辑。
  */
-export function WindDataPrepDetailView({
-  batchId,
-  onClose,
-}: {
+export function WindDataPrepDetailView(props: {
   batchId: string;
   onClose?: () => void;
 }) {
+  const { batchId } = props;
   const { t } = useI18n();
-  const router = useRouter();
-  const { message, modal } = App.useApp();
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
-  const canManage = hasPermission("wind_data_prep.manage");
+  const { message } = App.useApp();
+  const { user, initializing } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
@@ -216,10 +422,11 @@ export function WindDataPrepDetailView({
     },
   });
   const detail = detailQuery.data;
+  const completed = detail?.status === "completed";
 
   const turbineQuery = useQuery({
     queryKey: ["wind-data-prep-detail", batchId, "turbines", turbinePage, turbinePageSize],
-    enabled: Boolean(user) && Boolean(batchId) && detail?.status === "completed",
+    enabled: Boolean(user) && Boolean(batchId) && completed,
     queryFn: async () => {
       const query = new URLSearchParams();
       query.set("limit", String(turbinePageSize));
@@ -227,6 +434,17 @@ export function WindDataPrepDetailView({
       return getJson<WindDataPrepTurbineListResponse>(`${API_BASE}/${batchId}/turbines?${query.toString()}`);
     },
   });
+
+  // 概览 file_4 与 file_2 表格需要按行序对应风机编号，取一页上限内的全部风机。
+  const allTurbinesQuery = useQuery({
+    queryKey: ["wind-data-prep-detail", batchId, "turbines", "all"],
+    enabled: Boolean(user) && Boolean(batchId) && completed,
+    queryFn: () => getJson<WindDataPrepTurbineListResponse>(`${API_BASE}/${batchId}/turbines?limit=500`),
+  });
+  const turbineNos = useMemo(
+    () => (allTurbinesQuery.data?.items ?? []).map((row) => row.turbine_no || "-"),
+    [allTurbinesQuery.data],
+  );
 
   const handleDownload = useCallback(
     async (name: string, label: string) => {
@@ -238,24 +456,6 @@ export function WindDataPrepDetailView({
     },
     [batchId, message],
   );
-
-  const handleRecompute = useCallback(() => {
-    modal.confirm({
-      title: t("用原文件按当前参数重跑？"),
-      content: t("旧的风机明细与五个产物文件将被清空并重新生成。"),
-      okText: t("重跑"),
-      cancelText: t("取消"),
-      onOk: async () => {
-        const response = await fetchWithAuth(`${API_BASE}/${batchId}/recompute`, { method: "POST" });
-        if (!response.ok) {
-          message.error(await readApiError(response));
-          return;
-        }
-        message.success(t("已提交重跑任务"));
-        void detailQuery.refetch();
-      },
-    });
-  }, [batchId, detailQuery, fetchWithAuth, message, modal, t]);
 
   const turbineColumns = useMemo<TableColumnsType<WindDataPrepTurbineRow>>(
     () => [
@@ -307,24 +507,27 @@ export function WindDataPrepDetailView({
   if (initializing) return null;
 
   const titleText = detail?.name || batchId;
-  // 基本信息全部收进「概览」Tab，顶部不再单列属性网格。
-  const metaItems: WindDetailMetaItem[] = [
+  // 概览第一块：非区域参数的基本信息（区域参数已移入第二块）。
+  const basicMetaItems: WindDetailMetaItem[] = [
     { label: t("风电场"), value: detail?.wind_farm_name || "-" },
     { label: t("风机文件"), value: detail?.turbine_file_name || "-" },
     { label: t("雷电文件"), value: detail?.lightning_file_name || "-" },
     { label: t("地形文件"), value: detail?.terrain_file_name || "-" },
-    { label: t("起始经度"), value: formatNumber(detail?.start_lon, 6) },
-    { label: t("起始纬度"), value: formatNumber(detail?.start_lat, 6) },
-    { label: t("网格 nx × ny"), value: detail ? `${detail.grid_nx} × ${detail.grid_ny}` : "-" },
     { label: t("网格步长"), value: detail?.grid_step_deg ?? "-" },
-    { label: t("风险基准 S"), value: formatNumber(detail?.risk_base_s, 4) },
     { label: t("统计年限"), value: t("固定 6 年") },
     { label: t("地形模式"), value: detail?.terrain_mode === "tif" ? t("上传 tif") : t("零高程") },
-    // 原「文件清单」Tab 删除后，文件齐全度改在概览展示（需求：5/5）。
     { label: t("五文件齐全度"), value: detail ? `${detail.files_ready ?? 0}/5` : "-" },
   ];
 
-  const completed = detail?.status === "completed";
+  // 概览第二块：把 file_1.txt 的 6 个数值「翻译」成带中文标签的 key-value。
+  const regionMetaItems: WindDetailMetaItem[] = [
+    { label: t("风机数 N"), value: detail?.turbine_count ?? 0 },
+    { label: t("风险基准 S"), value: formatFile1Number(detail?.risk_base_s, 10) },
+    { label: t("起始经度"), value: formatFile1Number(detail?.start_lon, 6) },
+    { label: t("起始纬度"), value: formatFile1Number(detail?.start_lat, 6) },
+    { label: t("经向网格数 nx"), value: detail?.grid_nx ?? "-" },
+    { label: t("纬向网格数 ny"), value: detail?.grid_ny ?? "-" },
+  ];
 
   // 关键指标条：8 项全部放进「概览」Tab，顶部不再常驻。
   const metricItems: WindDetailMetricItem[] = [
@@ -356,17 +559,17 @@ export function WindDataPrepDetailView({
         }
       : null;
 
-  // 五个产物各占一个 Tab，排在「概览」「风机明细」之后。
+  // 剩余三个产物各占一个 Tab，排在「概览」「风机明细」之后。
   const fileTabs = FILES.map((file) => ({
     key: `file-${file.name}`,
     label: t(file.label),
     children: (
       <div className="wind-detail-tab-content">
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <Button
             size="small"
             icon={<DownloadOutlined />}
-            disabled={detail?.status !== "completed"}
+            disabled={!completed}
             onClick={() => void handleDownload(file.name, file.label)}
           >
             {t("下载")}
@@ -374,12 +577,14 @@ export function WindDataPrepDetailView({
         </div>
         {file.name === "p0abc" ? (
           <P0abcHeaderView header={detail?.p0abc_header} />
-        ) : (
-          <FileTextPreview
+        ) : file.name === "file2" ? (
+          <File2Table
             batchId={batchId}
-            name={file.name}
-            enabled={completed && activeTab === `file-${file.name}`}
+            enabled={completed && activeTab === "file-file2"}
+            turbineNos={turbineNos}
           />
+        ) : (
+          <File3Table batchId={batchId} enabled={completed && activeTab === "file-file3"} />
         )}
       </div>
     ),
@@ -393,10 +598,18 @@ export function WindDataPrepDetailView({
         <div className="wind-detail-tab-content">
           {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
           {detail ? (
-            <Card size="small" title={t("基本信息")}>
-              <WindDetailMeta items={metaItems} />
-            </Card>
+            <>
+              <Card size="small" title={t("基本信息")}>
+                <WindDetailMeta items={basicMetaItems} />
+              </Card>
+              <Card size="small" title={t("区域参数（来自 file_1）")}>
+                <WindDetailMeta items={regionMetaItems} />
+              </Card>
+            </>
           ) : null}
+          <Card size="small" title={t("落雷次数（来自 file_4）")}>
+            <File4Table batchId={batchId} enabled={completed} turbineNos={turbineNos} />
+          </Card>
         </div>
       ),
     },
@@ -443,33 +656,15 @@ export function WindDataPrepDetailView({
             />
           }
           actions={
-            <>
-              <Button
-                size="small"
-                type="primary"
-                icon={<CloudDownloadOutlined />}
-                disabled={detail?.status !== "completed"}
-                onClick={() => void downloadFileWithAuth(`${API_BASE}/${batchId}/package`, `${detail?.name || "wind-data-prep"}-five-files.zip`)}
-              >
-                {t("下载五文件 zip")}
-              </Button>
-              <WindDetailMoreActions
-                label={t("更多")}
-                items={[
-                  ...(canManage
-                    ? [{ key: "recompute", label: t("重跑"), icon: <ReloadOutlined />, onClick: handleRecompute }]
-                    : []),
-                  onClose
-                    ? { key: "close", label: t("关闭"), icon: <CloseOutlined />, onClick: onClose }
-                    : {
-                        key: "back",
-                        label: t("返回列表"),
-                        icon: <ArrowLeftOutlined />,
-                        onClick: () => router.push("/admin/wind-data-prep"),
-                      },
-                ]}
-              />
-            </>
+            <Button
+              size="small"
+              type="primary"
+              icon={<CloudDownloadOutlined />}
+              disabled={!completed}
+              onClick={() => void downloadFileWithAuth(`${API_BASE}/${batchId}/package`, `${detail?.name || "wind-data-prep"}-five-files.zip`)}
+            >
+              {t("下载五文件 zip")}
+            </Button>
           }
         />
 
