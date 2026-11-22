@@ -394,7 +394,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "path": "/admin/lightning-retrofit",
         "icon": "ToolOutlined",
         "parent_code": None,
-        "type": "directory",
+        "type": "menu",
         "sort_order": 51,
         "status": "enabled",
         "visible": True,
