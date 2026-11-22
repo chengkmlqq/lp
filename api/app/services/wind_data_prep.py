@@ -504,9 +504,12 @@ def prepare_data(
 
 def _blocked(checks: list[dict[str, Any]], message: str) -> wg.WindGridError:
     errors = [c for c in checks if c["level"] == "error" and not c["passed"]]
-    return wg.WindGridError(
+    exc = wg.WindGridError(
         f"{message}｜校验报告：{errors or [{'code': 'blocked', 'message': message}]}"
     )
+    # 附带已生成的校验项，供任务写入运行日志（不改变阻断行为）
+    exc.checks = checks  # type: ignore[attr-defined]
+    return exc
 
 
 def validate_p0abc(content: bytes, *, nx: int, ny: int) -> dict[str, Any]:

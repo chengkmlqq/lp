@@ -178,6 +178,25 @@ def test_validation_blocks_half_baked_records() -> None:
         prep.prepare_data(_params(start_lon=120.0), **good)
 
 
+def test_blocked_checks_are_attached_and_loggable() -> None:
+    from app.services import wind_data_prep_service as service
+
+    good = dict(
+        turbine_content=TURBINE_FILE.read_bytes(),
+        turbine_filename="file_2.txt",
+        lightning_content=_lightning_bytes(),
+        lightning_filename="lightning.csv",
+    )
+    with pytest.raises(wg.WindGridError) as exc_info:
+        prep.prepare_data(_params(risk_base_s=-1.0), **good)
+    checks = getattr(exc_info.value, "checks", None)
+    assert checks and checks[-1]["level"] == "error" and not checks[-1]["passed"]
+
+    logs: list[str] = []
+    service._log_checks(checks, logs.append)
+    assert any(line.startswith("[校验] [错误] 风险基准 S — ") for line in logs)
+
+
 # ---------------------------------------------------------------------------
 # 3) 地形两条路径
 # ---------------------------------------------------------------------------
@@ -297,10 +316,18 @@ def test_service_run_batch_package_and_report(monkeypatch) -> None:
         # 任务尚未执行：不落风机明细节（校验失败则连批次记录都不建）
         assert service.list_turbines(db, batch.id, limit=10).total == 0
 
-        result = service.run_batch(db, batch.id, actor_user_id="tester")
+        logs: list[str] = []
+        result = service.run_batch(
+            db, batch.id, actor_user_id="tester", on_log=logs.append
+        )
         assert result["status"] == "completed" and result["files_ready"] == 5
         assert batch.turbine_count == 58
         assert len(service.list_turbines(db, batch.id, limit=100).items) == 58
+        # 校验项逐项写入任务日志（含 warning），而非只有摘要
+        checks = batch.report_json["checks"]
+        assert len([line for line in logs if line.startswith("[校验] ")]) == len(checks)
+        assert any(line.startswith("[校验] [通过] 风机文件解析 — ") for line in logs)
+        assert any(line.startswith("[校验] [警告] 雷电类型分布（仅提示，不筛选） — ") for line in logs)
 
         package, filename = service.get_package(db, batch.id)
         assert filename.endswith(".zip")

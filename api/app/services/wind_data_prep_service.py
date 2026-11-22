@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import zipfile
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -562,7 +562,35 @@ def delete_batch(db: Session, batch_id: str, *, actor_user_id: str) -> None:
 # ---------------------------------------------------------------------------
 # 任务执行体
 # ---------------------------------------------------------------------------
-def run_batch(db: Session, batch_id: str, *, actor_user_id: str | None = None) -> dict[str, Any]:
+def _log_checks(
+    checks: list[dict[str, Any]] | None, on_log: Callable[[str], None] | None
+) -> None:
+    """把校验报告逐项写入任务日志（仅记录，不影响校验/阻断逻辑）。"""
+    if not on_log or not checks:
+        return
+    for item in checks:
+        if not item.get("passed"):
+            tag = "错误"
+        elif item.get("level") in {"warning", "info"} or item.get("code") in {
+            "notice",
+            "lightning_type",
+        }:
+            # 数据准备的 passed 项 level 统一为 ok，提示类靠 code 识别
+            tag = "警告"
+        else:
+            tag = "通过"
+        on_log(
+            f"[校验] [{tag}] {item.get('label', '')} — {item.get('message', '')}"
+        )
+
+
+def run_batch(
+    db: Session,
+    batch_id: str,
+    *,
+    actor_user_id: str | None = None,
+    on_log: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """Celery 任务体：重新解析源文件 → 校验 → 生成五文件 → 落库。"""
     batch = db.execute(
         select(WindDataPrepBatch).where(WindDataPrepBatch.id == batch_id)
@@ -592,15 +620,21 @@ def run_batch(db: Session, batch_id: str, *, actor_user_id: str | None = None) -
         wind_farm_name=batch.wind_farm_name or "",
         remark=batch.remark or "",
     )
-    result = analyze_inputs(
-        turbine_content=turbine_content,
-        turbine_filename=batch.turbine_file_name or "turbines.txt",
-        lightning_content=lightning_content,
-        lightning_filename=batch.lightning_file_name or "lightning.csv",
-        tif_content=tif_content,
-        tif_filename=batch.terrain_file_name,
-        params=params,
-    )
+    try:
+        result = analyze_inputs(
+            turbine_content=turbine_content,
+            turbine_filename=batch.turbine_file_name or "turbines.txt",
+            lightning_content=lightning_content,
+            lightning_filename=batch.lightning_file_name or "lightning.csv",
+            tif_content=tif_content,
+            tif_filename=batch.terrain_file_name,
+            params=params,
+        )
+    except wg.WindGridError as exc:
+        # 阻断前把已生成的校验项（含导致阻断的错误项）逐项写入任务日志
+        _log_checks(getattr(exc, "checks", None), on_log)
+        raise
+    _log_checks(result.report.get("checks"), on_log)
 
     batch.stage = "serializing"
     batch.progress = 55

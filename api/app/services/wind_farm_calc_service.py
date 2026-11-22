@@ -763,6 +763,20 @@ def _kill_group(proc: Any, sig: int) -> None:
             pass
 
 
+def _log_preflight(report: Any, log: Callable[[str], None]) -> None:
+    """把 preflight 的检查项与错误逐项写入任务日志（仅记录，不影响判定）。"""
+    for item in report.checks or []:
+        if not item.get("passed"):
+            tag = "错误"
+        elif item.get("level") in {"warning", "info"}:
+            tag = "警告"
+        else:
+            tag = "通过"
+        log(f"[预检] [{tag}] {item.get('label', '')} — {item.get('message', '')}")
+    for error in report.errors or []:
+        log(f"[预检] [错误] {error}")
+
+
 def run_job(
     db: Session,
     job_id: str,
@@ -821,6 +835,7 @@ def run_job(
     checked = calc.preflight(files)
     job.preflight_json = checked.as_dict()
     db.commit()
+    _log_preflight(checked, log)
     if not checked.ok:
         raise calc.WindFarmCalcError("预检失败：" + "；".join(checked.errors))
     params = checked.params

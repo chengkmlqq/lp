@@ -61,8 +61,12 @@ def run_wind_data_prep_job(
     task_id = self.request.id
     db = SessionLocal()
     _capture(task_id, f"[{task_id}] 风电场数据准备任务启动（batch_id={batch_id}）\n")
+
+    def on_log(text: str) -> None:
+        _capture(task_id, f"[{task_id}] {text}\n")
+
     try:
-        result = run_batch(db, batch_id, actor_user_id=actor_user_id)
+        result = run_batch(db, batch_id, actor_user_id=actor_user_id, on_log=on_log)
         _publish_batch_event(
             "wind_data_prep.completed",
             {

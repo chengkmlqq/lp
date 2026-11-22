@@ -422,9 +422,17 @@ def test_service_run_job_end_to_end(tmp_path, monkeypatch) -> None:
     db.add(job)
     db.commit()
 
-    result = service.run_job(db, "job-e2e", task_id="fake-task", on_progress=lambda *_: None)
+    logs: list[str] = []
+    result = service.run_job(
+        db, "job-e2e", task_id="fake-task",
+        on_progress=lambda *_: None, on_log=logs.append,
+    )
     assert result["status"] == "completed"
     assert result["turbine_count"] == 2
+    # preflight 逐项写入任务日志
+    preflight = job.preflight_json["checks"]
+    assert len([line for line in logs if line.startswith("[预检] ")]) >= len(preflight)
+    assert any(line.startswith("[预检] [通过] ") for line in logs)
     db.refresh(job)
     assert job.status == "completed" and job.progress == 100
     assert (job.risk_I_count, job.risk_IV_count) == (1, 1)
