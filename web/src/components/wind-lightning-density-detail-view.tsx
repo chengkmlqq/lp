@@ -10,9 +10,7 @@ import {
   Empty,
   Image,
   Progress,
-  Segmented,
   Skeleton,
-  Space,
   Table,
   Tabs,
   type TableColumnsType,
@@ -67,6 +65,116 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
   return Number(value).toFixed(digits);
 }
 
+/** LP-83：统计任务预生成的 4 种组合；与后端 IMAGE_VARIANT_COMBOS 一一对应。 */
+const DENSITY_VARIANTS = [
+  { key: "bilinear-km2", unit: "km2", interpolation: "bilinear", label: "平滑 bilinear · 次/(km²·年)" },
+  { key: "bilinear-cell", unit: "cell", interpolation: "bilinear", label: "平滑 bilinear · 次/(格·年)" },
+  { key: "nearest-km2", unit: "km2", interpolation: "nearest", label: "网格 nearest · 次/(km²·年)" },
+  { key: "nearest-cell", unit: "cell", interpolation: "nearest", label: "网格 nearest · 次/(格·年)" },
+] as const;
+
+type DensityVariant = (typeof DENSITY_VARIANTS)[number];
+
+/** 单张密度图：直接请求已存图片，支持点击预览与单独下载。 */
+function DensityImageCard({
+  batchId,
+  batchName,
+  variant,
+}: {
+  batchId: string;
+  batchName: string;
+  variant: DensityVariant;
+}) {
+  const { t } = useI18n();
+  const { message } = App.useApp();
+  const { fetchWithAuth: authFetch } = useAuth();
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+
+  const imagePath = `${API_BASE}/${batchId}/image?unit=${variant.unit}&interpolation=${variant.interpolation}`;
+  const label = t(variant.label);
+
+  useEffect(() => {
+    let revoked: string | null = null;
+    let cancelled = false;
+    setImageLoading(true);
+    setImageError(null);
+    const load = async () => {
+      try {
+        const response = await authFetch(imagePath);
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        const blob = await response.blob();
+        if (cancelled) {
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        revoked = url;
+        setImageUrl(url);
+      } catch (error) {
+        if (!cancelled) {
+          setImageError((error as Error).message);
+        }
+      } finally {
+        if (!cancelled) {
+          setImageLoading(false);
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (revoked) {
+        URL.revokeObjectURL(revoked);
+      }
+    };
+  }, [authFetch, imagePath]);
+
+  const handleDownload = async () => {
+    try {
+      await downloadFileWithAuth(
+        imagePath,
+        `${batchName || "wind-lightning-density"}-${variant.key}.png`,
+      );
+    } catch (error) {
+      message.error((error as Error).message);
+    }
+  };
+
+  return (
+    <div className="wind-density-image-card">
+      <div className="wind-density-image-card-header">
+        <span>{label}</span>
+        <Button
+          size="small"
+          type="text"
+          icon={<DownloadOutlined />}
+          title={t("下载该图")}
+          aria-label={t("下载该图")}
+          onClick={() => void handleDownload()}
+        />
+      </div>
+      <div className="wind-density-image-card-body">
+        {imageLoading ? (
+          <Skeleton.Image active />
+        ) : imageError ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={imageError} />
+        ) : imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={label}
+            style={{ maxWidth: "100%", borderRadius: 6 }}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * 风电场地闪密度统计详情视图。
  * 独立路由页与列表页的动态详情标签共用此组件，避免复制详情页逻辑。
@@ -79,15 +187,10 @@ export function WindLightningDensityDetailView({
 }) {
   const { t } = useI18n();
   const { message } = App.useApp();
-  const { user, fetchWithAuth: authFetch, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
 
   const [activeTab, setActiveTab] = useState("overview");
-  const [interpolation, setInterpolation] = useState<"bilinear" | "nearest">("bilinear");
-  const [unit, setUnit] = useState<"km2" | "cell">("km2");
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
-  const [imageLoading, setImageLoading] = useState(false);
   const [cellPage, setCellPage] = useState(1);
   const [cellPageSize, setCellPageSize] = useState(20);
   const [turbinePage, setTurbinePage] = useState(1);
@@ -129,54 +232,11 @@ export function WindLightningDensityDetailView({
     },
   });
 
-  useEffect(() => {
-    if (!detail || detail.status !== "completed" || !canRead) {
-      setImageUrl(null);
-      return;
-    }
-    let revoked: string | null = null;
-    let cancelled = false;
-    setImageLoading(true);
-    setImageError(null);
-    const load = async () => {
-      try {
-        const response = await authFetch(
-          `${API_BASE}/${batchId}/image?unit=${unit}&interpolation=${interpolation}`,
-        );
-        if (!response.ok) {
-          throw new Error(await readApiError(response));
-        }
-        const blob = await response.blob();
-        if (cancelled) {
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        revoked = url;
-        setImageUrl(url);
-      } catch (error) {
-        if (!cancelled) {
-          setImageError((error as Error).message);
-        }
-      } finally {
-        if (!cancelled) {
-          setImageLoading(false);
-        }
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-      if (revoked) {
-        URL.revokeObjectURL(revoked);
-      }
-    };
-  }, [authFetch, batchId, canRead, detail, interpolation, unit]);
-
-  const handleDownloadImage = async () => {
+  const handleDownloadImages = async () => {
     try {
       await downloadFileWithAuth(
-        `${API_BASE}/${batchId}/image?unit=${unit}&interpolation=${interpolation}`,
-        `${detail?.batch_name || "wind-lightning-density"}.png`,
+        `${API_BASE}/${batchId}/images/zip`,
+        `${detail?.batch_name || "wind-lightning-density"}-density-images.zip`,
       );
     } catch (error) {
       message.error((error as Error).message);
@@ -185,10 +245,23 @@ export function WindLightningDensityDetailView({
 
   const cellColumns = useMemo<TableColumnsType<WindLightningDensityCellRow>>(
     () => [
-      { title: t("列号 i"), dataIndex: "cell_i", key: "cell_i", width: 90 },
-      { title: t("行号 j"), dataIndex: "cell_j", key: "cell_j", width: 90 },
+      {
+        title: t("列号 i"),
+        tooltip: t("经度方向网格编号，从 1 起；以统计范围左下角为起点，按网格步长切分"),
+        dataIndex: "cell_i",
+        key: "cell_i",
+        width: 90,
+      },
+      {
+        title: t("行号 j"),
+        tooltip: t("纬度方向网格编号，从 1 起；以统计范围左下角为起点，按网格步长切分"),
+        dataIndex: "cell_j",
+        key: "cell_j",
+        width: 90,
+      },
       {
         title: t("中心经度"),
+        tooltip: t("该网格中心的经度，十进制度"),
         dataIndex: "center_lon",
         key: "center_lon",
         width: 120,
@@ -196,14 +269,22 @@ export function WindLightningDensityDetailView({
       },
       {
         title: t("中心纬度"),
+        tooltip: t("该网格中心的纬度，十进制度"),
         dataIndex: "center_lat",
         key: "center_lat",
         width: 120,
         render: (value: number) => value.toFixed(4),
       },
-      { title: t("落雷次数"), dataIndex: "strike_count", key: "strike_count", width: 110 },
+      {
+        title: t("落雷次数"),
+        tooltip: t("统计年限内落入该网格的有效雷电定位记录条数"),
+        dataIndex: "strike_count",
+        key: "strike_count",
+        width: 110,
+      },
       {
         title: t("密度(次/(格·年))"),
+        tooltip: t("落雷次数除以统计年限，即该网格每年平均落雷次数"),
         dataIndex: "density_per_cell_year",
         key: "density_per_cell_year",
         width: 160,
@@ -211,21 +292,35 @@ export function WindLightningDensityDetailView({
       },
       {
         title: t("密度(次/(km²·年))"),
+        tooltip: t("每格年密度除以单格面积(km²)；默认 0.01° 网格约 1 km²，数值与每格年密度相同"),
         dataIndex: "density_per_km2_year",
         key: "density_per_km2_year",
         width: 170,
         render: (value: number) => formatNumber(value, 4),
       },
-      { title: t("风机数"), dataIndex: "turbine_count", key: "turbine_count", width: 100 },
+      {
+        title: t("风机数"),
+        tooltip: t("落在该网格内的风机数量"),
+        dataIndex: "turbine_count",
+        key: "turbine_count",
+        width: 100,
+      },
     ],
     [t],
   );
 
   const turbineColumns = useMemo<TableColumnsType<WindLightningDensityTurbineRow>>(
     () => [
-      { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 120 },
+      {
+        title: t("风机编号"),
+        tooltip: t("风机点位文件中的顺序编号"),
+        dataIndex: "turbine_no",
+        key: "turbine_no",
+        width: 120,
+      },
       {
         title: t("经度"),
+        tooltip: t("风机经度坐标，十进制度，保留 6 位小数"),
         dataIndex: "lon",
         key: "lon",
         width: 120,
@@ -233,15 +328,29 @@ export function WindLightningDensityDetailView({
       },
       {
         title: t("纬度"),
+        tooltip: t("风机纬度坐标，十进制度，保留 6 位小数"),
         dataIndex: "lat",
         key: "lat",
         width: 120,
         render: (value: number) => value.toFixed(6),
       },
-      { title: t("网格列号 i"), dataIndex: "cell_i", key: "cell_i", width: 110 },
-      { title: t("网格行号 j"), dataIndex: "cell_j", key: "cell_j", width: 110 },
+      {
+        title: t("网格列号 i"),
+        tooltip: t("该风机落入网格的列号（经度方向，从 1 起）"),
+        dataIndex: "cell_i",
+        key: "cell_i",
+        width: 110,
+      },
+      {
+        title: t("网格行号 j"),
+        tooltip: t("该风机落入网格的行号（纬度方向，从 1 起）"),
+        dataIndex: "cell_j",
+        key: "cell_j",
+        width: 110,
+      },
       {
         title: t("网格密度(次/(km²·年))"),
+        tooltip: t("该风机所在网格的地闪密度，单位次/(km²·年)"),
         dataIndex: "cell_density",
         key: "cell_density",
         width: 190,
@@ -353,43 +462,23 @@ export function WindLightningDensityDetailView({
       label: t("地闪密度图"),
       children: (
         <div className="wind-detail-tab-content">
-          <Card
-            size="small"
-            title={t("地闪密度图")}
-            extra={
-              <Space wrap>
-                <Segmented
-                  value={interpolation}
-                  onChange={(value) => setInterpolation(value as "bilinear" | "nearest")}
-                  options={[
-                    { label: t("平滑 bilinear"), value: "bilinear" },
-                    { label: t("网格 nearest"), value: "nearest" },
-                  ]}
-                />
-                <Segmented
-                  value={unit}
-                  onChange={(value) => setUnit(value as "km2" | "cell")}
-                  options={[
-                    { label: t("次/(km²·年)"), value: "km2" },
-                    { label: t("次/(格·年)"), value: "cell" },
-                  ]}
-                />
-              </Space>
-            }
-          >
-            {imageLoading ? (
-              <Skeleton.Image active style={{ width: 640, height: 420 }} />
-            ) : imageError ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={imageError} />
-            ) : imageUrl ? (
-              <Image
-                src={imageUrl}
-                alt={t("地闪密度图")}
-                preview={false}
-                style={{ maxWidth: "100%", borderRadius: 6, border: "1px solid #f0f0f0" }}
-              />
+          <Card size="small">
+            {completed ? (
+              <div className="wind-density-image-grid">
+                {DENSITY_VARIANTS.map((variant) => (
+                  <DensityImageCard
+                    key={variant.key}
+                    batchId={batchId}
+                    batchName={detail?.batch_name || ""}
+                    variant={variant}
+                  />
+                ))}
+              </div>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t("统计完成后可查看密度图")}
+              />
             )}
           </Card>
         </div>
@@ -461,9 +550,9 @@ export function WindLightningDensityDetailView({
               type="primary"
               icon={<DownloadOutlined />}
               disabled={!completed}
-              onClick={() => void handleDownloadImage()}
+              onClick={() => void handleDownloadImages()}
             >
-              {t("下载密度图")}
+              {t("下载密度图 ZIP")}
             </Button>
           </>
         }

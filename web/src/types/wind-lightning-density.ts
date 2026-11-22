@@ -53,6 +53,8 @@ export type WindLightningDensityBatchDetail = WindLightningDensityBatchSummary &
   stats_json: Record<string, unknown> | null;
   core_grid: WindLightningDensityCoreGrid | null;
   cell_rows_stored: number;
+  /** LP-83：4 张预生成图的 object key；旧批次可能为 null */
+  image_variants_json: Record<string, string> | null;
 };
 
 export type WindLightningDensityBatchListResponse = {

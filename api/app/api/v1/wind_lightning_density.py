@@ -192,6 +192,21 @@ def get_wind_lightning_density_image(
     return StreamingResponse(iter([content]), media_type=media_type or "image/png")
 
 
+@router.get("/{batch_id}/images/zip")
+def download_wind_lightning_density_images_zip(
+    batch_id: str,
+    _: CurrentUser = Depends(require_any_permission(*_READ_PERMISSIONS)),
+    db: Session = Depends(get_db),
+) -> Response:
+    """打包下载 4 种密度图（平滑/网格 × 每 km²/每格）。"""
+    content, filename = service.build_images_zip(db, batch_id)
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers=_attachment_headers(filename),
+    )
+
+
 @router.get("/{batch_id}/export")
 def export_wind_lightning_density_excel(
     batch_id: str,

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -487,5 +488,204 @@ def test_create_batch_ignores_client_name_and_dedupes() -> None:
         assert second.batch_name.startswith("江苏A3_Y6A_G0.01_M0.01_")
         assert second.batch_name.endswith("-2")
         assert first.batch_id != second.batch_id
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# 8) LP-83：4 张预生成图 + 直接取图 + ZIP 打包
+# ---------------------------------------------------------------------------
+def _sqlite_db():  # type: ignore[no-untyped-def]
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+def test_run_batch_generates_four_image_variants() -> None:
+    from unittest.mock import patch
+
+    from app.services import wind_lightning_density_service as service
+
+    analysis = _analyze(FUJIAN_CSV)
+    db = _sqlite_db()
+    try:
+        batch = _seed_batch(db, analysis)
+        batch.status = "pending"
+        batch.stage = "parsing"
+        batch.progress = 0
+        db.commit()
+
+        render_calls: list[tuple[str, str]] = []
+        put_calls: list[tuple[str, str | None]] = []
+
+        def fake_render(**kwargs):  # type: ignore[no-untyped-def]
+            render_calls.append((kwargs["interpolation"], kwargs["unit"]))
+            return f"PNG-{kwargs['interpolation']}-{kwargs['unit']}".encode()
+
+        with (
+            patch.object(
+                service.minio_storage,
+                "get_object",
+                side_effect=lambda key: (
+                    TURBINE_FILE.read_bytes() if "turbines" in key else FUJIAN_CSV.read_bytes()
+                ),
+            ),
+            patch.object(algo, "render_batch_png", side_effect=fake_render),
+            patch.object(
+                service.minio_storage,
+                "put_object",
+                side_effect=lambda key, data, content_type=None: put_calls.append(
+                    (key, content_type)
+                ),
+            ),
+        ):
+            result = service.run_batch(db, batch.id)
+
+        assert result["status"] == "completed"
+        assert render_calls == [
+            ("bilinear", "km2"),
+            ("bilinear", "cell"),
+            ("nearest", "km2"),
+            ("nearest", "cell"),
+        ]
+        assert set(batch.image_variants_json or {}) == set(
+            service.IMAGE_VARIANT_KEYS
+        )
+        assert all("-" in key for key in (batch.image_variants_json or {}).values())
+        assert batch.image_object_key == batch.image_variants_json["bilinear-km2"]
+        assert len(put_calls) == 4
+        assert all(content_type == "image/png" for _, content_type in put_calls)
+    finally:
+        db.close()
+
+
+def test_get_batch_image_reads_stored_variant_without_render() -> None:
+    from unittest.mock import patch
+
+    from app.services import wind_lightning_density_service as service
+
+    analysis = _analyze(FUJIAN_CSV)
+    db = _sqlite_db()
+    try:
+        batch = _seed_batch(db, analysis)
+        variants = {key: f"stored/{key}" for key in service.IMAGE_VARIANT_KEYS}
+        batch.image_variants_json = variants
+        db.commit()
+
+        with (
+            patch.object(
+                service.minio_storage,
+                "get_object",
+                side_effect=lambda key: f"bytes:{key}".encode(),
+            ),
+            patch.object(algo, "render_batch_png", side_effect=AssertionError("不应重绘")),
+        ):
+            for key in service.IMAGE_VARIANT_KEYS:
+                interpolation, unit = key.split("-")
+                content, media_type = service.get_batch_image(
+                    db, batch.id, unit=unit, interpolation=interpolation
+                )
+                assert content == f"bytes:stored/{key}".encode()
+                assert media_type == "image/png"
+    finally:
+        db.close()
+
+
+def test_get_batch_image_old_batch_lazy_generates_once() -> None:
+    from unittest.mock import patch
+
+    from app.services import wind_lightning_density_service as service
+
+    analysis = _analyze(FUJIAN_CSV)
+    db = _sqlite_db()
+    try:
+        batch = _seed_batch(db, analysis)
+        batch.image_object_key = "stored/default"
+        batch.image_variants_json = None
+        db.commit()
+
+        render_calls: list[str] = []
+        put_calls: list[str] = []
+
+        def fake_get(key: str) -> bytes:
+            if key == "stored/default":
+                return b"default-bytes"
+            return f"lazy:{key}".encode()
+
+        def fake_render(**kwargs):  # type: ignore[no-untyped-def]
+            render_calls.append(kwargs["interpolation"])
+            return b"lazy"
+
+        with (
+            patch.object(service.minio_storage, "get_object", side_effect=fake_get),
+            patch.object(algo, "render_batch_png", side_effect=fake_render),
+            patch.object(
+                service.minio_storage,
+                "put_object",
+                side_effect=lambda key, data, content_type=None: put_calls.append(key),
+            ),
+        ):
+            # 旧批次默认图：直接用 image_object_key，不重绘。
+            content, _ = service.get_batch_image(db, batch.id)
+            assert content == b"default-bytes"
+            assert render_calls == []
+
+            # 旧批次缺 variant：一次性生成并保存，第二次直接命中。
+            content, _ = service.get_batch_image(
+                db, batch.id, unit="cell", interpolation="nearest"
+            )
+            assert content == b"lazy"
+            assert render_calls == ["nearest"]
+            assert len(put_calls) == 1
+            content, _ = service.get_batch_image(
+                db, batch.id, unit="cell", interpolation="nearest"
+            )
+            assert content.startswith(b"lazy:")
+            assert render_calls == ["nearest"]
+
+        assert "nearest-cell" in (batch.image_variants_json or {})
+    finally:
+        db.close()
+
+
+def test_build_images_zip_contains_four_pngs() -> None:
+    from unittest.mock import patch
+
+    from app.services import wind_lightning_density_service as service
+
+    analysis = _analyze(FUJIAN_CSV)
+    db = _sqlite_db()
+    try:
+        batch = _seed_batch(db, analysis)
+        batch.image_variants_json = {
+            key: f"stored/{key}" for key in service.IMAGE_VARIANT_KEYS
+        }
+        db.commit()
+
+        with (
+            patch.object(
+                service.minio_storage,
+                "get_object",
+                side_effect=lambda key: f"PNG:{key}".encode(),
+            ),
+            patch.object(algo, "render_batch_png", side_effect=AssertionError("不应重绘")),
+        ):
+            archive_bytes, filename = service.build_images_zip(db, batch.id)
+
+        assert filename.endswith("-density-images.zip")
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            assert archive.namelist() == [
+                service.IMAGE_VARIANT_FILENAMES[key] for key in service.IMAGE_VARIANT_KEYS
+            ]
+            for key in service.IMAGE_VARIANT_KEYS:
+                assert (
+                    archive.read(service.IMAGE_VARIANT_FILENAMES[key])
+                    == f"PNG:stored/{key}".encode()
+                )
     finally:
         db.close()

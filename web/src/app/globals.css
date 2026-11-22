@@ -3722,6 +3722,58 @@ body {
   overflow-y: auto;
 }
 
+/* LP-83：四张预生成图按 2×2 展示，窄屏退化为单列 */
+.wind-density-image-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.wind-density-image-card {
+  min-width: 0;
+  border: 1px solid var(--fquiz-theme-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wind-density-image-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--fquiz-theme-border);
+}
+
+.wind-density-image-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 12px;
+}
+
+.wind-density-image-card-body .ant-image,
+.wind-density-image-card-body .ant-image-img {
+  max-width: 100%;
+}
+
+.wind-density-image-card-body .ant-image-img {
+  border-radius: 6px;
+}
+
+.wind-density-image-card-body .ant-skeleton-image {
+  width: 100%;
+  height: 220px;
+}
+
+@media (max-width: 900px) {
+  .wind-density-image-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ── LP-59 风电详情页统一版式 ── */
 
 /* 关键指标条：6/3/2 列自适应，列数整除 6 保证不出现单个孤项；

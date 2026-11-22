@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Sequence
@@ -54,6 +55,23 @@ TASK_NAME = "app.tasks.wind_lightning_density_tasks.run_wind_lightning_density_j
 
 # 与 lightning_distribution 的 /lightning-currents/distributions 完全独立的 API 前缀
 API_PREFIX = "/api/v1/wind-lightning-density"
+
+# LP-83：统计完成时预生成 4 种图（插值 × 单位），键同时用于 image_variants_json
+# 与前端 /image 的 unit/interpolation 组合（"bilinear-km2" 等）。
+IMAGE_VARIANT_COMBOS: tuple[tuple[str, str, str], ...] = (
+    ("bilinear-km2", "bilinear", "km2"),
+    ("bilinear-cell", "bilinear", "cell"),
+    ("nearest-km2", "nearest", "km2"),
+    ("nearest-cell", "nearest", "cell"),
+)
+IMAGE_VARIANT_KEYS = tuple(key for key, _, _ in IMAGE_VARIANT_COMBOS)
+# ZIP 内文件名：固定顺序 + ASCII，避免不同系统的编码差异。
+IMAGE_VARIANT_FILENAMES = {
+    "bilinear-km2": "1_bilinear_km2.png",
+    "bilinear-cell": "2_bilinear_cell.png",
+    "nearest-km2": "3_nearest_km2.png",
+    "nearest-cell": "4_nearest_cell.png",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -309,8 +327,10 @@ def _lightning_object_key(batch_id: str, filename: str) -> str:
     return f"wind-lightning-density/{batch_id}/lightning.{suffix}"
 
 
-def _image_object_key(batch_id: str) -> str:
-    return f"wind-lightning-density/{batch_id}/{uuid4().hex}.png"
+def _image_object_key(batch_id: str, variant: str | None = None) -> str:
+    """图片对象键；variant 为 bilinear-km2 等组合名，默认图不带后缀。"""
+    suffix = f"-{variant}" if variant else ""
+    return f"wind-lightning-density/{batch_id}/{uuid4().hex}{suffix}.png"
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +416,7 @@ def get_batch_detail(db: Session, batch_id: str) -> WindLightningDensityBatchDet
         stats_json=batch.stats_json,
         core_grid=_core_grid_from_stats(batch),
         cell_rows_stored=int(cell_rows),
+        image_variants_json=batch.image_variants_json,
     )
 
 
@@ -753,6 +774,7 @@ def recompute_batch(
     batch.progress = 0
     batch.error_message = None
     batch.image_object_key = None
+    batch.image_variants_json = None
     batch.update_user = actor_user_id
     batch.update_date = utcnow()
     db.commit()
@@ -893,18 +915,23 @@ def run_batch(db: Session, batch_id: str, *, actor_user_id: str | None = None) -
     batch.progress = 80
     db.commit()
 
-    preview_png = algo.render_batch_png(
-        counts=analysis.counts,
-        lon_bins=analysis.lon_bins,
-        lat_bins=analysis.lat_bins,
-        data_years=analysis.years,
-        step_deg=batch.grid_step_deg,
-        title=batch.batch_name or batch.wind_farm_name or "Wind Farm",
-        unit="km2",
-        interpolation="bilinear",
-    )
-    image_key = _image_object_key(batch.id)
-    minio_storage.put_object(image_key, preview_png, content_type="image/png")
+    # LP-83：一次性生成 4 种组合的 PNG 并全部落对象存储；页面切换/刷新直接取图，
+    # 不再由 /image 端点实时 render（旧批次缺 variant 时走 lazy 兼容路径）。
+    variants: dict[str, str] = {}
+    for variant_key, interpolation, unit in IMAGE_VARIANT_COMBOS:
+        png = algo.render_batch_png(
+            counts=analysis.counts,
+            lon_bins=analysis.lon_bins,
+            lat_bins=analysis.lat_bins,
+            data_years=analysis.years,
+            step_deg=batch.grid_step_deg,
+            title=batch.batch_name or batch.wind_farm_name or "Wind Farm",
+            unit=unit,
+            interpolation=interpolation,
+        )
+        image_key = _image_object_key(batch.id, variant_key)
+        minio_storage.put_object(image_key, png, content_type="image/png")
+        variants[variant_key] = image_key
 
     stats_json: dict[str, Any] = dict(analysis.stats)
     stats_json.update(
@@ -918,7 +945,9 @@ def run_batch(db: Session, batch_id: str, *, actor_user_id: str | None = None) -
             "margin_deg": batch.margin_deg,
         }
     )
-    batch.image_object_key = image_key
+    batch.image_variants_json = variants
+    # 兼容旧批次 / 旧前端：默认图仍指向 bilinear-km2。
+    batch.image_object_key = variants["bilinear-km2"]
     batch.stats_json = stats_json
     batch.status = "completed"
     batch.stage = "done"
@@ -961,7 +990,7 @@ def get_batch_image(
     unit: str = "km2",
     interpolation: str = "bilinear",
 ) -> tuple[bytes, str]:
-    """密度图字节：默认（bilinear + per km²）直接复用任务产物，其余按参数重绘。"""
+    """密度图字节：优先直接读取统计时预存的图片；旧批次缺 variant 时一次性 lazy 生成。"""
     batch = _get_batch_or_404(db, batch_id)
     if batch.status != "completed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="批次尚未完成，暂无密度图")
@@ -972,10 +1001,24 @@ def get_batch_image(
             status_code=status.HTTP_400_BAD_REQUEST, detail="插值方式只支持 bilinear 或 nearest"
         )
 
-    if unit == "km2" and interpolation == "bilinear" and batch.image_object_key:
-        return minio_storage.get_object(batch.image_object_key), "image/png"
+    variant_key = f"{interpolation}-{unit}"
+    variants = dict(batch.image_variants_json or {})
+    stored_key = variants.get(variant_key)
+    if not stored_key and variant_key == "bilinear-km2" and batch.image_object_key:
+        # 旧批次只有默认图，且没有 variants_json：把它当作 bilinear-km2 存量图。
+        stored_key = batch.image_object_key
+    if stored_key:
+        return minio_storage.get_object(stored_key), "image/png"
 
-    if not batch.grid_x_count or not batch.grid_y_count:
+    # 旧批次缺 variant：一次性生成并存对象存储，后续请求直接命中，绝不重复 render。
+    if (
+        not batch.grid_x_count
+        or not batch.grid_y_count
+        or batch.bbox_min_lon is None
+        or batch.bbox_max_lon is None
+        or batch.bbox_min_lat is None
+        or batch.bbox_max_lat is None
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="密度图不存在")
     cells = (
         db.execute(
@@ -1006,7 +1049,26 @@ def get_batch_image(
         unit=unit,
         interpolation=interpolation,
     )
+    lazy_key = _image_object_key(batch.id, variant_key)
+    minio_storage.put_object(lazy_key, png, content_type="image/png")
+    variants[variant_key] = lazy_key
+    batch.image_variants_json = variants
+    db.commit()
     return png, "image/png"
+
+
+def build_images_zip(db: Session, batch_id: str) -> tuple[bytes, str]:
+    """把 4 种密度图打包为 ZIP；每张图走 get_batch_image 的取图/兼容路径。"""
+    batch = _get_batch_or_404(db, batch_id)
+    if batch.status != "completed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="批次尚未完成，暂无密度图")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for variant_key, interpolation, unit in IMAGE_VARIANT_COMBOS:
+            content, _ = get_batch_image(db, batch_id, unit=unit, interpolation=interpolation)
+            archive.writestr(IMAGE_VARIANT_FILENAMES[variant_key], content)
+    safe_name = re.sub(r"[\\/:*?\"<>|]", "_", batch.batch_name or "wind-lightning-density")
+    return buffer.getvalue(), f"{safe_name}-density-images.zip"
 
 
 def _load_export_rows(

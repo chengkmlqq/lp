@@ -99,6 +99,8 @@ class WindLightningDensityBatchDetail(WindLightningDensityBatchSummary):
     stats_json: dict[str, Any] | None = None
     core_grid: WindLightningDensityCoreGrid | None = None
     cell_rows_stored: int = 0
+    # LP-83：4 种预生成图（bilinear-km2 等）的 object key；旧批次可能为 None。
+    image_variants_json: dict[str, str] | None = None
 
 
 class WindLightningDensityCellRow(BaseModel):

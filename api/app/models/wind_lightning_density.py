@@ -81,6 +81,10 @@ class WindLightningDensityBatch(Base):
 
     # ---- 出图 ----
     image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # LP-83：4 种预生成图（bilinear/nearest × km2/cell）的 object key。
+    # 键为 "bilinear-km2" / "bilinear-cell" / "nearest-km2" / "nearest-cell"；
+    # image_object_key 保留为默认图（bilinear-km2）以兼容旧批次。
+    image_variants_json: Mapped[dict[str, Any] | None] = mapped_column(JsonColumn, nullable=True)
 
     # ---- 审计 ----
     create_user: Mapped[str | None] = mapped_column(String(64), nullable=True)
