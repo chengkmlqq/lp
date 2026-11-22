@@ -99,13 +99,18 @@ class FileOutParseResult:
     raw_text: str = ""
 
 
-def _check(code: str, label: str, passed: bool, message: str) -> dict[str, Any]:
-    return {
+def _check(
+    code: str, label: str, passed: bool, message: str, level: str | None = None
+) -> dict[str, Any]:
+    check: dict[str, Any] = {
         "code": code,
         "label": label,
         "passed": bool(passed),
         "message": message,
     }
+    if level is not None:
+        check["level"] = level
+    return check
 
 
 def _nonblank_lines(content: bytes) -> list[str]:
@@ -238,28 +243,38 @@ def preflight(files: dict[str, bytes]) -> PreflightReport:
     if report.errors:
         return report
 
-    # N 与 file_2 / file_3 / file_4 行数一致
+    # N 与 file_2 / file_3 / file_4 行数：核心程序只取前 N 行，故行数 ≥ N 即可
     lines_by_file = {name: _nonblank_lines(files[name]) for name in ("file_2.txt", "file_3.txt", "file_4.txt")}
     for name, lines in lines_by_file.items():
-        ok = len(lines) == params.n
+        ok = len(lines) >= params.n
         report.checks.append(
             _check(
                 f"count.{name}",
-                f"{name} 行数等于 N",
+                f"{name} 行数 ≥ N（核心程序仅取前 N 行）",
                 ok,
                 f"行数={len(lines)}, N={params.n}",
             )
         )
         if not ok:
-            report.errors.append(f"{name} 行数 {len(lines)} 与 N={params.n} 不一致")
+            report.errors.append(f"{name} 行数 {len(lines)} 少于 N={params.n}")
+        elif len(lines) > params.n:
+            report.checks.append(
+                _check(
+                    f"count.extra.{name}",
+                    f"{name} 多余行（仅提示）",
+                    True,
+                    f"文件行数 {len(lines)} > N={params.n}，仅使用前 {params.n} 行",
+                    level="warning",
+                )
+            )
     if report.errors:
         return report
 
-    # file_3 网格编号 [1, nx*ny]
+    # file_3 网格编号 [1, nx*ny]：核心程序只处理前 N 台，只校验前 N 行
     max_grid_id = params.nx * params.ny
     grid_ids: list[int] = []
     try:
-        grid_ids = [_parse_grid_id(line) for line in lines_by_file["file_3.txt"]]
+        grid_ids = [_parse_grid_id(line) for line in lines_by_file["file_3.txt"][:params.n]]
         grid_ok = all(1 <= grid_id <= max_grid_id for grid_id in grid_ids)
         message = "全部在范围内" if grid_ok else f"网格编号越界（合法 1–{max_grid_id}）"
     except WindFarmCalcError as exc:
@@ -272,9 +287,9 @@ def preflight(files: dict[str, bytes]) -> PreflightReport:
     if not grid_ok:
         report.errors.append(message)
 
-    # file_2 回路号 [1, 100]（核心程序直接当数组下标）
+    # file_2 回路号 [1, 100]（核心程序直接当数组下标）：只校验前 N 行
     try:
-        circuits = [_parse_circuit_no(line) for line in lines_by_file["file_2.txt"]]
+        circuits = [_parse_circuit_no(line) for line in lines_by_file["file_2.txt"][:params.n]]
         circuit_ok = all(1 <= circuit <= MAX_CIRCUIT_NO for circuit in circuits)
         message = "全部在范围内" if circuit_ok else f"存在越界回路号（合法 1–{MAX_CIRCUIT_NO}）"
     except WindFarmCalcError as exc:

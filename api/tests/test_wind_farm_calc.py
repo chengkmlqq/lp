@@ -82,12 +82,41 @@ def test_preflight_rejects_empty_file() -> None:
     assert report.ok is False
 
 
-def test_preflight_rejects_n_mismatch() -> None:
+def test_preflight_rejects_fewer_rows_than_n() -> None:
     files = _files(n=2)
-    files["file_3.txt"] = files["file_3.txt"] + b"9\t0\t0.2\t0.2\t0.2\t0.2\t0.1\t0.1\n"
+    files["file_3.txt"] = b"1\t0\t0.2\t0.2\t0.2\t0.2\t0.1\t0.1\n"  # 1 行 < N=2
     report = calc.preflight(files)
     assert report.ok is False
-    assert any("file_3.txt 行数" in err for err in report.errors)
+    assert any("file_3.txt 行数 1 少于 N=2" in err for err in report.errors)
+
+
+def test_preflight_accepts_more_rows_than_n() -> None:
+    """核心程序只取前 N 行：file_2/3/4 各 58 行 > N=50 应通过，多余行仅提示不阻断。"""
+    n = 50
+    files = _files(n=n, nx=10, ny=10)
+    # 末尾 8 行放入越界的网格编号 / 回路号，验证校验只看前 N 行
+    bad_3 = b"99999\t0\t0.2\t0.2\t0.2\t0.2\t0.1\t0.1\n"
+    bad_2 = ("\t".join(["119", "20", "24", "25", "13", "48", "10", "80", "40", "1", "999"]) + "\n").encode()
+    files["file_3.txt"] += bad_3 * 8
+    files["file_2.txt"] += bad_2 * 8
+    files["file_4.txt"] += b"5.5\n" * 8
+
+    report = calc.preflight(files)
+    assert report.ok is True, report.errors
+    assert not report.errors
+    assert report.grid_rows == n  # 进度/报告按实际参与计算的行数 N 计
+    grid_check = next(c for c in report.checks if c["code"] == "file3.grid_id")
+    circuit_check = next(c for c in report.checks if c["code"] == "file2.circuit")
+    assert grid_check["passed"] is True
+    assert circuit_check["passed"] is True
+
+    warnings = [c for c in report.checks if c.get("level") == "warning"]
+    assert {c["code"] for c in warnings} == {
+        "count.extra.file_2.txt",
+        "count.extra.file_3.txt",
+        "count.extra.file_4.txt",
+    }
+    assert all(f"仅使用前 {n} 行" in c["message"] for c in warnings)
 
 
 def test_preflight_rejects_grid_id_out_of_range() -> None:

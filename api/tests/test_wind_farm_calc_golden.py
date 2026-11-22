@@ -19,9 +19,10 @@ fixture 是桌面原始样例的**原样副本**（五个输入文件 + 原始 `
    - ``WIND_FARM_CALC_GOLDEN_TIMEOUT``：超时秒数（默认 3600，本样例实测约 25 分钟）。
 
 原始样例有一处已知差异：``file_1`` 的 N=50，而 ``file_2``/``file_3``/``file_4``
-各有 58 行；核心 exe 只处理前 50 台，LP 的 ``preflight()`` 则要求行数严格等于 N，
-因此这批原始文件走 LP 预检会被拒。golden 用例因此**不经预检**直接调用 exe，
-保持「输入原样、不改 N、不截断」的对拍约定。
+各有 58 行；核心 exe 只处理前 50 台。LP 的 ``preflight()`` 已放宽为「行数 ≥ N、
+只校验前 N 行」（LP-82），``test_golden_fixture_passes_preflight`` 验证这批原始
+文件现在可通过预检。golden 对拍用例本身仍**不经预检**直接调用 exe，保持
+「输入原样、不改 N、不截断」的对拍约定。
 """
 
 from __future__ import annotations
@@ -137,6 +138,17 @@ def test_golden_output_reparses_to_same_risk_and_suggestion() -> None:
     assert by_seq[24].risk_level == 1
     assert by_seq[22].risk_level == 4
     assert {row.risk_level for row in parsed.rows} == {1, 2, 3, 4}
+
+
+def test_golden_fixture_passes_preflight() -> None:
+    """原始样例 58 行 > N=50：预检通过，grid_rows 按 N 计，多余行只提示不阻断。"""
+    assert MANIFEST["rows_in_file_2_3_4"] > N
+    report = calc.preflight(_fixture_inputs())
+    assert report.ok is True, report.errors
+    assert report.params is not None and report.params.n == N
+    assert report.grid_rows == N
+    assert not report.errors
+    assert sum(1 for c in report.checks if c.get("level") == "warning") == 3
 
 
 def test_golden_fixture_matches_manifest_md5() -> None:
