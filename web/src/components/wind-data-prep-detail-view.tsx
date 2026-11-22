@@ -1,19 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
   App,
   Button,
   Card,
+  Descriptions,
   Empty,
-  Modal,
-  Space,
+  Spin,
   Table,
   Tabs,
-  Tag,
   Typography,
   type TableColumnsType,
   type TabsProps,
@@ -24,8 +23,6 @@ import {
   CloudDownloadOutlined,
   DatabaseOutlined,
   DownloadOutlined,
-  EyeOutlined,
-  FileTextOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 
@@ -49,7 +46,7 @@ import type {
   WindDataPrepTurbineRow,
 } from "@/types/wind-data-prep";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const API_BASE = "/api/v1/wind-data-prep";
 
 const FILES = [
@@ -59,6 +56,22 @@ const FILES = [
   { name: "file4", label: "file_4.txt（落雷次数 Nl）" },
   { name: "p0abc", label: "P0.abc（地形高程）" },
 ];
+
+// 等宽文件内容区：限制高度并允许滚动，窄屏下也不会撑破页面。
+const FILE_CONTENT_STYLE: CSSProperties = {
+  margin: 0,
+  padding: 12,
+  minHeight: 320,
+  maxHeight: "60vh",
+  overflow: "auto",
+  background: "#fafafa",
+  whiteSpace: "pre",
+  wordBreak: "normal",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  fontSize: 12,
+  lineHeight: "18px",
+  borderRadius: 4,
+};
 
 function formatNumber(value: number | null | undefined, digits = 4): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
@@ -71,6 +84,106 @@ function formatDateTime(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return "-";
   const pad = (input: number) => String(input).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * 文本文件 Tab 内容：按需（Tab 激活且任务完成后）用 preview=1 接口取纯文本，等宽展示。
+ */
+function FileTextPreview({
+  batchId,
+  name,
+  enabled,
+}: {
+  batchId: string;
+  name: string;
+  enabled: boolean;
+}) {
+  const { t } = useI18n();
+  const { user, fetchWithAuth } = useAuth();
+  const query = useQuery({
+    queryKey: ["wind-data-prep-file-content", batchId, name],
+    enabled: enabled && Boolean(user),
+    queryFn: async () => {
+      const response = await fetchWithAuth(`${API_BASE}/${batchId}/files/${name}?preview=1`);
+      if (!response.ok) throw new Error(await readApiError(response));
+      return response.text();
+    },
+  });
+
+  if (!enabled) {
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={t("任务完成后显示文件内容")}
+      />
+    );
+  }
+  if (query.isLoading) {
+    return (
+      <div style={{ textAlign: "center", padding: "40px 0" }}>
+        <Spin />
+      </div>
+    );
+  }
+  if (query.isError) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message={t("读取文件失败")}
+        description={(query.error as Error)?.message}
+      />
+    );
+  }
+  return <pre style={FILE_CONTENT_STYLE}>{query.data || t("（空文件）")}</pre>;
+}
+
+/**
+ * P0.abc 是二进制：不展示 raw 内容，只展示已有的头部 6 个 uint16 数值与字节数/校验信息。
+ */
+function P0abcHeaderView({
+  header,
+}: {
+  header: WindDataPrepBatchDetail["p0abc_header"] | undefined;
+}) {
+  const { t } = useI18n();
+  if (!header || !Object.keys(header).length) {
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={t("任务完成后显示 P0.abc 头部信息")}
+      />
+    );
+  }
+
+  const items = [
+    { key: "left", label: t("左边界 left"), value: String(header.left ?? "-") },
+    { key: "right", label: t("右边界 right"), value: String(header.right ?? "-") },
+    { key: "bottom", label: t("下边界 bottom"), value: String(header.bottom ?? "-") },
+    { key: "top", label: t("上边界 top"), value: String(header.top ?? "-") },
+    { key: "width", label: t("格数 width"), value: String(header.width ?? "-") },
+    { key: "height", label: t("格数 height"), value: String(header.height ?? "-") },
+    { key: "byte_size", label: t("字节数"), value: String(header.byte_size ?? "-") },
+    { key: "expected_byte_size", label: t("预期字节数"), value: String(header.expected_byte_size ?? "-") },
+    { key: "row_order", label: t("行序"), value: header.row_order || "-" },
+  ].map(({ key, label, value }) => ({ key, label, children: value }));
+
+  const matched =
+    typeof header.byte_size === "number" &&
+    typeof header.expected_byte_size === "number" &&
+    header.byte_size === header.expected_byte_size;
+
+  return (
+    <Card size="small" title={t("P0.abc 头部（6 个 uint16 大端数值）")}>
+      <Descriptions size="small" bordered column={{ xs: 1, sm: 2, md: 3 }} items={items} />
+      <Alert
+        style={{ marginTop: 12 }}
+        type={matched ? "success" : "warning"}
+        showIcon
+        message={matched ? t("字节数校验通过") : t("字节数与预期不一致")}
+      />
+    </Card>
+  );
 }
 
 /**
@@ -92,9 +205,6 @@ export function WindDataPrepDetailView({
   const [activeTab, setActiveTab] = useState("overview");
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewTitle, setPreviewTitle] = useState("");
-  const [previewText, setPreviewText] = useState("");
 
   const detailQuery = useQuery({
     queryKey: ["wind-data-prep-detail", batchId],
@@ -117,21 +227,6 @@ export function WindDataPrepDetailView({
       return getJson<WindDataPrepTurbineListResponse>(`${API_BASE}/${batchId}/turbines?${query.toString()}`);
     },
   });
-
-  const handlePreview = useCallback(
-    async (name: string, label: string) => {
-      try {
-        const response = await fetchWithAuth(`${API_BASE}/${batchId}/files/${name}?preview=1`);
-        if (!response.ok) throw new Error(await readApiError(response));
-        setPreviewTitle(`${t("预览")} · ${label}`);
-        setPreviewText(await response.text());
-        setPreviewOpen(true);
-      } catch (error) {
-        message.error((error as Error).message);
-      }
-    },
-    [batchId, fetchWithAuth, message, t],
-  );
 
   const handleDownload = useCallback(
     async (name: string, label: string) => {
@@ -161,20 +256,6 @@ export function WindDataPrepDetailView({
       },
     });
   }, [batchId, detailQuery, fetchWithAuth, message, modal, t]);
-
-  const handleReport = useCallback(
-    async (format: "json" | "excel") => {
-      try {
-        await downloadFileWithAuth(
-          `${API_BASE}/${batchId}/report?format=${format}`,
-          `${detail?.name || "wind-data-prep"}-report.${format === "json" ? "json" : "xlsx"}`,
-        );
-      } catch (error) {
-        message.error((error as Error).message);
-      }
-    },
-    [batchId, detail?.name, message],
-  );
 
   const turbineColumns = useMemo<TableColumnsType<WindDataPrepTurbineRow>>(
     () => [
@@ -239,6 +320,8 @@ export function WindDataPrepDetailView({
     { label: t("风险基准 S"), value: formatNumber(detail?.risk_base_s, 4) },
     { label: t("统计年限"), value: t("固定 6 年") },
     { label: t("地形模式"), value: detail?.terrain_mode === "tif" ? t("上传 tif") : t("零高程") },
+    // 原「文件清单」Tab 删除后，文件齐全度改在概览展示（需求：5/5）。
+    { label: t("五文件齐全度"), value: detail ? `${detail.files_ready ?? 0}/5` : "-" },
   ];
 
   const completed = detail?.status === "completed";
@@ -273,6 +356,35 @@ export function WindDataPrepDetailView({
         }
       : null;
 
+  // 五个产物各占一个 Tab，排在「概览」「风机明细」之后。
+  const fileTabs = FILES.map((file) => ({
+    key: `file-${file.name}`,
+    label: t(file.label),
+    children: (
+      <div className="wind-detail-tab-content">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <Button
+            size="small"
+            icon={<DownloadOutlined />}
+            disabled={detail?.status !== "completed"}
+            onClick={() => void handleDownload(file.name, file.label)}
+          >
+            {t("下载")}
+          </Button>
+        </div>
+        {file.name === "p0abc" ? (
+          <P0abcHeaderView header={detail?.p0abc_header} />
+        ) : (
+          <FileTextPreview
+            batchId={batchId}
+            name={file.name}
+            enabled={completed && activeTab === `file-${file.name}`}
+          />
+        )}
+      </div>
+    ),
+  }));
+
   const tabItems: NonNullable<TabsProps["items"]> = [
     {
       key: "overview",
@@ -286,79 +398,6 @@ export function WindDataPrepDetailView({
             </Card>
           ) : null}
         </div>
-      ),
-    },
-    {
-      key: "params-validation",
-      label: t("参数与校验"),
-      children: (
-        <Card size="small" title={t("校验报告")}>
-          {detail?.report_json?.checks?.length ? (
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {detail.report_json.checks.map((check, index) => (
-                <li key={`${check.code}-${index}`} style={{ marginBottom: 4 }}>
-                  <Tag color={check.passed ? (check.level === "warning" ? "orange" : check.level === "info" ? "blue" : "green") : "red"}>
-                    {check.passed ? (check.level === "warning" ? t("警告") : t("通过")) : t("错误阻断")}
-                  </Tag>
-                  <Text strong>{t(check.label)}</Text>：{t(check.message)}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("任务完成后显示逐项校验结果")} />
-          )}
-        </Card>
-      ),
-    },
-    {
-      key: "files",
-      label: `${t("文件清单")} (${detail?.files_ready ?? 0}/5)`,
-      children: (
-        <Card size="small">
-          <Table
-            rowKey="name"
-            size="small"
-            pagination={false}
-            dataSource={FILES}
-            columns={[
-              { title: t("文件"), dataIndex: "label", key: "label" },
-              {
-                title: t("状态"),
-                key: "status",
-                width: 120,
-                render: () => (
-                  <Tag color={detail && detail.files_ready === 5 ? "success" : "processing"}>
-                    {detail && detail.files_ready === 5 ? t("已生成") : t("生成中")}
-                  </Tag>
-                ),
-              },
-              {
-                title: t("操作"),
-                key: "actions",
-                width: 220,
-                render: (_value, record) => (
-                  <Space size={4}>
-                    <Button size="small" type="link" icon={<EyeOutlined />} disabled={detail?.status !== "completed"} onClick={() => void handlePreview(record.name, record.label)}>
-                      {t("预览")}
-                    </Button>
-                    <Button size="small" type="link" icon={<DownloadOutlined />} disabled={detail?.status !== "completed"} onClick={() => void handleDownload(record.name, record.label)}>
-                      {t("下载")}
-                    </Button>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-          {detail?.p0abc_header && Object.keys(detail.p0abc_header).length ? (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              showIcon
-              message={t("P0.abc 头部（6 个 uint16 大端数值）")}
-              description={<Paragraph style={{ margin: 0 }}>{JSON.stringify(detail.p0abc_header)}</Paragraph>}
-            />
-          ) : null}
-        </Card>
       ),
     },
     ...(completed
@@ -382,6 +421,7 @@ export function WindDataPrepDetailView({
           },
         ]
       : []),
+    ...fileTabs,
   ];
 
   return (
@@ -416,20 +456,6 @@ export function WindDataPrepDetailView({
               <WindDetailMoreActions
                 label={t("更多")}
                 items={[
-                  {
-                    key: "report-json",
-                    label: t("校验报告 JSON"),
-                    icon: <FileTextOutlined />,
-                    disabled: !detail?.has_report,
-                    onClick: () => void handleReport("json"),
-                  },
-                  {
-                    key: "report-excel",
-                    label: t("校验报告 Excel"),
-                    icon: <FileTextOutlined />,
-                    disabled: !detail?.has_report,
-                    onClick: () => void handleReport("excel"),
-                  },
                   ...(canManage
                     ? [{ key: "recompute", label: t("重跑"), icon: <ReloadOutlined />, onClick: handleRecompute }]
                     : []),
@@ -466,12 +492,6 @@ export function WindDataPrepDetailView({
 
         <WindDetailPaginationFooter pagination={activePagination} />
       </div>
-
-      <Modal title={previewTitle} open={previewOpen} onCancel={() => setPreviewOpen(false)} footer={null} width={720}>
-        <pre style={{ maxHeight: 520, overflow: "auto", background: "#fafafa", padding: 12, whiteSpace: "pre-wrap" }}>
-          {previewText}
-        </pre>
-      </Modal>
     </>
   );
 }
