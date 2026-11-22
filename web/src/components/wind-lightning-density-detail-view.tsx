@@ -90,10 +90,6 @@ export function WindLightningDensityDetailView({
   const [imageLoading, setImageLoading] = useState(false);
   const [cellPage, setCellPage] = useState(1);
   const [cellPageSize, setCellPageSize] = useState(20);
-  const [cellSort, setCellSort] = useState<{ field: string; order: "asc" | "desc" }>({
-    field: "density_per_km2_year",
-    order: "desc",
-  });
   const [turbinePage, setTurbinePage] = useState(1);
   const [turbinePageSize, setTurbinePageSize] = useState(20);
 
@@ -110,14 +106,12 @@ export function WindLightningDensityDetailView({
   const detail = detailQuery.data;
 
   const cellsQuery = useQuery({
-    queryKey: ["wind-lightning-density-cells", batchId, cellPage, cellPageSize, cellSort],
+    queryKey: ["wind-lightning-density-cells", batchId, cellPage, cellPageSize],
     enabled: Boolean(user) && canRead && detail?.status === "completed",
     queryFn: async () => {
       const search = new URLSearchParams();
       search.set("limit", String(cellPageSize));
       search.set("offset", String((cellPage - 1) * cellPageSize));
-      search.set("sort_by", cellSort.field);
-      search.set("sort_order", cellSort.order);
       return getJson<WindLightningDensityCellListResponse>(`${API_BASE}/${batchId}/cells?${search.toString()}`);
     },
   });
@@ -191,8 +185,8 @@ export function WindLightningDensityDetailView({
 
   const cellColumns = useMemo<TableColumnsType<WindLightningDensityCellRow>>(
     () => [
-      { title: t("列号 i"), dataIndex: "cell_i", key: "cell_i", width: 90, sorter: true },
-      { title: t("行号 j"), dataIndex: "cell_j", key: "cell_j", width: 90, sorter: true },
+      { title: t("列号 i"), dataIndex: "cell_i", key: "cell_i", width: 90 },
+      { title: t("行号 j"), dataIndex: "cell_j", key: "cell_j", width: 90 },
       {
         title: t("中心经度"),
         dataIndex: "center_lon",
@@ -207,13 +201,12 @@ export function WindLightningDensityDetailView({
         width: 120,
         render: (value: number) => value.toFixed(4),
       },
-      { title: t("落雷次数"), dataIndex: "strike_count", key: "strike_count", width: 110, sorter: true },
+      { title: t("落雷次数"), dataIndex: "strike_count", key: "strike_count", width: 110 },
       {
         title: t("密度(次/(格·年))"),
         dataIndex: "density_per_cell_year",
         key: "density_per_cell_year",
         width: 160,
-        sorter: true,
         render: (value: number) => formatNumber(value, 4),
       },
       {
@@ -221,17 +214,15 @@ export function WindLightningDensityDetailView({
         dataIndex: "density_per_km2_year",
         key: "density_per_km2_year",
         width: 170,
-        sorter: true,
         render: (value: number) => formatNumber(value, 4),
       },
-      { title: t("风机数"), dataIndex: "turbine_count", key: "turbine_count", width: 100, sorter: true },
+      { title: t("风机数"), dataIndex: "turbine_count", key: "turbine_count", width: 100 },
     ],
     [t],
   );
 
   const turbineColumns = useMemo<TableColumnsType<WindLightningDensityTurbineRow>>(
     () => [
-      { title: t("序号"), dataIndex: "seq", key: "seq", width: 80 },
       { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 120 },
       {
         title: t("经度"),
@@ -268,11 +259,17 @@ export function WindLightningDensityDetailView({
     );
   }
 
-  const metaItems: WindDetailMetaItem[] = detail
+  // 概览信息按来源 / 范围与网格分组，渲染在同一张无标题 Card 内，用细线区分。
+  const sourceMetaItems: WindDetailMetaItem[] = detail
     ? [
         { label: t("风电场"), value: detail.wind_farm_name || "-" },
         { label: t("风机文件"), value: detail.turbine_source_file_name || "-" },
         { label: t("雷电文件"), value: detail.lightning_source_file_name || "-" },
+      ]
+    : [];
+
+  const gridMetaItems: WindDetailMetaItem[] = detail
+    ? [
         {
           label: t("统计范围"),
           span: 2,
@@ -339,10 +336,13 @@ export function WindLightningDensityDetailView({
       label: t("概览"),
       children: (
         <div className="wind-detail-tab-content">
-          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
           {detail ? (
-            <Card size="small" title={t("基本信息")}>
-              <WindDetailMeta items={metaItems} />
+            <Card size="small" className="wind-detail-overview-card">
+              <WindDetailMeta items={sourceMetaItems} />
+              <div className="wind-detail-overview-divider" />
+              <WindDetailMeta items={gridMetaItems} />
+              <div className="wind-detail-overview-divider" />
+              <WindDetailMetricStrip items={metricItems} />
             </Card>
           ) : null}
         </div>
@@ -408,16 +408,6 @@ export function WindLightningDensityDetailView({
             loading={cellsQuery.isLoading}
             pagination={false}
             scroll={{ x: 1000 }}
-            onChange={(_pagination, _filters, sorter, extra) => {
-              if (extra.action !== "sort") {
-                return;
-              }
-              const current = Array.isArray(sorter) ? sorter[0] : sorter;
-              const field = String(current?.field ?? "density_per_km2_year");
-              const order = current?.order === "ascend" ? "asc" : "desc";
-              setCellSort({ field, order });
-              setCellPage(1);
-            }}
           />
         </Card>
       ),
