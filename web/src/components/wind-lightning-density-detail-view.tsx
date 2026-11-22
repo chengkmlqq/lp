@@ -82,7 +82,7 @@ export function WindLightningDensityDetailView({
   const { user, fetchWithAuth: authFetch, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
 
-  const [activeTab, setActiveTab] = useState("image");
+  const [activeTab, setActiveTab] = useState("overview");
   const [interpolation, setInterpolation] = useState<"bilinear" | "nearest">("bilinear");
   const [unit, setUnit] = useState<"km2" | "cell">("km2");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -334,115 +334,111 @@ export function WindLightningDensityDetailView({
         : null;
 
   const tabItems: NonNullable<TabsProps["items"]> = [
-    ...(completed
-      ? [
-          {
-            key: "image",
-            label: t("地闪密度图"),
-            children: (
-              <div className="wind-detail-tab-content wind-density-image-layout">
-                <Card
-                  className="wind-density-image-card"
-                  size="small"
-                  title={t("地闪密度图")}
-                  extra={
-                    <Space wrap>
-                      <Segmented
-                        value={interpolation}
-                        onChange={(value) => setInterpolation(value as "bilinear" | "nearest")}
-                        options={[
-                          { label: t("平滑 bilinear"), value: "bilinear" },
-                          { label: t("网格 nearest"), value: "nearest" },
-                        ]}
-                      />
-                      <Segmented
-                        value={unit}
-                        onChange={(value) => setUnit(value as "km2" | "cell")}
-                        options={[
-                          { label: t("次/(km²·年)"), value: "km2" },
-                          { label: t("次/(格·年)"), value: "cell" },
-                        ]}
-                      />
-                    </Space>
-                  }
-                >
-                  {imageLoading ? (
-                    <Skeleton.Image active style={{ width: 640, height: 420 }} />
-                  ) : imageError ? (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={imageError} />
-                  ) : imageUrl ? (
-                    <Image
-                      src={imageUrl}
-                      alt={t("地闪密度图")}
-                      preview={false}
-                      style={{ maxWidth: "100%", borderRadius: 6, border: "1px solid #f0f0f0" }}
-                    />
-                  ) : (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
-                  )}
-                </Card>
-                {detail ? (
-                  <div className="wind-density-meta-panel">
-                    <WindDetailMeta items={metaItems} />
-                  </div>
-                ) : null}
-              </div>
-            ),
-          },
-        ]
-      : []),
-    ...(completed
-      ? [
-          {
-            key: "cells",
-            label: `${t("网格密度表")} (${cellsQuery.data?.total ?? 0})`,
-            children: (
-              <Card size="small">
-                <Table<WindLightningDensityCellRow>
-                  rowKey={(record) => `${record.cell_i}-${record.cell_j}`}
-                  size="small"
-                  columns={cellColumns}
-                  dataSource={cellsQuery.data?.items ?? []}
-                  loading={cellsQuery.isLoading}
-                  pagination={false}
-                  scroll={{ x: 1000 }}
-                  onChange={(_pagination, _filters, sorter, extra) => {
-                    if (extra.action !== "sort") {
-                      return;
-                    }
-                    const current = Array.isArray(sorter) ? sorter[0] : sorter;
-                    const field = String(current?.field ?? "density_per_km2_year");
-                    const order = current?.order === "ascend" ? "asc" : "desc";
-                    setCellSort({ field, order });
-                    setCellPage(1);
-                  }}
+    {
+      key: "overview",
+      label: t("概览"),
+      children: (
+        <div className="wind-detail-tab-content">
+          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
+          {detail ? (
+            <Card size="small" title={t("基本信息")}>
+              <WindDetailMeta items={metaItems} />
+            </Card>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "image",
+      label: t("地闪密度图"),
+      children: (
+        <div className="wind-detail-tab-content">
+          <Card
+            size="small"
+            title={t("地闪密度图")}
+            extra={
+              <Space wrap>
+                <Segmented
+                  value={interpolation}
+                  onChange={(value) => setInterpolation(value as "bilinear" | "nearest")}
+                  options={[
+                    { label: t("平滑 bilinear"), value: "bilinear" },
+                    { label: t("网格 nearest"), value: "nearest" },
+                  ]}
                 />
-              </Card>
-            ),
-          },
-        ]
-      : []),
-    ...(completed
-      ? [
-          {
-            key: "turbines",
-            label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
-            children: (
-              <Card size="small">
-                <Table<WindLightningDensityTurbineRow>
-                  rowKey={(record) => String(record.seq)}
-                  size="small"
-                  columns={turbineColumns}
-                  dataSource={turbinesQuery.data?.items ?? []}
-                  loading={turbinesQuery.isLoading}
-                  pagination={false}
-                  scroll={{ x: 900 }}
+                <Segmented
+                  value={unit}
+                  onChange={(value) => setUnit(value as "km2" | "cell")}
+                  options={[
+                    { label: t("次/(km²·年)"), value: "km2" },
+                    { label: t("次/(格·年)"), value: "cell" },
+                  ]}
                 />
-              </Card>
-            ),
-          },
-        ]
-      : []),
+              </Space>
+            }
+          >
+            {imageLoading ? (
+              <Skeleton.Image active style={{ width: 640, height: 420 }} />
+            ) : imageError ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={imageError} />
+            ) : imageUrl ? (
+              <Image
+                src={imageUrl}
+                alt={t("地闪密度图")}
+                preview={false}
+                style={{ maxWidth: "100%", borderRadius: 6, border: "1px solid #f0f0f0" }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
+            )}
+          </Card>
+        </div>
+      ),
+    },
+    {
+      key: "cells",
+      label: `${t("网格密度表")} (${cellsQuery.data?.total ?? 0})`,
+      children: (
+        <Card size="small">
+          <Table<WindLightningDensityCellRow>
+            rowKey={(record) => `${record.cell_i}-${record.cell_j}`}
+            size="small"
+            columns={cellColumns}
+            dataSource={cellsQuery.data?.items ?? []}
+            loading={cellsQuery.isLoading}
+            pagination={false}
+            scroll={{ x: 1000 }}
+            onChange={(_pagination, _filters, sorter, extra) => {
+              if (extra.action !== "sort") {
+                return;
+              }
+              const current = Array.isArray(sorter) ? sorter[0] : sorter;
+              const field = String(current?.field ?? "density_per_km2_year");
+              const order = current?.order === "ascend" ? "asc" : "desc";
+              setCellSort({ field, order });
+              setCellPage(1);
+            }}
+          />
+        </Card>
+      ),
+    },
+    {
+      key: "turbines",
+      label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
+      children: (
+        <Card size="small">
+          <Table<WindLightningDensityTurbineRow>
+            rowKey={(record) => String(record.seq)}
+            size="small"
+            columns={turbineColumns}
+            dataSource={turbinesQuery.data?.items ?? []}
+            loading={turbinesQuery.isLoading}
+            pagination={false}
+            scroll={{ x: 900 }}
+          />
+        </Card>
+      ),
+    },
   ];
 
   return (
@@ -492,8 +488,6 @@ export function WindLightningDensityDetailView({
           description={detail.error_message}
         />
       ) : null}
-
-      {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
 
       <Tabs
         className="admin-atp-models-detail-tabs wind-detail-tabs wind-density-detail-tabs"
