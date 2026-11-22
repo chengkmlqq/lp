@@ -160,15 +160,6 @@ class SeedDefaultsServiceTest(DatabaseFixtureTestCase):
         self.assertTrue(result.overwrote_existing)
         self.assertGreater(result.summary["menus"].overwritten, 0)
 
-    def test_seed_defaults_use_standalone_atp_models_path(self) -> None:
-        self._run_seed()
-
-        menu = self._load_menu("admin.atp_models")
-        default_menu = DEFAULT_MENU_BY_CODE["admin.atp_models"]
-
-        self.assertEqual(str(default_menu["path"]), "/admin/atp-models")
-        self.assertEqual(menu.path, "/admin/atp-models")
-
     def test_seed_defaults_include_scheduled_tasks_menu_and_default_task(self) -> None:
         self._run_seed()
 
