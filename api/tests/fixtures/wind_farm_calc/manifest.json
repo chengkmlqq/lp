@@ -1,0 +1,19 @@
+{
+  "source": "项目.zip / 项目/风电场软件/风电场软件/风电场/ 原始样例（未做任何裁剪或重生成）",
+  "n": 50,
+  "s": 2.5,
+  "grid": "100x100",
+  "rows_in_file_2_3_4": 58,
+  "rows_in_golden": 50,
+  "engine_exe": "FengLiFangLei-10.exe",
+  "engine_md5": "547c54b12cc9ddb7c0c029d548543c60",
+  "generated_by": "桌面原始 exe 在 wine 8.0.2 下产出，未改动",
+  "md5": {
+    "inputs/file_1.txt": "02ef50a23baed1240a209480dc1db566",
+    "inputs/file_2.txt": "daf614125c108442688457e22a6abb0d",
+    "inputs/file_3.txt": "d5ebb586ea7460d5362fb3c07f3cb0f0",
+    "inputs/file_4.txt": "bd94b8d56a0cc4da4dce1ba4ae928ce5",
+    "inputs/P0.abc": "c99c749cfd28706cc55a8e81cfc64084",
+    "file_out.txt": "40384895d6ad31d982e5ef2d46e107ad"
+  }
+}
