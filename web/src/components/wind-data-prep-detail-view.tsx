@@ -10,7 +10,6 @@ import {
   Card,
   Empty,
   Modal,
-  Progress,
   Space,
   Table,
   Tabs,
@@ -228,7 +227,7 @@ export function WindDataPrepDetailView({
   if (initializing) return null;
 
   const titleText = detail?.name || batchId;
-  // 创建时间已进 Hero 副行，属性网格不再重复。
+  // 基本信息全部收进「概览」Tab，顶部不再单列属性网格。
   const metaItems: WindDetailMetaItem[] = [
     { label: t("风电场"), value: detail?.wind_farm_name || "-" },
     { label: t("风机文件"), value: detail?.turbine_file_name || "-" },
@@ -245,7 +244,7 @@ export function WindDataPrepDetailView({
 
   const completed = detail?.status === "completed";
 
-  // 关键指标条：固定区域最多 6 项，其余在概览 Tab 内紧凑展示，不再拼 8 张 Statistic 卡片。
+  // 关键指标条：8 项全部放进「概览」Tab，顶部不再常驻。
   const metricItems: WindDetailMetricItem[] = [
     { label: t("风机数"), value: detail?.turbine_count ?? 0 },
     { label: t("范围内落雷数"), value: detail?.lightning_in_scope ?? 0 },
@@ -279,7 +278,16 @@ export function WindDataPrepDetailView({
     {
       key: "overview",
       label: t("概览"),
-      children: <WindDetailMetricStrip items={metricItems.slice(6)} />,
+      children: (
+        <div className="wind-detail-tab-content">
+          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
+          {detail ? (
+            <Card size="small" title={t("基本信息")}>
+              <WindDetailMeta items={metaItems} />
+            </Card>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: "params-validation",
@@ -403,15 +411,10 @@ export function WindDataPrepDetailView({
           subline={
             <WindDetailSubline
               items={[
-                <span key="farm">{detail?.wind_farm_name || "-"}</span>,
-                <span key="id" title={batchId}>{batchId}</span>,
                 detail ? (
                   <span key="created">
                     {t("创建时间")} {formatDateTime(detail.create_date)}
                   </span>
-                ) : null,
-                detail && (detail.status === "pending" || detail.status === "processing") ? (
-                  <Progress key="progress" percent={detail.progress} size="small" style={{ width: 140 }} />
                 ) : null,
               ]}
             />
@@ -470,10 +473,6 @@ export function WindDataPrepDetailView({
             description={detail.error_message}
           />
         ) : null}
-
-        {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
-
-        {detail ? <WindDetailMeta items={metaItems} /> : null}
 
         <Tabs
           className="admin-atp-models-detail-tabs wind-detail-tabs"
