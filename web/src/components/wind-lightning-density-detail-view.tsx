@@ -186,7 +186,6 @@ export function WindLightningDensityDetailView({
   onClose?: () => void;
 }) {
   const { t } = useI18n();
-  const { message } = App.useApp();
   const { user, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
 
@@ -231,17 +230,6 @@ export function WindLightningDensityDetailView({
       );
     },
   });
-
-  const handleDownloadImages = async () => {
-    try {
-      await downloadFileWithAuth(
-        `${API_BASE}/${batchId}/images/zip`,
-        `${detail?.batch_name || "wind-lightning-density"}-density-images.zip`,
-      );
-    } catch (error) {
-      message.error((error as Error).message);
-    }
-  };
 
   const cellColumns = useMemo<TableColumnsType<WindLightningDensityCellRow>>(
     () => [
@@ -542,19 +530,6 @@ export function WindLightningDensityDetailView({
               ) : null,
             ]}
           />
-        }
-        actions={
-          <>
-            <Button
-              size="small"
-              type="primary"
-              icon={<DownloadOutlined />}
-              disabled={!completed}
-              onClick={() => void handleDownloadImages()}
-            >
-              {t("下载密度图 ZIP")}
-            </Button>
-          </>
         }
       />
 
