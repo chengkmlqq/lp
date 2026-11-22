@@ -15,7 +15,6 @@ import {
   Space,
   Table,
   Tabs,
-  Typography,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
@@ -45,7 +44,6 @@ import type {
   WindLightningDensityTurbineRow,
 } from "@/types/wind-lightning-density";
 
-const { Text } = Typography;
 const API_BASE = "/api/v1/wind-lightning-density";
 
 function formatDateTime(value: string | null | undefined): string {
@@ -399,11 +397,7 @@ export function WindLightningDensityDetailView({
             key: "cells",
             label: `${t("网格密度表")} (${cellsQuery.data?.total ?? 0})`,
             children: (
-              <Card
-                size="small"
-                title={t("网格密度表")}
-                extra={<Text type="secondary">{t("仅展示有落雷或有风机的网格")}</Text>}
-              >
+              <Card size="small">
                 <Table<WindLightningDensityCellRow>
                   rowKey={(record) => `${record.cell_i}-${record.cell_j}`}
                   size="small"
@@ -434,7 +428,7 @@ export function WindLightningDensityDetailView({
             key: "turbines",
             label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
             children: (
-              <Card size="small" title={t("风机明细")}>
+              <Card size="small">
                 <Table<WindLightningDensityTurbineRow>
                   rowKey={(record) => String(record.seq)}
                   size="small"
