@@ -63,7 +63,6 @@ import type {
   WindLightningDensityBatchListResponse,
   WindLightningDensityBatchSummary,
   WindLightningDensityExportType,
-  WindLightningDensityImportResponse,
   WindLightningDensityPreviewResponse,
 } from "@/types/wind-lightning-density";
 
@@ -429,21 +428,24 @@ export default function WindLightningDensityListPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      const result = (await response.json()) as WindLightningDensityImportResponse;
       message.success(t("已提交统计任务，正在后台计算"));
       setCreateOpen(false);
       setPreview(null);
       setTurbineFiles([]);
       setLightningFiles([]);
       form.resetFields();
+      // 提交后停留在列表页：回到第 1 页并清空状态筛选，确保新批次可见；
+      // 列表已有 4 秒轮询，进度会自动推进，无需跳转详情。
+      setStatusFilter(undefined);
+      setPage(1);
+      setActiveTabKey(LIST_TAB_KEY);
       refreshList();
-      openDetail(result.batch_id, result.batch_name || result.batch_id);
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setSubmitting(false);
     }
-  }, [buildCreateFormData, fetchWithAuth, form, message, openDetail, refreshList, syncDraftName, t]);
+  }, [buildCreateFormData, fetchWithAuth, form, message, refreshList, syncDraftName, t]);
 
   const handleRecompute = useCallback(
     (record: WindLightningDensityBatchSummary) => {
@@ -579,9 +581,6 @@ export default function WindLightningDensityListPage() {
           return (
             <Space direction="vertical" size={2} style={{ width: "100%" }}>
               <Tag color={meta.color}>{t(meta.label)}</Tag>
-              {value === "processing" || value === "pending" ? (
-                <Progress percent={record.progress} size="small" showInfo={false} />
-              ) : null}
               {value === "failed" && record.error_message ? (
                 <Text type="danger" style={{ fontSize: 12 }} ellipsis={{ tooltip: record.error_message }}>
                   {record.error_message}
@@ -589,6 +588,22 @@ export default function WindLightningDensityListPage() {
               ) : null}
             </Space>
           );
+        },
+      },
+      {
+        title: t("进度"),
+        dataIndex: "progress",
+        key: "progress",
+        width: 160,
+        render: (value: number, record) => {
+          const percent = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+          if (record.status === "pending" || record.status === "processing") {
+            return <Progress percent={percent} size="small" />;
+          }
+          if (record.status === "completed") {
+            return <Text type="success">{percent > 0 ? `${percent}%` : "100%"}</Text>;
+          }
+          return <Text type="secondary">—</Text>;
         },
       },
       {
@@ -925,7 +940,7 @@ export default function WindLightningDensityListPage() {
                     columns={columns}
                     dataSource={records}
                     pagination={false}
-                    scroll={{ x: 1430, y: tableScrollY }}
+                    scroll={{ x: 1590, y: tableScrollY }}
                     locale={{
                       emptyText: (
                         <Empty
