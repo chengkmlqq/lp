@@ -404,7 +404,6 @@ ROLE_MENU_BINDINGS: dict[str, list[str]] = {
         "admin.users",
         "admin.roles",
         "admin.menus",
-        "admin.system_params",
     ],
     "user": [],
 }
