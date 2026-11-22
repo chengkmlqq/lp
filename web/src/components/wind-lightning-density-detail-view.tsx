@@ -13,12 +13,14 @@ import {
   Skeleton,
   Table,
   Tabs,
+  Tooltip,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
 import {
   CloudOutlined,
   DownloadOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -43,6 +45,18 @@ import type {
 } from "@/types/wind-lightning-density";
 
 const API_BASE = "/api/v1/wind-lightning-density";
+
+/** 表头显式渲染灰色问号图标，悬浮显示解释文案；不依赖 antd Table 的 column.tooltip。 */
+function columnTitle(label: string, tip: string) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <Tooltip title={tip}>
+        <QuestionCircleOutlined className="text-gray-400" />
+      </Tooltip>
+    </span>
+  );
+}
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -234,64 +248,68 @@ export function WindLightningDensityDetailView({
   const cellColumns = useMemo<TableColumnsType<WindLightningDensityCellRow>>(
     () => [
       {
-        title: t("列号 i"),
-        tooltip: t("经度方向网格编号，从 1 起；以统计范围左下角为起点，按网格步长切分"),
+        title: columnTitle(
+          t("列号 i"),
+          t("经度方向网格编号，从 1 起；以统计范围左下角为起点，按网格步长切分"),
+        ),
         dataIndex: "cell_i",
         key: "cell_i",
-        width: 90,
+        width: 100,
       },
       {
-        title: t("行号 j"),
-        tooltip: t("纬度方向网格编号，从 1 起；以统计范围左下角为起点，按网格步长切分"),
+        title: columnTitle(
+          t("行号 j"),
+          t("纬度方向网格编号，从 1 起；以统计范围左下角为起点，按网格步长切分"),
+        ),
         dataIndex: "cell_j",
         key: "cell_j",
-        width: 90,
+        width: 100,
       },
       {
-        title: t("中心经度"),
-        tooltip: t("该网格中心的经度，十进制度"),
+        title: columnTitle(t("中心经度"), t("该网格中心的经度，十进制度")),
         dataIndex: "center_lon",
         key: "center_lon",
-        width: 120,
+        width: 130,
         render: (value: number) => value.toFixed(4),
       },
       {
-        title: t("中心纬度"),
-        tooltip: t("该网格中心的纬度，十进制度"),
+        title: columnTitle(t("中心纬度"), t("该网格中心的纬度，十进制度")),
         dataIndex: "center_lat",
         key: "center_lat",
-        width: 120,
+        width: 130,
         render: (value: number) => value.toFixed(4),
       },
       {
-        title: t("落雷次数"),
-        tooltip: t("统计年限内落入该网格的有效雷电定位记录条数"),
+        title: columnTitle(t("落雷次数"), t("统计年限内落入该网格的有效雷电定位记录条数")),
         dataIndex: "strike_count",
         key: "strike_count",
-        width: 110,
+        width: 120,
       },
       {
-        title: t("密度(次/(格·年))"),
-        tooltip: t("落雷次数除以统计年限，即该网格每年平均落雷次数"),
+        title: columnTitle(
+          t("密度(次/(格·年))"),
+          t("落雷次数除以统计年限，即该网格每年平均落雷次数"),
+        ),
         dataIndex: "density_per_cell_year",
         key: "density_per_cell_year",
-        width: 160,
-        render: (value: number) => formatNumber(value, 4),
-      },
-      {
-        title: t("密度(次/(km²·年))"),
-        tooltip: t("每格年密度除以单格面积(km²)；默认 0.01° 网格约 1 km²，数值与每格年密度相同"),
-        dataIndex: "density_per_km2_year",
-        key: "density_per_km2_year",
         width: 170,
         render: (value: number) => formatNumber(value, 4),
       },
       {
-        title: t("风机数"),
-        tooltip: t("落在该网格内的风机数量"),
+        title: columnTitle(
+          t("密度(次/(km²·年))"),
+          t("每格年密度除以单格面积(km²)；默认 0.01° 网格约 1 km²，数值与每格年密度相同"),
+        ),
+        dataIndex: "density_per_km2_year",
+        key: "density_per_km2_year",
+        width: 180,
+        render: (value: number) => formatNumber(value, 4),
+      },
+      {
+        title: columnTitle(t("风机数"), t("落在该网格内的风机数量")),
         dataIndex: "turbine_count",
         key: "turbine_count",
-        width: 100,
+        width: 110,
       },
     ],
     [t],
@@ -300,48 +318,45 @@ export function WindLightningDensityDetailView({
   const turbineColumns = useMemo<TableColumnsType<WindLightningDensityTurbineRow>>(
     () => [
       {
-        title: t("风机编号"),
-        tooltip: t("风机点位文件中的顺序编号"),
+        title: columnTitle(t("风机编号"), t("风机点位文件中的顺序编号")),
         dataIndex: "turbine_no",
         key: "turbine_no",
-        width: 120,
+        width: 130,
       },
       {
-        title: t("经度"),
-        tooltip: t("风机经度坐标，十进制度，保留 6 位小数"),
+        title: columnTitle(t("经度"), t("风机经度坐标，十进制度，保留 6 位小数")),
         dataIndex: "lon",
         key: "lon",
-        width: 120,
+        width: 130,
         render: (value: number) => value.toFixed(6),
       },
       {
-        title: t("纬度"),
-        tooltip: t("风机纬度坐标，十进制度，保留 6 位小数"),
+        title: columnTitle(t("纬度"), t("风机纬度坐标，十进制度，保留 6 位小数")),
         dataIndex: "lat",
         key: "lat",
-        width: 120,
+        width: 130,
         render: (value: number) => value.toFixed(6),
       },
       {
-        title: t("网格列号 i"),
-        tooltip: t("该风机落入网格的列号（经度方向，从 1 起）"),
+        title: columnTitle(t("网格列号 i"), t("该风机落入网格的列号（经度方向，从 1 起）")),
         dataIndex: "cell_i",
         key: "cell_i",
-        width: 110,
+        width: 120,
       },
       {
-        title: t("网格行号 j"),
-        tooltip: t("该风机落入网格的行号（纬度方向，从 1 起）"),
+        title: columnTitle(t("网格行号 j"), t("该风机落入网格的行号（纬度方向，从 1 起）")),
         dataIndex: "cell_j",
         key: "cell_j",
-        width: 110,
+        width: 120,
       },
       {
-        title: t("网格密度(次/(km²·年))"),
-        tooltip: t("该风机所在网格的地闪密度，单位次/(km²·年)"),
+        title: columnTitle(
+          t("网格密度(次/(km²·年))"),
+          t("该风机所在网格的地闪密度，单位次/(km²·年)"),
+        ),
         dataIndex: "cell_density",
         key: "cell_density",
-        width: 190,
+        width: 200,
         render: (value: number) => formatNumber(value, 4),
       },
     ],
@@ -484,7 +499,7 @@ export function WindLightningDensityDetailView({
             dataSource={cellsQuery.data?.items ?? []}
             loading={cellsQuery.isLoading}
             pagination={false}
-            scroll={{ x: 1000 }}
+            scroll={{ x: 1100 }}
           />
         </Card>
       ),
