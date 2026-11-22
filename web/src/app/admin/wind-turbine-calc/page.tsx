@@ -12,11 +12,9 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   App,
   Button,
   Card,
-  Descriptions,
   Empty,
   Form,
   Input,
@@ -704,66 +702,59 @@ export default function WindTurbineCalcListPage() {
         confirmLoading={submitting}
         okText={t("提交")}
         cancelText={t("取消")}
-        width={640}
+        width={760}
         destroyOnClose
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={t("参数说明")}
-          description={t(
-            "轮毂高度 h、接闪器径向位置 r_list（严格递增，0<r≤R）、叶片长度 R（默认 max(r_list)）、起始雷电流 Ic、旋转角列表（≤36 个）。",
-          )}
-        />
         <Form form={form} layout="vertical">
-          <Form.Item label={t("任务名称")} name="name">
-            <Input placeholder={t("可选")} />
-          </Form.Item>
-          <Form.Item
-            label={t("轮毂高度 h (m)")}
-            name="hub_height"
-            rules={[{ required: true, message: t("请输入轮毂高度") }, { type: "number", min: 0.0001, message: t("h 必须大于 0") }]}
-          >
-            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
-          </Form.Item>
-          <Form.Item
-            label={t("接闪器径向位置 r_list (m)")}
-            name="receptor_radii"
-            rules={[{ required: true, message: t("请输入接闪器径向位置") }]}
-            extra={t("逗号分隔，须严格递增")}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t("叶片长度 R (m)")}
-            name="blade_length"
-            extra={t("留空则取 max(r_list)")}
-          >
-            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
-          </Form.Item>
-          <Form.Item
-            label={t("起始雷电流 Ic (kA)")}
-            name="start_current"
-            rules={[{ required: true, message: t("请输入起始雷电流") }, { type: "number", min: 0.0001, message: t("Ic 必须大于 0") }]}
-          >
-            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
-          </Form.Item>
-          <Form.Item
-            label={t("旋转角列表 (deg)")}
-            name="angle_list"
-            rules={[{ required: true, message: t("请输入旋转角列表") }]}
-            extra={t("逗号分隔，最多 36 个，默认 0–110 步长 10")}
-          >
-            <Input />
-          </Form.Item>
+          <div className="fl-create-form-grid">
+            <Form.Item
+              label={t("任务名称")}
+              name="name"
+              tooltip={t("可选，留空时使用默认名称")}
+            >
+              <Input placeholder={t("可选")} />
+            </Form.Item>
+            <Form.Item
+              label={t("轮毂高度 h (m)")}
+              name="hub_height"
+              tooltip={t("轮毂高度，单位 m，必须大于 0")}
+              rules={[{ required: true, message: t("请输入轮毂高度") }, { type: "number", min: 0.0001, message: t("h 必须大于 0") }]}
+            >
+              <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+            </Form.Item>
+            <Form.Item
+              label={t("接闪器径向位置 r_list (m)")}
+              name="receptor_radii"
+              tooltip={t("逗号分隔，须严格递增；0 < r ≤ R")}
+              rules={[{ required: true, message: t("请输入接闪器径向位置") }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label={t("叶片长度 R (m)")}
+              name="blade_length"
+              tooltip={t("留空则取 max(r_list)")}
+            >
+              <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+            </Form.Item>
+            <Form.Item
+              label={t("起始雷电流 Ic (kA)")}
+              name="start_current"
+              tooltip={t("起始雷电流，单位 kA，必须大于 0")}
+              rules={[{ required: true, message: t("请输入起始雷电流") }, { type: "number", min: 0.0001, message: t("Ic 必须大于 0") }]}
+            >
+              <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+            </Form.Item>
+            <Form.Item
+              label={t("旋转角列表 (deg)")}
+              name="angle_list"
+              tooltip={t("逗号分隔，最多 36 个，默认 0–110 步长 10；角度击距公式只在 0–90° 拟合，其余姿态按外推处理")}
+              rules={[{ required: true, message: t("请输入旋转角列表") }]}
+            >
+              <Input />
+            </Form.Item>
+          </div>
         </Form>
-
-        <Descriptions size="small" column={1} style={{ marginTop: 8 }}>
-          <Descriptions.Item label={t("外推提示")}>
-            <Text type="secondary">{t("角度击距公式只在 0–90° 拟合，其余姿态按外推处理。")}</Text>
-          </Descriptions.Item>
-        </Descriptions>
       </Modal>
     </div>
   );

@@ -3849,6 +3849,14 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "未知（执行 worker 离线）": "Unknown (execution worker offline)",
   "可用": "Available",
   "执行 worker 离线": "Execution worker offline",
+  // ── LP-75 单风机计算新建表单（双列 + 字段 tooltip） ──
+  "可选，留空时使用默认名称": "Optional; a default name is used when blank",
+  "轮毂高度，单位 m，必须大于 0": "Hub height in m; must be greater than 0",
+  "逗号分隔，须严格递增；0 < r ≤ R": "Comma-separated, strictly increasing; 0 < r ≤ R",
+  "留空则取 max(r_list)": "Leave blank to use max(r_list)",
+  "起始雷电流，单位 kA，必须大于 0": "Starting lightning current in kA; must be greater than 0",
+  "逗号分隔，最多 36 个，默认 0–110 步长 10；角度击距公式只在 0–90° 拟合，其余姿态按外推处理":
+    "Comma-separated, at most 36 values, defaults to 0–110 in steps of 10; the angle striking-distance formula is fitted only for 0–90°, other attitudes are extrapolated",
 };
 
 
