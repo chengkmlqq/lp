@@ -28,7 +28,6 @@ import {
   Select,
   Space,
   Spin,
-  Steps,
   Table,
   Tag,
   Tooltip,
@@ -60,6 +59,7 @@ import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
+import { generateWindLightningTemplate, generateWindTurbineTemplate } from "@/lib/excel-import-utils";
 import type {
   WindDataPrepBatchListResponse,
   WindDataPrepBatchSummary,
@@ -158,8 +158,9 @@ export default function WindDataPrepListPage() {
   const [detailTabsData, setDetailTabsData] = useState<DetailTabData[]>([]);
 
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [step, setStep] = useState(0);
   const [form] = Form.useForm<WizardValues>();
+  // 地形模式需响应式控制 tif 上传区显隐（替代原分步里只在父级渲染时读取快照的写法）
+  const terrainMode = Form.useWatch("terrain_mode", form);
   const [turbineFiles, setTurbineFiles] = useState<UploadFile[]>([]);
   const [lightningFiles, setLightningFiles] = useState<UploadFile[]>([]);
   const [terrainFiles, setTerrainFiles] = useState<UploadFile[]>([]);
@@ -293,7 +294,6 @@ export default function WindDataPrepListPage() {
   const openWizard = useCallback(
     (record?: WindDataPrepBatchSummary) => {
       setPreview(null);
-      setStep(0);
       setTurbineFiles([]);
       setLightningFiles([]);
       setTerrainFiles([]);
@@ -414,6 +414,24 @@ export default function WindDataPrepListPage() {
       setSubmitting(false);
     }
   }, [buildFormData, fetchWithAuth, form, message, openDetail, refreshList, t]);
+
+  const handleDownloadTurbineTemplate = useCallback(() => {
+    try {
+      generateWindTurbineTemplate();
+      message.success(t("风机点位模板下载成功"));
+    } catch {
+      message.error(t("风机点位模板下载失败"));
+    }
+  }, [message, t]);
+
+  const handleDownloadLightningTemplate = useCallback(() => {
+    try {
+      generateWindLightningTemplate();
+      message.success(t("雷电定位数据模板下载成功"));
+    } catch {
+      message.error(t("雷电定位数据模板下载失败"));
+    }
+  }, [message, t]);
 
   const handleRecompute = useCallback(
     (record: WindDataPrepBatchSummary) => {
@@ -811,129 +829,136 @@ export default function WindDataPrepListPage() {
 
   const wizardContent = (
     <>
-      <Steps
-        size="small"
-        current={step}
-        style={{ marginBottom: 20 }}
-        items={[
-          { title: t("研究区域") },
-          { title: t("数据") },
-          { title: t("地形") },
-        ]}
-      />
       <Form<WizardValues> form={form} layout="vertical" initialValues={{ grid_step_deg: 0.01, risk_base_s: 1, terrain_mode: "zero" }}>
-        {step === 0 ? (
-          <>
-            <Form.Item label={t("批次名称")} name="name">
-              <Input placeholder={t("留空时默认使用风电场名称或风机文件名")} maxLength={128} />
-            </Form.Item>
-            <Form.Item label={t("风电场名称")} name="wind_farm_name">
-              <Input placeholder={t("例如：福建B1风电场")} maxLength={128} />
-            </Form.Item>
-            <Form.Item
-              label={t("起始经度（0.01° 对齐）")}
-              name="start_lon"
-              rules={[{ required: true, message: t("请填写起始经度") }]}
-              extra={t("必须是 0.01° 的整数倍，例如 119.34；P0.abc 头部以坐标×100 存为 2 字节整数")}
-            >
-              <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="119.34" />
-            </Form.Item>
-            <Form.Item
-              label={t("起始纬度（0.01° 对齐）")}
-              name="start_lat"
-              rules={[{ required: true, message: t("请填写起始纬度") }]}
-            >
-              <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="25.23" />
-            </Form.Item>
-            <Form.Item
-              label={t("经向网格数 nx（≤100）")}
-              name="grid_nx"
-              rules={[{ required: true, message: t("请填写经向网格数") }]}
-            >
-              <InputNumber min={1} max={100} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item
-              label={t("纬向网格数 ny（≤100）")}
-              name="grid_ny"
-              rules={[{ required: true, message: t("请填写纬向网格数") }]}
-            >
-              <InputNumber min={1} max={100} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item label={t("网格步长（度）")} name="grid_step_deg" extra={t("固定 0.01°，与核心程序一致")}>
-              <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
-            </Form.Item>
-            <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]}>
-              <InputNumber min={0.000001} style={{ width: "100%" }} step={0.1} />
-            </Form.Item>
-            <Form.Item label={t("统计年限")} extra={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
-              <Input value="6" readOnly />
-            </Form.Item>
-          </>
-        ) : null}
+        <div className="fl-create-form-grid">
+          <Form.Item label={t("批次名称")} name="name">
+            <Input placeholder={t("留空时默认使用风电场名称或风机文件名")} maxLength={128} />
+          </Form.Item>
+          <Form.Item label={t("风电场名称")} name="wind_farm_name">
+            <Input placeholder={t("例如：福建B1风电场")} maxLength={128} />
+          </Form.Item>
+          <Form.Item
+            label={t("起始经度（0.01° 对齐）")}
+            name="start_lon"
+            rules={[{ required: true, message: t("请填写起始经度") }]}
+            extra={t("必须是 0.01° 的整数倍，例如 119.34；P0.abc 头部以坐标×100 存为 2 字节整数")}
+          >
+            <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="119.34" />
+          </Form.Item>
+          <Form.Item
+            label={t("起始纬度（0.01° 对齐）")}
+            name="start_lat"
+            rules={[{ required: true, message: t("请填写起始纬度") }]}
+          >
+            <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="25.23" />
+          </Form.Item>
+          <Form.Item
+            label={t("经向网格数 nx（≤100）")}
+            name="grid_nx"
+            rules={[{ required: true, message: t("请填写经向网格数") }]}
+          >
+            <InputNumber min={1} max={100} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            label={t("纬向网格数 ny（≤100）")}
+            name="grid_ny"
+            rules={[{ required: true, message: t("请填写纬向网格数") }]}
+          >
+            <InputNumber min={1} max={100} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label={t("网格步长（度）")} name="grid_step_deg" extra={t("固定 0.01°，与核心程序一致")}>
+            <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
+          </Form.Item>
+          <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]}>
+            <InputNumber min={0.000001} style={{ width: "100%" }} step={0.1} />
+          </Form.Item>
+          <Form.Item label={t("统计年限")} extra={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
+            <Input value="6" readOnly />
+          </Form.Item>
+          <Form.Item label={t("地形模式")} name="terrain_mode">
+            <Select
+              options={[
+                { label: t("零高程（按研究区域生成）"), value: "zero" },
+                { label: t("上传 tif 地形"), value: "tif" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item className="fl-span-2" label={t("备注")} name="remark">
+            <Input.TextArea rows={2} maxLength={500} />
+          </Form.Item>
 
-        {step === 1 ? (
-          <>
-            <Form.Item label={t("风机文件（file_2.txt 11 列 / Excel / DMS 合并 / 十进制）")} required>
-              <Upload.Dragger
-                accept=".txt,.csv,.xlsx,.xlsm"
-                maxCount={1}
-                fileList={turbineFiles}
-                beforeUpload={() => false}
-                onChange={({ fileList }) => setTurbineFiles(fileList.slice(-1))}
-              >
-                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                <p className="ant-upload-text">{t("点击或拖拽风机文件到此区域")}</p>
-                <p className="ant-upload-hint">{t("表格预览可在结果页查看每台风机高度/叶片长度/动静状态/回路号")}</p>
-              </Upload.Dragger>
-            </Form.Item>
-            <Form.Item label={t("雷电 CSV（LONGITUDE / LATITUDE）")} required>
-              <Upload.Dragger
-                accept=".csv,.txt"
-                maxCount={1}
-                fileList={lightningFiles}
-                beforeUpload={() => false}
-                onChange={({ fileList }) => setLightningFiles(fileList.slice(-1))}
-              >
-                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
-                <p className="ant-upload-hint">{t("自动识别经纬度列，UTF-8 / GBK 兼容；不按 CG/IC/NB 筛选")}</p>
-              </Upload.Dragger>
-            </Form.Item>
-          </>
-        ) : null}
-
-        {step === 2 ? (
-          <>
-            <Form.Item label={t("地形模式")} name="terrain_mode">
-              <Select
-                options={[
-                  { label: t("零高程（按研究区域生成）"), value: "zero" },
-                  { label: t("上传 tif 地形"), value: "tif" },
-                ]}
-              />
-            </Form.Item>
-            {form.getFieldValue("terrain_mode") === "tif" ? (
-              <Form.Item label={t("地形 tif（EPSG:4326、0.01° 分辨率、覆盖研究区域）")} required>
-                <Upload.Dragger
-                  accept=".tif,.tiff"
-                  maxCount={1}
-                  fileList={terrainFiles}
-                  beforeUpload={() => false}
-                  onChange={({ fileList }) => setTerrainFiles(fileList.slice(-1))}
+          <Form.Item className="fl-span-2" label={t("风机文件（file_2.txt 11 列 / Excel / DMS 合并 / 十进制）")} required>
+            <Upload.Dragger
+              accept=".txt,.csv,.xlsx,.xlsm"
+              maxCount={1}
+              fileList={turbineFiles}
+              beforeUpload={() => false}
+              onChange={({ fileList }) => setTurbineFiles(fileList.slice(-1))}
+            >
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">{t("点击或拖拽风机文件到此区域")}</p>
+              <p className="ant-upload-hint">{t("表格预览可在结果页查看每台风机高度/叶片长度/动静状态/回路号")}</p>
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleDownloadTurbineTemplate();
+                  }}
                 >
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">{t("点击或拖拽 tif 地形到此区域")}</p>
-                  <p className="ant-upload-hint">{t("不做重采样；分辨率不符或未覆盖研究区域将直接阻断")}</p>
-                </Upload.Dragger>
-              </Form.Item>
-            ) : (
-              <Alert type="info" showIcon message={t("默认零高程：按研究区域生成全 0 的 P0.abc。")} description={t("高程必须为 0–65535 的整数（P0.abc 用无符号 2 字节）。")} />
-            )}
-            <Form.Item label={t("备注")} name="remark">
-              <Input.TextArea rows={2} maxLength={500} />
+                  {t("下载模板")}
+                </Button>
+              </div>
+            </Upload.Dragger>
+          </Form.Item>
+          <Form.Item className="fl-span-2" label={t("雷电 CSV（LONGITUDE / LATITUDE）")} required>
+            <Upload.Dragger
+              accept=".csv,.txt"
+              maxCount={1}
+              fileList={lightningFiles}
+              beforeUpload={() => false}
+              onChange={({ fileList }) => setLightningFiles(fileList.slice(-1))}
+            >
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
+              <p className="ant-upload-hint">{t("自动识别经纬度列，UTF-8 / GBK 兼容；不按 CG/IC/NB 筛选")}</p>
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleDownloadLightningTemplate();
+                  }}
+                >
+                  {t("下载模板")}
+                </Button>
+              </div>
+            </Upload.Dragger>
+          </Form.Item>
+          {terrainMode === "tif" ? (
+            <Form.Item className="fl-span-2" label={t("地形 tif（EPSG:4326、0.01° 分辨率、覆盖研究区域）")} required>
+              <Upload.Dragger
+                accept=".tif,.tiff"
+                maxCount={1}
+                fileList={terrainFiles}
+                beforeUpload={() => false}
+                onChange={({ fileList }) => setTerrainFiles(fileList.slice(-1))}
+              >
+                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                <p className="ant-upload-text">{t("点击或拖拽 tif 地形到此区域")}</p>
+                <p className="ant-upload-hint">{t("不做重采样；分辨率不符或未覆盖研究区域将直接阻断")}</p>
+              </Upload.Dragger>
             </Form.Item>
-          </>
-        ) : null}
+          ) : (
+            <Alert className="fl-span-2" type="info" showIcon message={t("默认零高程：按研究区域生成全 0 的 P0.abc。")} description={t("高程必须为 0–65535 的整数（P0.abc 用无符号 2 字节）。")} />
+          )}
+        </div>
       </Form>
 
       {preview ? (
@@ -1098,24 +1123,14 @@ export default function WindDataPrepListPage() {
         }}
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
-          <Space style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
-            <Space>
-              <Button disabled={step === 0} onClick={() => setStep(step - 1)}>
-                {t("上一步")}
-              </Button>
-              <Button disabled={step === 2} onClick={() => setStep(step + 1)}>
-                {t("下一步")}
-              </Button>
-            </Space>
-            <Space>
-              <Button onClick={() => setWizardOpen(false)}>{t("取消")}</Button>
-              <Button onClick={() => void handlePreview()} loading={previewing}>
-                {t("解析预览")}
-              </Button>
-              <Button type="primary" onClick={() => void handleSubmit()} loading={submitting}>
-                {t("提交并生成")}
-              </Button>
-            </Space>
+          <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+            <Button onClick={() => setWizardOpen(false)}>{t("取消")}</Button>
+            <Button onClick={() => void handlePreview()} loading={previewing}>
+              {t("解析预览")}
+            </Button>
+            <Button type="primary" onClick={() => void handleSubmit()} loading={submitting}>
+              {t("提交并生成")}
+            </Button>
           </Space>
         }
       >
