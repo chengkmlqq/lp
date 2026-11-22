@@ -1,4 +1,4 @@
-"""ATP/FL 维度种子生成器（13 类型 + 65 值，ORM 幂等，兼容 PG/MySQL/SQLite）。
+"""ATP/FL 维度种子生成器（13 类型 + 52 值，ORM 幂等，兼容 PG/MySQL/SQLite）。
 
 取代历史 PG 方言 SQL 种子（seed_atp_dimensions.sql / seed_atp_dimensions_supplement.sql /
 seed_fl_analysis_dimensions.sql / disable_fanji_tzl_egm.sql / disable_risk_job_type_dimension.sql）：
@@ -46,18 +46,9 @@ DIMENSION_TYPES: list[dict[str, Any]] = [
 # --------------------------------------------------------------------------------------
 DIMENSION_ITEMS: dict[str, list[tuple[str, str, int, bool]]] = {
     "voltage_level": [
-        ("35", "35kV", 0, True),
-        ("66", "66kV", 1, True),
-        ("110", "110kV", 2, True),
-        # 非标电压 115/230（2026-11 线路实测需求）：EGM 已按 110/220 锚点内插支持
-        ("115", "115kV", 3, True),
-        ("220", "220kV", 4, True),
-        ("230", "230kV", 5, True),
-        ("330", "330kV", 6, True),
-        ("500", "500kV", 7, True),
-        ("750", "750kV", 8, True),
-        ("800", "800kV", 9, True),
-        ("1000", "1000kV", 10, True),
+        # 2026-11 交付口径：电压等级只保留非标 115/230 两档，其余档位不再下发
+        ("115", "115kV", 0, True),
+        ("230", "230kV", 1, True),
     ],
     "tower_type": [
         ("ganzi", "干字塔", 0, True),
