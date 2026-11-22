@@ -15,6 +15,7 @@ import {
   App,
   Button,
   Card,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -29,6 +30,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  type MenuProps,
   type TabsProps,
   type TableColumnsType,
 } from "antd";
@@ -36,6 +38,8 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
+  FileTextOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -46,6 +50,7 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { WindTurbineCalcDetailView } from "@/components/wind-turbine-calc-detail-view";
 import { getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -111,6 +116,23 @@ export default function WindTurbineCalcListPage() {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_turbine_calc.read") || hasPermission("wind_turbine_calc.manage");
   const canManage = hasPermission("wind_turbine_calc.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+
+  const [logOpen, setLogOpen] = useState(false);
+  const [logTaskId, setLogTaskId] = useState<string | null>(null);
+  const [logTitle, setLogTitle] = useState("");
+
+  const openLogViewer = useCallback(
+    (taskId: string | null | undefined, taskTitle: string) => {
+      if (!taskId || !canReadLogs) {
+        return;
+      }
+      setLogTaskId(taskId);
+      setLogTitle(`${t("运行日志")} - ${taskTitle}`);
+      setLogOpen(true);
+    },
+    [canReadLogs, t],
+  );
 
   const queryClient = useQueryClient();
   const [keywordInput, setKeywordInput] = useState("");
@@ -291,7 +313,7 @@ export default function WindTurbineCalcListPage() {
       message.success(t("已提交单风机计算任务"));
       setCreateOpen(false);
       refreshList();
-      openDetail(result.job_id, (values.name || "").trim() || result.job_id);
+      openDetail(result.job_id, (values.name || "").trim() || t("未命名任务"));
     } catch (error) {
       message.error((error as Error).message);
     } finally {
@@ -355,15 +377,18 @@ export default function WindTurbineCalcListPage() {
         dataIndex: "name",
         key: "name",
         width: 200,
-        render: (_value, record) => (
-          <Button
-            type="link"
-            style={{ padding: 0, height: "auto" }}
-            onClick={() => openDetail(record.id, record.name || record.id)}
-          >
-            {record.name || record.id}
-          </Button>
-        ),
+        render: (_value, record) => {
+          const label = record.name || t("未命名任务");
+          return (
+            <Button
+              type="link"
+              style={{ padding: 0, height: "auto" }}
+              onClick={() => openDetail(record.id, label)}
+            >
+              {label}
+            </Button>
+          );
+        },
       },
       {
         title: t("参数摘要"),
@@ -379,11 +404,6 @@ export default function WindTurbineCalcListPage() {
             </Text>
           </div>
         ),
-      },
-      {
-        title: t("引擎版本"),
-        key: "engine",
-        render: (_: unknown, record) => record.engine_version_tag || record.engine_version_hash?.slice(0, 8) || "-",
       },
       {
         title: t("平均失效率"),
@@ -422,9 +442,20 @@ export default function WindTurbineCalcListPage() {
         fixed: "right",
         render: (_: unknown, record) => {
           const active = record.status === "processing" || record.status === "pending";
+          const label = record.name || t("未命名任务");
           return (
             <Space size={4}>
-              <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(record.id, record.name || record.id)} />
+              <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(record.id, label)} />
+              {canReadLogs && record.task_id ? (
+                <Tooltip title={t("运行日志")}>
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    onClick={() => openLogViewer(record.task_id, label)}
+                  />
+                </Tooltip>
+              ) : null}
               <Button
                 type="link"
                 size="small"
@@ -443,7 +474,7 @@ export default function WindTurbineCalcListPage() {
         },
       },
     ],
-    [canManage, handleCancel, handleDelete, handleExportCsv, openDetail, t],
+    [canManage, canReadLogs, handleCancel, handleDelete, handleExportCsv, openDetail, openLogViewer, t],
   );
 
   const paginationNode = (
@@ -467,7 +498,50 @@ export default function WindTurbineCalcListPage() {
   const renderRecordCard = (record: WindTurbineCalcJobSummary) => {
     const meta = STATUS_META[record.status] ?? STATUS_META.pending;
     const active = record.status === "processing" || record.status === "pending";
-    const title = record.name || record.id;
+    const title = record.name || t("未命名任务");
+    const extraActions: MenuProps["items"] = [
+      ...(canReadLogs && record.task_id
+        ? [
+            {
+              key: "log",
+              label: t("运行日志"),
+              icon: <FileTextOutlined />,
+              onClick: (info: { domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
+                info.domEvent.stopPropagation();
+                openLogViewer(record.task_id, title);
+              },
+            },
+          ]
+        : []),
+      ...(active && canManage
+        ? [
+            {
+              key: "cancel",
+              label: t("取消"),
+              icon: <StopOutlined />,
+              danger: true,
+              onClick: (info: { domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
+                info.domEvent.stopPropagation();
+                handleCancel(record);
+              },
+            },
+          ]
+        : []),
+      ...(!active && canManage
+        ? [
+            {
+              key: "delete",
+              label: t("删除"),
+              icon: <DeleteOutlined />,
+              danger: true,
+              onClick: (info: { domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
+                info.domEvent.stopPropagation();
+                handleDelete(record);
+              },
+            },
+          ]
+        : []),
+    ];
     return (
       <Card
         key={record.id}
@@ -492,25 +566,11 @@ export default function WindTurbineCalcListPage() {
           </div>
 
           <div className="flex flex-col gap-1 px-4 py-3">
-            <Text type="secondary" className="text-xs truncate">
-              ID：{record.id}
-            </Text>
-            <Text type="secondary" className="text-xs">
-              {t("阶段")}：{record.stage || "-"} · {t("进度")}：{record.progress}%
-            </Text>
-            {record.status === "failed" && record.error_message ? (
-              <Text type="danger" className="text-xs" ellipsis={{ tooltip: record.error_message }}>
-                {record.error_message}
-              </Text>
-            ) : null}
             <Text type="secondary" className="text-xs">
               h={record.hub_height} · R={record.blade_length} · Ic={record.start_current}
             </Text>
             <Text type="secondary" className="text-xs">
               {t("角度数")}：{record.angle_count} · r=[{record.receptor_radii?.join(", ")}]
-            </Text>
-            <Text type="secondary" className="text-xs">
-              {t("引擎版本")}：{record.engine_version_tag || record.engine_version_hash?.slice(0, 8) || "-"}
             </Text>
             <Text type="secondary" className="text-xs">
               {t("耗时")}：{formatDuration(record.duration_seconds)} · {t("创建时间")}：{formatDateTime(record.create_date)}
@@ -542,33 +602,19 @@ export default function WindTurbineCalcListPage() {
                   }}
                 />
               </Tooltip>
-              {active && canManage ? (
-                <Tooltip title={t("取消")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<StopOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleCancel(record);
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
-              {!active && canManage ? (
-                <Tooltip title={t("删除")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDelete(record);
-                    }}
-                  />
-                </Tooltip>
+              {extraActions.length > 0 ? (
+                <Dropdown menu={{ items: extraActions }} trigger={["click"]}>
+                  <Tooltip title={t("更多操作")}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<MoreOutlined />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                    />
+                  </Tooltip>
+                </Dropdown>
               ) : null}
             </Space>
           </div>
@@ -673,7 +719,7 @@ export default function WindTurbineCalcListPage() {
                     columns={columns}
                     dataSource={records}
                     pagination={false}
-                    scroll={{ x: 1180, y: tableScrollY }}
+                    scroll={{ x: 1040, y: tableScrollY }}
                     locale={{
                       emptyText: (
                         <Empty
@@ -756,6 +802,14 @@ export default function WindTurbineCalcListPage() {
           </div>
         </Form>
       </Modal>
+
+      <TaskLogViewerDrawer
+        taskId={logTaskId}
+        title={logTitle || t("运行日志")}
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        variant="drawer"
+      />
     </div>
   );
 }
