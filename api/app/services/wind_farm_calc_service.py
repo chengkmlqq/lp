@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import shutil
 import signal
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
@@ -28,6 +29,7 @@ from ..core.config import get_settings
 from ..models.base import utcnow
 from ..models.wind_data_prep import WindDataPrepBatch, WindDataPrepTurbine
 from ..models.wind_farm_calc import WindFarmCalcJob, WindFarmCalcResult
+from ..models.worker_registry import WorkerRegistry
 from ..schemas.wind_farm_calc import (
     WindFarmCalcCancelResponse,
     WindFarmCalcCreateResponse,
@@ -44,7 +46,6 @@ from ..schemas.wind_farm_calc import (
 from ..services import minio_storage
 from ..services import wind_farm_calc as calc
 from ..services.audit_service import compose_audit_detail, write_audit_log
-from ..services.wine_probe import probe_wine_binary
 
 WIND_FARM_CALC_TOPIC = "admin.wind-farm-calc"
 TASK_NAME = "app.tasks.wind_farm_calc_tasks.run_wind_farm_calc"
@@ -96,33 +97,233 @@ def _md5_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _wine_binary() -> str:
-    configured = (_settings().wine_binary_path or "").strip() or "wine"
-    return shutil.which(configured) or configured
+def _configured_wine_command() -> str:
+    """配置里的 wine 命令名；只做展示，不代表当前容器里存在该二进制。"""
+    return (_settings().wine_binary_path or "").strip() or "wine"
 
 
-def get_engine_info() -> WindFarmCalcEngineInfo:
+def wine_binary_command() -> str:
+    """在**执行容器**里解析 wine 的可执行路径（API 容器不装 wine，勿在接口层调用）。"""
+    return shutil.which(_configured_wine_command()) or _configured_wine_command()
+
+
+# ---------------------------------------------------------------------------
+# 执行 worker 侧的 Wine 探测（LP-69）
+#
+# 背景：API 镜像不装 wine，只有 fquiz-worker（wine-base）有。此前 /engine 在 API 容器里
+# `shutil.which("wine")`，必然得到 FileNotFoundError，前端就出现「引擎已就绪 + 红色错误」。
+# 现在改为：API 只检查共享卷里的 exe；Wine 由队列 wind_farm_calc 的 worker 内探测，
+# 结果写入 Redis 缓存（60s 新鲜期 / 1h 保留最近一次），/engine 只读缓存。
+# ---------------------------------------------------------------------------
+WINE_PROBE_TASK_NAME = "app.tasks.wind_farm_calc_tasks.probe_wine_engine"
+WINE_PROBE_CACHE_KEY = "lp:wind_farm_calc:wine_probe:v1"
+WINE_PROBE_TTL_SECONDS = 3600
+WINE_PROBE_FRESH_SECONDS = 60
+WINE_PROBE_WAIT_SECONDS = 6.0
+WINE_PROBE_LOCK_SECONDS = 60
+
+_probe_client: Any | None = None
+_probe_client_broken = False
+
+
+def _probe_cache_client() -> Any | None:
+    """Redis 客户端（复用 broker 连接的库）；不可用时静默降级为「无缓存」。"""
+    global _probe_client, _probe_client_broken
+    if _probe_client is not None:
+        return _probe_client
+    if _probe_client_broken:
+        return None
+    try:
+        import redis as redis_lib
+
+        client = redis_lib.from_url(
+            _settings().resolved_celery_broker_url,
+            socket_timeout=0.5,
+            socket_connect_timeout=0.5,
+            max_connections=8,
+            decode_responses=True,
+        )
+    except Exception:  # noqa: BLE001 - 非 Redis broker / 缺依赖时降级
+        _probe_client_broken = True
+        return None
+    _probe_client = client
+    return client
+
+
+def write_wine_probe_cache(payload: dict[str, Any]) -> None:
+    """worker 内探测完成后回写缓存。"""
+    client = _probe_cache_client()
+    if client is None:
+        return
+    try:
+        client.setex(
+            WINE_PROBE_CACHE_KEY,
+            WINE_PROBE_TTL_SECONDS,
+            json.dumps(payload, ensure_ascii=False),
+        )
+    except Exception:  # noqa: BLE001 - 缓存写失败不影响探测结果返回
+        pass
+
+
+def read_wine_probe_cache() -> dict[str, Any] | None:
+    client = _probe_cache_client()
+    if client is None:
+        return None
+    try:
+        raw = client.get(WINE_PROBE_CACHE_KEY)
+    except Exception:  # noqa: BLE001
+        return None
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _probe_checked_at(payload: dict[str, Any] | None) -> datetime | None:
+    if not payload:
+        return None
+    raw = payload.get("checked_at")
+    try:
+        return datetime.fromtimestamp(float(raw)).astimezone() if raw is not None else None
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _probe_is_fresh(payload: dict[str, Any] | None) -> bool:
+    checked = _probe_checked_at(payload)
+    if checked is None:
+        return False
+    age = (datetime.now().astimezone() - checked).total_seconds()
+    return 0 <= age <= WINE_PROBE_FRESH_SECONDS
+
+
+def _dispatch_wine_probe() -> bool:
+    """派发一次 worker 侧探测；用 Redis 锁保证同一时刻只有一个探测任务在排队/执行。"""
+    client = _probe_cache_client()
+    acquired = True
+    if client is not None:
+        try:
+            acquired = bool(
+                client.set(
+                    f"{WINE_PROBE_CACHE_KEY}:lock",
+                    "1",
+                    nx=True,
+                    ex=WINE_PROBE_LOCK_SECONDS,
+                )
+            )
+        except Exception:  # noqa: BLE001 - 锁不可用时仍允许派发，重复探测无副作用
+            acquired = True
+    if not acquired:
+        return False
+    try:
+        from ..core.celery_app import celery_app as _celery_app
+
+        _celery_app.send_task(
+            WINE_PROBE_TASK_NAME,
+            queue=_settings().wind_farm_calc_queue or "wind_farm_calc",
+        )
+        return True
+    except Exception:  # noqa: BLE001 - broker 不可用时不阻塞接口
+        return False
+
+
+def _wait_for_wine_probe(deadline: float) -> dict[str, Any] | None:
+    """首次打开弹窗时短暂等待 worker 回写（worker 忙则超时，交由前端显示探测中）。"""
+    while time.monotonic() < deadline:
+        payload = read_wine_probe_cache()
+        if payload is not None:
+            return payload
+        time.sleep(0.2)
+    return read_wine_probe_cache()
+
+
+def _online_worker_for_queue(db: Session | None) -> str | None:
+    if db is None:
+        return None
+    threshold = utcnow() - timedelta(seconds=max(30, int(_settings().worker_registry_ttl_seconds)))
+    queue_name = _settings().wind_farm_calc_queue or "wind_farm_calc"
+    rows = (
+        db.execute(
+            select(WorkerRegistry)
+            .where(
+                WorkerRegistry.status == "online",
+                WorkerRegistry.last_seen_at >= threshold,
+            )
+            .order_by(WorkerRegistry.last_seen_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    for row in rows:
+        queues = {item.strip() for item in (row.queues_csv or "").split(",") if item.strip()}
+        if queue_name in queues:
+            return row.worker_name
+    return None
+
+
+def get_engine_info(db: Session | None = None) -> WindFarmCalcEngineInfo:
+    """引擎信息 = 共享卷 exe（API 检查） + 执行 worker 的 Wine（worker 探测缓存）。"""
     configured = _settings().wind_farm_calc_executable or ""
     resolved = resolve_engine(configured)
     info = WindFarmCalcEngineInfo(
         configured=configured,
         resolved=resolved,
-        wine_binary=_wine_binary(),
+        wine_binary=_configured_wine_command(),
     )
     if resolved:
         path = Path(resolved)
         stat = path.stat()
-        info.exists = True
+        info.engine_exists = True
         info.size = int(stat.st_size)
         info.modified_at = datetime.fromtimestamp(stat.st_mtime).astimezone()
         info.md5 = _md5_of(path)
     else:
         info.message = "引擎未部署：请将 FengLiFangLei-10.exe 放到 wine_allowed_root/wind_farm/ 下"
-    probe = probe_wine_binary(_wine_binary(), timeout_seconds=10)
-    info.wine_available = probe.available
-    info.wine_version = probe.version
-    info.wine_error = probe.error
+
+    payload = read_wine_probe_cache()
+    fresh = _probe_is_fresh(payload)
+    worker_name = _online_worker_for_queue(db)
+    # 60s 内有 worker 回写的探测结果，说明执行 worker 是活的（注册表心跳可能滞后）
+    info.worker_online = worker_name is not None or fresh
+
+    if info.worker_online:
+        if payload is None:
+            # 只有本次真的提交了新探测才等待；已有探测在排队（锁未拿到）时直接返回「探测中」，
+            # 避免 worker 忙时每个轮询请求都被拖住 6 秒。
+            if _dispatch_wine_probe():
+                payload = _wait_for_wine_probe(time.monotonic() + WINE_PROBE_WAIT_SECONDS)
+            info.worker_probe_pending = payload is None
+        elif not fresh:
+            # 有旧结果时后台刷新，先把最近一次结果给前端，避免预检卡住
+            _dispatch_wine_probe()
+            info.worker_probe_pending = True
+
+    # worker 离线时也展示最近一次探测结果（若有），便于排查；是否为最新由 worker_online 表示
+    if payload is not None:
+        info.worker_wine_available = bool(payload.get("available"))
+        info.worker_wine_version = payload.get("version")
+        info.worker_wine_error = payload.get("error")
+        info.worker_wine_binary = payload.get("binary")
+        info.worker_checked_at = _probe_checked_at(payload)
+        info.worker_name = payload.get("worker") or worker_name
+    else:
+        info.worker_name = worker_name
+
+    if not info.engine_exists:
+        pass
+    elif not info.worker_online:
+        info.message = "引擎文件已就绪，但执行 worker 离线：Wine 由 wind_farm_calc 队列的执行 worker 提供"
+    elif info.worker_wine_available:
+        info.message = "引擎文件与执行 worker 的 Wine 均已就绪"
+    elif info.worker_probe_pending:
+        info.message = "引擎文件已就绪，正在探测执行 worker 的 Wine 版本"
+    else:
+        info.message = "引擎文件已就绪，但执行 worker 的 Wine 不可用"
     return info
+
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +798,7 @@ def run_job(
     env = {**os.environ}
     env.setdefault("WINEDLLOVERRIDES", "winemenubuilder.exe=d")
     env.setdefault("DISPLAY", "")
-    wine_binary = _wine_binary()
+    wine_binary = wine_binary_command()
     command = [wine_binary, engine]
     log(f"启动计算：exe={engine}，工作目录={workdir}，N={params.n}，S={params.s}")
 

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import socket
+import time
 from typing import Any
 
 from celery.exceptions import SoftTimeLimitExceeded
@@ -18,7 +20,10 @@ from ..services.wind_farm_calc_service import (
     WIND_FARM_CALC_TOPIC,
     mark_job_failed,
     run_job,
+    wine_binary_command,
+    write_wine_probe_cache,
 )
+from ..services.wine_probe import probe_wine_binary
 
 _settings = get_settings()
 
@@ -115,3 +120,28 @@ def run_wind_farm_calc(self, job_id: str) -> dict[str, Any]:
         raise
     finally:
         db.close()
+
+
+@celery_app.task(
+    name="app.tasks.wind_farm_calc_tasks.probe_wine_engine",
+    acks_late=False,
+)
+def probe_wine_engine() -> dict[str, Any]:
+    """在执行 worker 内探测 Wine 能力（LP-69）。
+
+    API 容器不装 wine，预检只能由 ``wind_farm_calc`` 队列的 worker 反映真实执行环境。
+    探测结果写入 Redis 缓存，``GET /api/v1/wind-farm-calc/engine`` 只读缓存，不再在 API
+    容器里 `shutil.which("wine")` 误判引擎不可用。
+    """
+    binary = wine_binary_command()
+    probe = probe_wine_binary(binary, timeout_seconds=10)
+    payload = {
+        "available": probe.available,
+        "version": probe.version,
+        "error": probe.error,
+        "binary": binary,
+        "worker": socket.gethostname(),
+        "checked_at": time.time(),
+    }
+    write_wine_probe_cache(payload)
+    return payload

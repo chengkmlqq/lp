@@ -91,14 +91,22 @@ export type WindFarmCalcResultListResponse = {
 export type WindFarmCalcEngineInfo = {
   configured: string;
   resolved: string | null;
-  exists: boolean;
+  /** 共享卷里的 exe 是否存在（API 容器检查） */
+  engine_exists: boolean;
   size: number | null;
   modified_at: string | null;
   md5: string | null;
   wine_binary: string;
-  wine_available: boolean;
-  wine_version: string | null;
-  wine_error: string | null;
+  /** 执行 worker（wind_farm_calc 队列）是否在线 */
+  worker_online: boolean;
+  worker_name: string | null;
+  /** 执行 worker 内 `wine --version` 的探测结果 */
+  worker_wine_available: boolean;
+  worker_wine_version: string | null;
+  worker_wine_error: string | null;
+  worker_wine_binary: string | null;
+  worker_checked_at: string | null;
+  worker_probe_pending: boolean;
   message: string | null;
 };
 

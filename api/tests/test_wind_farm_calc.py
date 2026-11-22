@@ -244,6 +244,89 @@ def test_resolve_engine_enforces_allowed_root(tmp_path, monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 引擎预检（LP-69）：API 只看 exe，Wine 来自执行 worker 的探测缓存
+# ---------------------------------------------------------------------------
+def _fake_engine_settings(tmp_path) -> SimpleNamespace:  # type: ignore[no-untyped-def]
+    exe = tmp_path / "wind_farm" / "FengLiFangLei-10.exe"
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_bytes(b"MZ")
+    return SimpleNamespace(
+        wine_allowed_root=str(tmp_path),
+        wind_farm_calc_executable="wind_farm/FengLiFangLei-10.exe",
+        wine_binary_path="wine",
+        wind_farm_calc_queue="wind_farm_calc",
+        worker_registry_ttl_seconds=90,
+    )
+
+
+def _probe_payload(**overrides):  # type: ignore[no-untyped-def]
+    import time
+
+    payload = {
+        "available": True,
+        "version": "wine-8.0.2",
+        "error": None,
+        "binary": "/usr/bin/wine",
+        "worker": "wind-farm-calc@lp",
+        "checked_at": time.time(),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_engine_info_uses_worker_probe_cache(tmp_path, monkeypatch) -> None:
+    """API 容器没有 wine 也不影响判定：只要 worker 探测到 wine 就是就绪。"""
+    monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
+    monkeypatch.setattr(service, "read_wine_probe_cache", lambda: _probe_payload())
+    monkeypatch.setattr(service, "_online_worker_for_queue", lambda db: "wind-farm-calc@lp")
+
+    def _unexpected_dispatch() -> bool:
+        raise AssertionError("60s 内已有新鲜探测结果时不应再派发探测任务")
+
+    monkeypatch.setattr(service, "_dispatch_wine_probe", _unexpected_dispatch)
+
+    info = service.get_engine_info()
+    assert info.engine_exists is True
+    assert info.worker_online is True
+    assert info.worker_wine_available is True
+    assert info.worker_wine_version == "wine-8.0.2"
+    assert info.worker_probe_pending is False
+    assert info.message == "引擎文件与执行 worker 的 Wine 均已就绪"
+
+
+def test_engine_info_reports_worker_offline_without_dispatching(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
+    monkeypatch.setattr(service, "read_wine_probe_cache", lambda: None)
+    monkeypatch.setattr(service, "_online_worker_for_queue", lambda db: None)
+
+    dispatched: list[bool] = []
+    monkeypatch.setattr(service, "_dispatch_wine_probe", lambda: dispatched.append(True) or True)
+
+    info = service.get_engine_info()
+    assert info.engine_exists is True
+    assert info.worker_online is False
+    assert info.worker_wine_available is False
+    assert dispatched == []
+    assert "执行 worker 离线" in (info.message or "")
+
+
+def test_engine_info_marks_probe_pending(tmp_path, monkeypatch) -> None:
+    """worker 在线但探测结果还没回写（worker 忙）时，不误报 wine 不可用。"""
+    monkeypatch.setattr(service, "get_settings", lambda: _fake_engine_settings(tmp_path))
+    monkeypatch.setattr(service, "read_wine_probe_cache", lambda: None)
+    monkeypatch.setattr(service, "_online_worker_for_queue", lambda db: "wind-farm-calc@lp")
+    monkeypatch.setattr(service, "_dispatch_wine_probe", lambda: True)
+    monkeypatch.setattr(service, "_wait_for_wine_probe", lambda deadline: None)
+
+    info = service.get_engine_info()
+    assert info.worker_online is True
+    assert info.worker_wine_available is False
+    assert info.worker_probe_pending is True
+    assert "正在探测" in (info.message or "")
+
+
+
+# ---------------------------------------------------------------------------
 # 服务端到端（SQLite + 假 exe，验证调度 → 解析 → 落库 → 统计）
 # ---------------------------------------------------------------------------
 def test_service_run_job_end_to_end(tmp_path, monkeypatch) -> None:
@@ -323,3 +406,24 @@ def test_service_run_job_end_to_end(tmp_path, monkeypatch) -> None:
     assert [r.seq for r in rows] == [1, 2]
     assert [r.risk_level for r in rows] == [1, 4]
     assert "停运(风电场)" in rows[1].raw_line
+
+
+def test_probe_wine_engine_task_writes_cache(monkeypatch) -> None:
+    """探测任务在 worker 内跑 `wine --version`，并把结果写回 Redis 缓存。"""
+    from app.services.wine_probe import WineProbeResult
+    from app.tasks import wind_farm_calc_tasks as tasks
+
+    monkeypatch.setattr(tasks, "wine_binary_command", lambda: "/usr/bin/wine")
+    monkeypatch.setattr(
+        tasks,
+        "probe_wine_binary",
+        lambda binary, timeout_seconds=10: WineProbeResult(True, "wine-8.0.2", None),
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(tasks, "write_wine_probe_cache", lambda payload: captured.update(payload))
+
+    result = tasks.probe_wine_engine()
+    assert result["available"] is True
+    assert result["version"] == "wine-8.0.2"
+    assert result["binary"] == "/usr/bin/wine"
+    assert captured == result

@@ -62,8 +62,9 @@ def list_available_prep_batches(
 @router.get("/engine", response_model=WindFarmCalcEngineInfo)
 def get_engine_info(
     _: CurrentUser = Depends(require_any_permission(*_READ_PERMISSIONS)),
+    db: Session = Depends(get_db),
 ) -> WindFarmCalcEngineInfo:
-    return service.get_engine_info()
+    return service.get_engine_info(db)
 
 
 @router.post("", response_model=WindFarmCalcCreateResponse)

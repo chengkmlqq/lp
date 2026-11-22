@@ -94,16 +94,28 @@ class WindFarmCalcResultListResponse(BaseModel):
 
 
 class WindFarmCalcEngineInfo(BaseModel):
+    """引擎信息拆成两件事：API 侧检查共享卷里的 exe，执行 worker 侧探测 Wine。
+
+    API 容器不装 Wine，因此这里不再有「本机 wine 是否可用」的语义：
+    ``engine_exists`` 只表示 exe 在共享卷里存在；``worker_*`` 才代表真实执行环境。
+    """
+
     configured: str = ""
     resolved: str | None = None
-    exists: bool = False
+    engine_exists: bool = False
     size: int | None = None
     modified_at: datetime | None = None
     md5: str | None = None
     wine_binary: str = "wine"
-    wine_available: bool = False
-    wine_version: str | None = None
-    wine_error: str | None = None
+    worker_online: bool = False
+    worker_name: str | None = None
+    worker_wine_available: bool = False
+    worker_wine_version: str | None = None
+    worker_wine_error: str | None = None
+    worker_wine_binary: str | None = None
+    worker_checked_at: datetime | None = None
+    # 探测结果正在刷新（worker 忙或刚提交探测），前端据此显示「探测中」而非「不可用」
+    worker_probe_pending: bool = False
     message: str | None = None
 
 
