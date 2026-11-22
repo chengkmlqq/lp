@@ -31,7 +31,6 @@ import {
   WindDetailMetricStrip,
   WindDetailPaginationFooter,
   WindDetailSubline,
-  WindStatusChip,
   type WindDetailMetaItem,
   type WindDetailMetricItem,
   type WindDetailPaginationConfig,
@@ -343,8 +342,9 @@ export function WindLightningDensityDetailView({
             key: "image",
             label: t("地闪密度图"),
             children: (
-              <div className="wind-detail-tab-content">
+              <div className="wind-detail-tab-content wind-density-image-layout">
                 <Card
+                  className="wind-density-image-card"
                   size="small"
                   title={t("地闪密度图")}
                   extra={
@@ -383,6 +383,11 @@ export function WindLightningDensityDetailView({
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无密度图")} />
                   )}
                 </Card>
+                {detail ? (
+                  <div className="wind-density-meta-panel">
+                    <WindDetailMeta items={metaItems} />
+                  </div>
+                ) : null}
               </div>
             ),
           },
@@ -447,29 +452,17 @@ export function WindLightningDensityDetailView({
   ];
 
   return (
-    <div className="wind-detail-pane">
+    <div className="wind-detail-pane wind-density-detail-pane">
       <WindDetailHero
         icon={<CloudOutlined />}
         title={detail?.batch_name || batchId}
         titleTooltip={detail?.batch_name || batchId}
-        statusChip={
-          detail ? (
-            <WindStatusChip
-              status={detail.status}
-              label={
-                t(
-                  { pending: "待处理", processing: "处理中", completed: "已完成", failed: "失败" }[
-                    detail.status
-                  ] ?? detail.status,
-                )
-              }
-            />
-          ) : null
-        }
         subline={
           <WindDetailSubline
             items={[
-              <span key="farm">{detail?.wind_farm_name || "-"}</span>,
+              detail?.wind_farm_name ? (
+                <span key="farm">{detail.wind_farm_name}</span>
+              ) : null,
               detail ? (
                 <span key="created">
                   {t("创建时间")} {formatDateTime(detail.create_date)}
@@ -508,10 +501,8 @@ export function WindLightningDensityDetailView({
 
       {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
 
-      {detail ? <WindDetailMeta items={metaItems} /> : null}
-
       <Tabs
-        className="admin-atp-models-detail-tabs wind-detail-tabs"
+        className="admin-atp-models-detail-tabs wind-detail-tabs wind-density-detail-tabs"
         items={tabItems}
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key)}

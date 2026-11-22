@@ -3716,6 +3716,55 @@ body {
   gap: 12px;
 }
 
+/* ── 地闪密度详情页二次布局（LP-66）──
+   基本信息从 Tab 上方移到「地闪密度图」Tab 内密度图卡片右侧；以下规则只作用于本页 class，
+   不改共用 wind-detail-layout 的其它三个详情页。 */
+.wind-density-detail-pane .wind-density-detail-tabs .ant-tabs-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 密度图 Tab：左图右信息，整块撑满内容区高度 */
+.wind-density-image-layout {
+  flex-direction: row;
+  align-items: flex-start;
+  height: 100%;
+}
+
+.wind-density-image-layout .wind-density-image-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.wind-density-image-layout .wind-density-meta-panel {
+  flex: 0 0 300px;
+  width: 300px;
+}
+
+/* 右侧基本信息改成单列纵向，统计范围字段不再跨两列 */
+.wind-density-image-layout .wind-density-meta-panel .admin-atp-models-detail-meta {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 0;
+}
+
+.wind-density-image-layout .wind-density-meta-panel .wind-detail-meta-span-2 {
+  grid-column: span 1;
+}
+
+/* 窄屏下右侧信息改到密度图下方，上下堆叠不错乱 */
+@media (max-width: 900px) {
+  .wind-density-image-layout {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .wind-density-image-layout .wind-density-meta-panel {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
 /* ── LP-59 风电详情页统一版式 ── */
 
 /* 关键指标条：6/3/2 列自适应，列数整除 6 保证不出现单个孤项；
