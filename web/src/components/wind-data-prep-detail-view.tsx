@@ -37,7 +37,6 @@ import {
   WindDetailMoreActions,
   WindDetailPaginationFooter,
   WindDetailSubline,
-  WindStatusChip,
   type WindDetailMetaItem,
   type WindDetailMetricItem,
   type WindDetailPaginationConfig,
@@ -315,11 +314,7 @@ export function WindDataPrepDetailView({
       key: "files",
       label: `${t("文件清单")} (${detail?.files_ready ?? 0}/5)`,
       children: (
-        <Card
-          size="small"
-          title={t("五文件清单与校验状态")}
-          extra={<Tag color={detail?.files_ready === 5 ? "success" : "warning"}>{detail?.files_ready ?? 0}/5</Tag>}
-        >
+        <Card size="small">
           <Table
             rowKey="name"
             size="small"
@@ -372,11 +367,7 @@ export function WindDataPrepDetailView({
             key: "turbines",
             label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
             children: (
-              <Card
-                size="small"
-                title={t("风机明细（本格 vs 东邻格对照）")}
-                extra={<Text type="secondary">{t("东邻格一列仅供解释修正前后差异，不作为验收基准")}</Text>}
-              >
+              <Card size="small">
                 <Table<WindDataPrepTurbineRow>
                   rowKey="seq"
                   size="small"
@@ -400,14 +391,6 @@ export function WindDataPrepDetailView({
           icon={<DatabaseOutlined />}
           title={titleText}
           titleTooltip={titleText}
-          statusChip={
-            detail ? (
-              <WindStatusChip
-                status={detail.status}
-                label={t({ pending: "待处理", processing: "处理中", completed: "已完成", failed: "失败" }[detail.status] ?? detail.status)}
-              />
-            ) : null
-          }
           subline={
             <WindDetailSubline
               items={[
