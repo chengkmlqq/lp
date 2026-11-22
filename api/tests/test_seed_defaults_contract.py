@@ -160,17 +160,30 @@ class SeedDefaultsServiceTest(DatabaseFixtureTestCase):
         self.assertTrue(result.overwrote_existing)
         self.assertGreater(result.summary["menus"].overwritten, 0)
 
-    def test_seed_defaults_include_scheduled_tasks_menu_and_default_task(self) -> None:
+    def test_seed_defaults_uses_simplified_menu_tree(self) -> None:
         self._run_seed()
 
-        menu = self._load_menu("admin.scheduled_tasks")
-        default_menu = DEFAULT_MENU_BY_CODE["admin.scheduled_tasks"]
+        roots = [menu for menu in self.session.scalars(select(Menu)).all() if menu.parent_id is None]
+        self.assertEqual(len(roots), 8)
+        self.assertEqual(
+            {menu.code for menu in roots},
+            {
+                "admin.power_lines",
+                "admin.fl_analysis",
+                "admin.lightning_retrofit",
+                "admin.lightning_currents",
+                "admin.lightning_distribution",
+                "admin.elevation",
+                "admin.task_monitor",
+                "admin.system",
+            },
+        )
+        self.assertIsNone(
+            self.session.scalar(select(Menu).where(Menu.code == "admin.system_monitor"))
+        )
         scheduled_task = self.session.scalar(
             select(ScheduledTask).where(ScheduledTask.task_key == "syslog.cleanup.default")
         )
-
-        self.assertEqual(str(default_menu["path"]), "/admin/scheduled-tasks")
-        self.assertEqual(menu.path, "/admin/scheduled-tasks")
         self.assertIsNotNone(scheduled_task)
         self.assertTrue(scheduled_task.enabled if scheduled_task else False)
 
