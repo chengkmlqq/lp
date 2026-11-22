@@ -3812,23 +3812,6 @@ body {
   }
 }
 
-/* LP-81 概览整合：来源 / 范围与网格 / 关键指标同处一张无标题 Card，细线分组。
-   指标条去掉自身边框与额外留白，作为同一信息区内的一组呈现；窄屏沿用各自的 2/3/6 列自适应。 */
-.wind-detail-overview-card .wind-detail-meta {
-  padding-top: 8px;
-}
-
-.wind-detail-overview-card .wind-detail-metric-strip {
-  border: 0;
-  border-radius: 0;
-  padding: 4px 0 8px;
-}
-
-.wind-detail-overview-divider {
-  border-top: 1px solid var(--fquiz-theme-border);
-  margin: 10px 0;
-}
-
 /* 常驻分页底栏：钉在详情面板右下角，不随 Tab 内容滚动。
    ModoPagination 自身已带 flex-shrink:0 / justify-content:flex-end / 顶部发丝线。 */
 .wind-detail-pane > .wind-detail-pagination {

@@ -2077,6 +2077,8 @@ export const EN_DICT: Record<string, string> = {
   "绝缘子闪络判据": "Insulator Flashover Criterion",
   "绝缘故障分析": "Insulation Fault Analysis",
   "统计年限": "Statistical Period",
+  "网格步长": "Grid step",
+  "外扩边距": "Margin",
   "继承": "Inherit",
   "继承 · {v}": "Inherited · {v}",
   "继承节点": "Inherited Node",

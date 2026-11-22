@@ -7,6 +7,7 @@ import {
   App,
   Button,
   Card,
+  Descriptions,
   Empty,
   Image,
   Progress,
@@ -14,6 +15,7 @@ import {
   Table,
   Tabs,
   Tooltip,
+  type DescriptionsProps,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
@@ -26,12 +28,8 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import {
   WindDetailHero,
-  WindDetailMeta,
-  WindDetailMetricStrip,
   WindDetailPaginationFooter,
   WindDetailSubline,
-  type WindDetailMetaItem,
-  type WindDetailMetricItem,
   type WindDetailPaginationConfig,
 } from "@/components/wind-detail-layout";
 import { useI18n } from "@/lib/i18n";
@@ -371,21 +369,19 @@ export function WindLightningDensityDetailView({
     );
   }
 
-  // 概览信息按来源 / 范围与网格分组，渲染在同一张无标题 Card 内，用细线区分。
-  const sourceMetaItems: WindDetailMetaItem[] = detail
-    ? [
-        { label: t("风电场"), value: detail.wind_farm_name || "-" },
-        { label: t("风机文件"), value: detail.turbine_source_file_name || "-" },
-        { label: t("雷电文件"), value: detail.lightning_source_file_name || "-" },
-      ]
-    : [];
+  const completed = detail?.status === "completed";
 
-  const gridMetaItems: WindDetailMetaItem[] = detail
+  // 概览 13 项信息统一汇入一张带边框的 Descriptions 表格，不再分组卡片 + 分隔线。
+  const overviewItems: DescriptionsProps["items"] = detail
     ? [
+        { key: "wind_farm", label: t("风电场"), children: detail.wind_farm_name || "-" },
+        { key: "turbine_source", label: t("风机文件"), children: detail.turbine_source_file_name || "-" },
+        { key: "lightning_source", label: t("雷电文件"), children: detail.lightning_source_file_name || "-" },
         {
+          key: "bbox",
           label: t("统计范围"),
-          span: 2,
-          value: (
+          span: { xs: 1, sm: 2 },
+          children: (
             <>
               {formatNumber(detail.bbox_min_lon, 4)} ~ {formatNumber(detail.bbox_max_lon, 4)}（{t("经度")}）
               {" / "}
@@ -393,22 +389,21 @@ export function WindLightningDensityDetailView({
             </>
           ),
         },
-        { label: t("网格数"), value: `${detail.grid_x_count} × ${detail.grid_y_count}` },
-        { label: t("网格步长 / 边距"), value: `${detail.grid_step_deg}° / ${detail.margin_deg}°` },
+        { key: "grid_size", label: t("网格数"), children: `${detail.grid_x_count} × ${detail.grid_y_count}` },
+        { key: "grid_step", label: t("网格步长"), children: `${detail.grid_step_deg}°` },
+        { key: "margin", label: t("外扩边距"), children: `${detail.margin_deg}°` },
+        { key: "turbine_count", label: t("风机数"), children: detail.turbine_count ?? 0 },
+        { key: "valid_records", label: t("有效落雷"), children: detail.valid_records ?? 0 },
+        { key: "area_km2", label: t("范围面积 (km²)"), children: formatNumber(detail.area_km2, 2) },
+        { key: "overall_density", label: t("平均密度 次/(km²·年)"), children: formatNumber(detail.overall_density, 4) },
+        { key: "peak_density", label: t("峰值密度 次/(km²·年)"), children: formatNumber(detail.peak_density, 4) },
+        {
+          key: "data_years",
+          label: t("统计年限"),
+          children: detail.data_years != null ? `${detail.data_years} ${t("年")}` : "-",
+        },
       ]
     : [];
-
-  const completed = detail?.status === "completed";
-
-  // 关键指标条：最多 6 项，统一走共用组件，不再各页自己拼 Statistic 卡片。
-  const metricItems: WindDetailMetricItem[] = [
-    { label: t("风机数"), value: detail?.turbine_count ?? 0 },
-    { label: t("有效落雷"), value: detail?.valid_records ?? 0 },
-    { label: t("范围面积 (km²)"), value: formatNumber(detail?.area_km2, 2) },
-    { label: t("平均密度 次/(km²·年)"), value: formatNumber(detail?.overall_density, 4) },
-    { label: t("峰值密度 次/(km²·年)"), value: formatNumber(detail?.peak_density, 4) },
-    { label: t("统计年限"), value: detail?.data_years ?? "-", suffix: t("年") },
-  ];
 
   // 分页底栏由当前激活 Tab 的表格状态驱动；无表格的 Tab 不渲染底栏。
   const activePagination: WindDetailPaginationConfig | null =
@@ -450,11 +445,12 @@ export function WindLightningDensityDetailView({
         <div className="wind-detail-tab-content">
           {detail ? (
             <Card size="small" className="wind-detail-overview-card">
-              <WindDetailMeta items={sourceMetaItems} />
-              <div className="wind-detail-overview-divider" />
-              <WindDetailMeta items={gridMetaItems} />
-              <div className="wind-detail-overview-divider" />
-              <WindDetailMetricStrip items={metricItems} />
+              <Descriptions
+                bordered
+                size="small"
+                column={{ xs: 1, sm: 2 }}
+                items={overviewItems}
+              />
             </Card>
           ) : null}
         </div>
