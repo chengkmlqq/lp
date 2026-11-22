@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,6 +18,7 @@ import {
   Button,
   Card,
   Descriptions,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -30,6 +32,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  type MenuProps,
   type TabsProps,
   type TableColumnsType,
 } from "antd";
@@ -37,14 +40,16 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
+  FileTextOutlined,
+  MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
   StopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { WindFarmCalcDetailView } from "@/components/wind-farm-calc-detail-view";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
@@ -121,6 +126,18 @@ export default function WindFarmCalcListPage() {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_farm_calc.read") || hasPermission("wind_farm_calc.manage");
   const canManage = hasPermission("wind_farm_calc.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+
+  const [logTaskId, setLogTaskId] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const openLogViewer = useCallback(
+    (taskId: string | null | undefined) => {
+      if (!taskId || !canReadLogs) return;
+      setLogTaskId(taskId);
+      setLogOpen(true);
+    },
+    [canReadLogs],
+  );
 
   const queryClient = useQueryClient();
   const [keywordInput, setKeywordInput] = useState("");
@@ -496,6 +513,92 @@ export default function WindFarmCalcListPage() {
 
   const renderRecordCard = (record: WindFarmCalcJobSummary) => {
     const meta = STATUS_META[record.status] ?? STATUS_META.pending;
+    const taskId = record.task_id;
+    // 卡片操作最多展示两个图标按钮：详情固定第一，第二位按状态取最相关操作，
+    // 其余收进「更多」下拉；按钮不足两个时按实际数量展示，不留空占位。
+    type CardAction = {
+      key: string;
+      label: string;
+      icon: ReactNode;
+      danger?: boolean;
+      onClick: () => void;
+    };
+    const candidateActions: CardAction[] = [
+      {
+        key: "detail",
+        label: t("详情"),
+        icon: <EyeOutlined />,
+        onClick: () => openDetail(record.id, record.name || record.id),
+      },
+      ...(record.status === "completed"
+        ? [
+            {
+              key: "export",
+              label: t("导出 Excel"),
+              icon: <DownloadOutlined />,
+              onClick: () =>
+                void downloadFileWithAuth(
+                  `${API_BASE}/${record.id}/export`,
+                  `${record.name || "wind-farm-calc"}-results.xlsx`,
+                ),
+            },
+          ]
+        : []),
+      ...((record.status === "processing" || record.status === "pending") && canManage
+        ? [
+            {
+              key: "cancel",
+              label: t("取消"),
+              icon: <StopOutlined />,
+              danger: true,
+              onClick: () => handleCancel(record),
+            },
+          ]
+        : []),
+      ...(canReadLogs && taskId
+        ? [
+            {
+              key: "log",
+              label: t("运行日志"),
+              icon: <FileTextOutlined />,
+              onClick: () => openLogViewer(taskId),
+            },
+          ]
+        : []),
+      ...(canManage
+        ? [
+            {
+              key: "delete",
+              label: t("删除"),
+              icon: <DeleteOutlined />,
+              danger: true,
+              onClick: () => handleDelete(record),
+            },
+          ]
+        : []),
+    ];
+    const preferredKey =
+      record.status === "completed"
+        ? "export"
+        : record.status === "failed"
+          ? "log"
+          : record.status === "processing" || record.status === "pending"
+            ? "cancel"
+            : undefined;
+    const rank = (key: string) => (key === "detail" ? 0 : key === preferredKey ? 1 : 2);
+    const actions = [...candidateActions].sort((a, b) => rank(a.key) - rank(b.key));
+    const primaryActions = actions.slice(0, 2);
+    const overflowActions = actions.slice(2);
+    const overflowMenuItems: MenuProps["items"] = overflowActions.map((action) => ({
+      key: action.key,
+      label: action.label,
+      icon: action.icon,
+      danger: action.danger,
+      onClick: (info) => {
+        info.domEvent?.stopPropagation();
+        action.onClick();
+      },
+    }));
     return (
       <Card
         key={record.id}
@@ -550,57 +653,29 @@ export default function WindFarmCalcListPage() {
               <div />
             )}
             <Space size="small" className="flex-wrap">
-              <Tooltip title={t("详情")}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openDetail(record.id, record.name || record.id);
-                  }}
-                />
-              </Tooltip>
-              {record.status === "completed" ? (
-                <Tooltip title={t("导出 Excel")}>
+              {primaryActions.map((action) => (
+                <Tooltip key={action.key} title={action.label}>
                   <Button
                     type="text"
                     size="small"
-                    icon={<DownloadOutlined />}
+                    danger={action.danger}
+                    icon={action.icon}
                     onClick={(event) => {
                       event.stopPropagation();
-                      void downloadFileWithAuth(`${API_BASE}/${record.id}/export`, `${record.name || "wind-farm-calc"}-results.xlsx`);
+                      action.onClick();
                     }}
                   />
                 </Tooltip>
-              ) : null}
-              {(record.status === "processing" || record.status === "pending") && canManage ? (
-                <Tooltip title={t("取消")}>
+              ))}
+              {overflowActions.length > 0 ? (
+                <Dropdown menu={{ items: overflowMenuItems }} trigger={["click"]}>
                   <Button
                     type="text"
                     size="small"
-                    danger
-                    icon={<StopOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleCancel(record);
-                    }}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
                   />
-                </Tooltip>
-              ) : null}
-              {canManage ? (
-                <Tooltip title={t("删除")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDelete(record);
-                    }}
-                  />
-                </Tooltip>
+                </Dropdown>
               ) : null}
             </Space>
           </div>
@@ -759,7 +834,6 @@ export default function WindFarmCalcListPage() {
                     <Form.Item style={{ marginBottom: 0 }}>
                       <Space>
                         <Button icon={<SearchOutlined />} onClick={() => setKeyword(keywordInput)}>{t("查询")}</Button>
-                        <Button icon={<ReloadOutlined />} onClick={refreshList}>{t("刷新")}</Button>
                       </Space>
                     </Form.Item>
                   </Form>
@@ -842,6 +916,13 @@ export default function WindFarmCalcListPage() {
       >
         {createContent}
       </Modal>
+
+      <TaskLogViewerDrawer
+        taskId={logTaskId}
+        title={t("运行日志")}
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+      />
     </div>
   );
 }
