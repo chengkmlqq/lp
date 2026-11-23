@@ -494,8 +494,9 @@ export function WindLightningDensityDetailView({
             columns={cellColumns}
             dataSource={cellsQuery.data?.items ?? []}
             loading={cellsQuery.isLoading}
+            sticky
             pagination={false}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 1100, y: "55vh" }}
           />
         </Card>
       ),
@@ -511,8 +512,9 @@ export function WindLightningDensityDetailView({
             columns={turbineColumns}
             dataSource={turbinesQuery.data?.items ?? []}
             loading={turbinesQuery.isLoading}
+            sticky
             pagination={false}
-            scroll={{ x: 900 }}
+            scroll={{ x: 900, y: "55vh" }}
           />
         </Card>
       ),
