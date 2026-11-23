@@ -737,6 +737,7 @@ export default function WindDataPrepListPage() {
             label={t("起始纬度（0.01° 对齐）")}
             name="start_lat"
             rules={[{ required: true, message: t("请填写起始纬度") }]}
+            tooltip={t("起始经纬度必须是 0.01° 的整数倍（例如 119.34）")}
           >
             <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="25.23" />
           </Form.Item>
@@ -744,6 +745,7 @@ export default function WindDataPrepListPage() {
             label={t("经向网格数 nx（≤100）")}
             name="grid_nx"
             rules={[{ required: true, message: t("请填写经向网格数") }]}
+            tooltip={t("经向/纬向网格数必须在 1–100 之间（核心程序 NMAX=100）")}
           >
             <InputNumber min={1} max={100} style={{ width: "100%" }} />
           </Form.Item>
@@ -751,19 +753,20 @@ export default function WindDataPrepListPage() {
             label={t("纬向网格数 ny（≤100）")}
             name="grid_ny"
             rules={[{ required: true, message: t("请填写纬向网格数") }]}
+            tooltip={t("经向/纬向网格数必须在 1–100 之间（核心程序 NMAX=100）")}
           >
             <InputNumber min={1} max={100} style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item label={t("网格步长（度）")} name="grid_step_deg" tooltip={t("固定 0.01°，与核心程序一致")}>
             <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
           </Form.Item>
-          <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]}>
+          <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]} tooltip={t("写入 file_1 头部的风险基准 S，必须大于 0")}>
             <InputNumber min={0.000001} style={{ width: "100%" }} step={0.1} />
           </Form.Item>
           <Form.Item label={t("统计年限")} tooltip={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
             <Input value="6" readOnly />
           </Form.Item>
-          <Form.Item label={t("地形模式")} name="terrain_mode">
+          <Form.Item label={t("地形模式")} name="terrain_mode" tooltip={t("零高程：按研究区域生成全 0 的 P0.abc；上传 tif：需 EPSG:4326、0.01° 分辨率并覆盖研究区域")}>
             <Select
               options={[
                 { label: t("零高程（按研究区域生成）"), value: "zero" },
