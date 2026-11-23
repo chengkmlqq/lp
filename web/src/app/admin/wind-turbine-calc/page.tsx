@@ -41,13 +41,13 @@ import {
   FileTextOutlined,
   MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
   StopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -377,16 +377,29 @@ export default function WindTurbineCalcListPage() {
         dataIndex: "name",
         key: "name",
         width: 200,
+        // 超长任务名省略收尾 + 悬浮显示全名，避免压到相邻「参数摘要」列（参考线路管理页）。
+        ellipsis: { showTitle: true },
         render: (_value, record) => {
           const label = record.name || t("未命名任务");
           return (
-            <Button
-              type="link"
-              style={{ padding: 0, height: "auto" }}
-              onClick={() => openDetail(record.id, label)}
-            >
-              {label}
-            </Button>
+            <Tooltip title={label}>
+              <Button
+                type="link"
+                style={{
+                  padding: 0,
+                  height: "auto",
+                  maxWidth: "100%",
+                  display: "inline-block",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  verticalAlign: "bottom",
+                }}
+                onClick={() => openDetail(record.id, label)}
+              >
+                {label}
+              </Button>
+            </Tooltip>
           );
         },
       },
@@ -395,12 +408,14 @@ export default function WindTurbineCalcListPage() {
         key: "params",
         render: (_: unknown, record) => (
           <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-            <div>h={record.hub_height} · R={record.blade_length} · Ic={record.start_current}</div>
+            <div>
+              {t("轮毂高度")} {record.hub_height} · {t("叶片长度")} {record.blade_length} · {t("起始雷电流")} {record.start_current}
+            </div>
             <Text type="secondary" ellipsis style={{ maxWidth: 260, display: "block" }}>
-              r=[{record.receptor_radii?.join(", ")}]
+              {t("接闪器径向位置")}：[{record.receptor_radii?.join(", ")}]
             </Text>
             <Text type="secondary" ellipsis style={{ maxWidth: 260, display: "block" }}>
-              θ=[{record.angle_list?.join(", ")}]
+              {t("旋转角")}：[{record.angle_list?.join(", ")}]
             </Text>
           </div>
         ),
@@ -444,32 +459,38 @@ export default function WindTurbineCalcListPage() {
           const active = record.status === "processing" || record.status === "pending";
           const label = record.name || t("未命名任务");
           return (
-            <Space size={4}>
-              <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(record.id, label)} />
-              {canReadLogs && record.task_id ? (
-                <Tooltip title={t("运行日志")}>
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<FileTextOutlined />}
-                    onClick={() => openLogViewer(record.task_id, label)}
-                  />
-                </Tooltip>
-              ) : null}
-              <Button
-                type="link"
-                size="small"
-                icon={<DownloadOutlined />}
-                title={t("导出 CSV")}
-                onClick={() => handleExportCsv(record)}
-              />
-              {active && canManage && (
-                <Button type="link" size="small" danger icon={<StopOutlined />} onClick={() => handleCancel(record)} />
-              )}
-              {!active && canManage && (
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
-              )}
-            </Space>
+            <ModoActionGroup
+              actions={[
+                { key: "detail", label: t("详情"), icon: <EyeOutlined />, onClick: () => openDetail(record.id, label) },
+                ...(canReadLogs && record.task_id
+                  ? [{
+                      key: "log",
+                      label: t("运行日志"),
+                      icon: <FileTextOutlined />,
+                      onClick: () => openLogViewer(record.task_id, label),
+                    }]
+                  : []),
+                { key: "export", label: t("导出"), icon: <DownloadOutlined />, onClick: () => handleExportCsv(record) },
+                ...(active && canManage
+                  ? [{
+                      key: "cancel",
+                      label: t("取消"),
+                      icon: <StopOutlined />,
+                      danger: true,
+                      onClick: () => handleCancel(record),
+                    }]
+                  : []),
+                ...(!active && canManage
+                  ? [{
+                      key: "delete",
+                      label: t("删除"),
+                      icon: <DeleteOutlined />,
+                      danger: true,
+                      onClick: () => handleDelete(record),
+                    }]
+                  : []),
+              ]}
+            />
           );
         },
       },
@@ -500,19 +521,6 @@ export default function WindTurbineCalcListPage() {
     const active = record.status === "processing" || record.status === "pending";
     const title = record.name || t("未命名任务");
     const extraActions: MenuProps["items"] = [
-      ...(canReadLogs && record.task_id
-        ? [
-            {
-              key: "log",
-              label: t("运行日志"),
-              icon: <FileTextOutlined />,
-              onClick: (info: { domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
-                info.domEvent.stopPropagation();
-                openLogViewer(record.task_id, title);
-              },
-            },
-          ]
-        : []),
       ...(active && canManage
         ? [
             {
@@ -567,10 +575,10 @@ export default function WindTurbineCalcListPage() {
 
           <div className="flex flex-col gap-1 px-4 py-3">
             <Text type="secondary" className="text-xs">
-              h={record.hub_height} · R={record.blade_length} · Ic={record.start_current}
+              {t("轮毂高度")} {record.hub_height} · {t("叶片长度")} {record.blade_length} · {t("起始雷电流")} {record.start_current}
             </Text>
             <Text type="secondary" className="text-xs">
-              {t("角度数")}：{record.angle_count} · r=[{record.receptor_radii?.join(", ")}]
+              {t("角度数")}：{record.angle_count} · {t("接闪器径向位置")}：[{record.receptor_radii?.join(", ")}]
             </Text>
             <Text type="secondary" className="text-xs">
               {t("耗时")}：{formatDuration(record.duration_seconds)} · {t("创建时间")}：{formatDateTime(record.create_date)}
@@ -591,6 +599,19 @@ export default function WindTurbineCalcListPage() {
                   }}
                 />
               </Tooltip>
+              {canReadLogs && record.task_id ? (
+                <Tooltip title={t("运行日志")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openLogViewer(record.task_id, title);
+                    }}
+                  />
+                </Tooltip>
+              ) : null}
               <Tooltip title={t("导出 CSV")}>
                 <Button
                   type="text"
@@ -671,9 +692,6 @@ export default function WindTurbineCalcListPage() {
                         <Button icon={<SearchOutlined />} onClick={() => setKeyword(keywordInput.trim())}>
                           {t("查询")}
                         </Button>
-                        <Button icon={<ReloadOutlined />} onClick={refreshList}>
-                          {t("刷新")}
-                        </Button>
                       </Space>
                     </Form.Item>
                   </Form>
@@ -748,58 +766,56 @@ export default function WindTurbineCalcListPage() {
         confirmLoading={submitting}
         okText={t("提交")}
         cancelText={t("取消")}
-        width={760}
+        width={520}
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <div className="fl-create-form-grid">
-            <Form.Item
-              label={t("任务名称")}
-              name="name"
-              tooltip={t("可选，留空时使用默认名称")}
-            >
-              <Input placeholder={t("可选")} />
-            </Form.Item>
-            <Form.Item
-              label={t("轮毂高度 h (m)")}
-              name="hub_height"
-              tooltip={t("轮毂高度，单位 m，必须大于 0")}
-              rules={[{ required: true, message: t("请输入轮毂高度") }, { type: "number", min: 0.0001, message: t("h 必须大于 0") }]}
-            >
-              <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
-            </Form.Item>
-            <Form.Item
-              label={t("接闪器径向位置 r_list (m)")}
-              name="receptor_radii"
-              tooltip={t("逗号分隔，须严格递增；0 < r ≤ R")}
-              rules={[{ required: true, message: t("请输入接闪器径向位置") }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item
-              label={t("叶片长度 R (m)")}
-              name="blade_length"
-              tooltip={t("留空则取 max(r_list)")}
-            >
-              <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
-            </Form.Item>
-            <Form.Item
-              label={t("起始雷电流 Ic (kA)")}
-              name="start_current"
-              tooltip={t("起始雷电流，单位 kA，必须大于 0")}
-              rules={[{ required: true, message: t("请输入起始雷电流") }, { type: "number", min: 0.0001, message: t("Ic 必须大于 0") }]}
-            >
-              <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
-            </Form.Item>
-            <Form.Item
-              label={t("旋转角列表 (deg)")}
-              name="angle_list"
-              tooltip={t("逗号分隔，最多 36 个，默认 0–110 步长 10；角度击距公式只在 0–90° 拟合，其余姿态按外推处理")}
-              rules={[{ required: true, message: t("请输入旋转角列表") }]}
-            >
-              <Input />
-            </Form.Item>
-          </div>
+          <Form.Item
+            label={t("任务名称")}
+            name="name"
+            tooltip={t("可选，留空时使用默认名称")}
+          >
+            <Input placeholder={t("可选")} />
+          </Form.Item>
+          <Form.Item
+            label={t("轮毂高度 h (m)")}
+            name="hub_height"
+            tooltip={t("轮毂高度，单位 m，必须大于 0")}
+            rules={[{ required: true, message: t("请输入轮毂高度") }, { type: "number", min: 0.0001, message: t("h 必须大于 0") }]}
+          >
+            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+          </Form.Item>
+          <Form.Item
+            label={t("接闪器径向位置 r_list (m)")}
+            name="receptor_radii"
+            tooltip={t("逗号分隔，须严格递增；0 < r ≤ R")}
+            rules={[{ required: true, message: t("请输入接闪器径向位置") }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label={t("叶片长度 R (m)")}
+            name="blade_length"
+            tooltip={t("留空则取 max(r_list)")}
+          >
+            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+          </Form.Item>
+          <Form.Item
+            label={t("起始雷电流 Ic (kA)")}
+            name="start_current"
+            tooltip={t("起始雷电流，单位 kA，必须大于 0")}
+            rules={[{ required: true, message: t("请输入起始雷电流") }, { type: "number", min: 0.0001, message: t("Ic 必须大于 0") }]}
+          >
+            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+          </Form.Item>
+          <Form.Item
+            label={t("旋转角列表 (deg)")}
+            name="angle_list"
+            tooltip={t("逗号分隔，最多 36 个，默认 0–110 步长 10；角度击距公式只在 0–90° 拟合，其余姿态按外推处理")}
+            rules={[{ required: true, message: t("请输入旋转角列表") }]}
+          >
+            <Input />
+          </Form.Item>
         </Form>
       </Modal>
 
