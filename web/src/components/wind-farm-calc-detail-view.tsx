@@ -53,7 +53,7 @@ import type {
 } from "@/types/wind-farm-calc";
 import { RISK_COLORS, RISK_LABELS } from "@/types/wind-farm-calc";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const API_BASE = "/api/v1/wind-farm-calc";
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
@@ -313,30 +313,6 @@ export function WindFarmCalcDetailView({
         </Card>
       ),
     },
-    ...(detail?.preflight_json
-      ? [
-          {
-            key: "preflight",
-            label: t("预检结果"),
-            children: (
-              <Card size="small" title={t("预检结果")}>
-                <Paragraph style={{ marginBottom: 4 }}>
-                  {t("结果行数")}: {detail.preflight_json.grid_rows ?? "-"} · {t("网格")}:{" "}
-                  {detail.preflight_json.params?.nx}×{detail.preflight_json.params?.ny} · S: {detail.preflight_json.params?.s}
-                </Paragraph>
-                <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                  {(detail.preflight_json.checks ?? []).map((check) => (
-                    <div key={check.code}>
-                      <Tag color={check.passed ? "green" : "red"}>{check.passed ? t("通过") : t("失败")}</Tag>
-                      {t(check.label)}：{t(check.message)}
-                    </div>
-                  ))}
-                </Space>
-              </Card>
-            ),
-          },
-        ]
-      : []),
     {
       key: "raw-output",
       label: t("原始 file_out.txt"),
