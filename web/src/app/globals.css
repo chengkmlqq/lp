@@ -3731,6 +3731,13 @@ body {
   overflow-y: hidden;
 }
 
+/* LP-103：数据准备详情页的风机明细/风机清单/网格编号 Tab 的 Table 已自带纵向滚动
+   （sticky + scroll.y），同 LP-102 只对带 wind-data-prep-table-tab-card 标记的面板关掉
+   外层内容区滚动，避免「整页 + 表格」两条纵向滚动条；概览/P0.abc Tab 无标记，滚动不受影响。 */
+.wind-data-prep-detail-tabs .ant-tabs-content:has(.wind-data-prep-table-tab-card) {
+  overflow-y: hidden;
+}
+
 /* LP-83：四张预生成图按 2×2 展示，窄屏退化为单列 */
 .wind-density-image-grid {
   display: grid;

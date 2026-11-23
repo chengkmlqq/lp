@@ -12,6 +12,7 @@ import {
   Spin,
   Table,
   Tabs,
+  Tooltip,
   Typography,
   type TableColumnsType,
   type TabsProps,
@@ -20,6 +21,7 @@ import {
   CloudDownloadOutlined,
   DatabaseOutlined,
   DownloadOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -43,6 +45,18 @@ import type {
 
 const { Text } = Typography;
 const API_BASE = "/api/v1/wind-data-prep";
+
+/** 表头显式渲染灰色问号图标，悬浮显示解释文案；不依赖 antd Table 的 column.tooltip。 */
+function columnTitle(label: string, tip: string) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <Tooltip title={tip}>
+        <QuestionCircleOutlined className="text-gray-400" />
+      </Tooltip>
+    </span>
+  );
+}
 
 // file_1 / file_4 的内容已并入概览，仅剩三个产物 Tab（file_2 / file_3 / P0.abc）。
 const FILES = [
@@ -231,30 +245,60 @@ function File2Table({
   const query = useFileText(batchId, "file2", enabled);
   const columns = useMemo<TableColumnsType<File2Row>>(
     () => [
-      { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 100 },
       {
-        title: t("经度"),
+        title: columnTitle(t("风机编号"), t("风机点位文件中的顺序编号")),
+        dataIndex: "turbine_no",
+        key: "turbine_no",
+        width: 100,
+      },
+      {
+        title: columnTitle(t("经度"), t("风机经度的度/分/秒，来自风机点位文件")),
         key: "lon",
         children: [
-          { title: t("度"), dataIndex: "lon_d", key: "lon_d", width: 64 },
-          { title: t("分"), dataIndex: "lon_m", key: "lon_m", width: 64 },
-          { title: t("秒"), dataIndex: "lon_s", key: "lon_s", width: 72 },
+          { title: columnTitle(t("度"), t("经度的度部分")), dataIndex: "lon_d", key: "lon_d", width: 64 },
+          { title: columnTitle(t("分"), t("经度的分部分")), dataIndex: "lon_m", key: "lon_m", width: 64 },
+          { title: columnTitle(t("秒"), t("经度的秒部分")), dataIndex: "lon_s", key: "lon_s", width: 72 },
         ],
       },
       {
-        title: t("纬度"),
+        title: columnTitle(t("纬度"), t("风机纬度的度/分/秒，来自风机点位文件")),
         key: "lat",
         children: [
-          { title: t("度"), dataIndex: "lat_d", key: "lat_d", width: 64 },
-          { title: t("分"), dataIndex: "lat_m", key: "lat_m", width: 64 },
-          { title: t("秒"), dataIndex: "lat_s", key: "lat_s", width: 72 },
+          { title: columnTitle(t("度"), t("纬度的度部分")), dataIndex: "lat_d", key: "lat_d", width: 64 },
+          { title: columnTitle(t("分"), t("纬度的分部分")), dataIndex: "lat_m", key: "lat_m", width: 64 },
+          { title: columnTitle(t("秒"), t("纬度的秒部分")), dataIndex: "lat_s", key: "lat_s", width: 72 },
         ],
       },
-      { title: t("输入高程"), dataIndex: "input_elev", key: "input_elev", width: 90 },
-      { title: t("风机高度"), dataIndex: "height", key: "height", width: 90 },
-      { title: t("叶片长度"), dataIndex: "blade", key: "blade", width: 90 },
-      { title: t("动静状态"), dataIndex: "motion", key: "motion", width: 90 },
-      { title: t("回路号"), dataIndex: "circuit", key: "circuit", width: 80 },
+      {
+        title: columnTitle(t("输入高程"), t("风机点位文件提供的地面高程（米），生成 P0.abc 时由地形高程覆盖")),
+        dataIndex: "input_elev",
+        key: "input_elev",
+        width: 90,
+      },
+      {
+        title: columnTitle(t("风机高度"), t("风机轮毂高度（米）")),
+        dataIndex: "height",
+        key: "height",
+        width: 90,
+      },
+      {
+        title: columnTitle(t("叶片长度"), t("风机叶片长度（米）")),
+        dataIndex: "blade",
+        key: "blade",
+        width: 90,
+      },
+      {
+        title: columnTitle(t("动静状态"), t("风机动/静状态标识，来自风机点位文件")),
+        dataIndex: "motion",
+        key: "motion",
+        width: 90,
+      },
+      {
+        title: columnTitle(t("回路号"), t("风机所属回路编号，核心程序据此索引回路参数")),
+        dataIndex: "circuit",
+        key: "circuit",
+        width: 80,
+      },
     ],
     [t],
   );
@@ -266,6 +310,7 @@ function File2Table({
           size="small"
           columns={columns}
           dataSource={parseFile2(text, turbineNos)}
+          sticky
           pagination={false}
           scroll={{ x: 980, y: "55vh" }}
         />
@@ -280,13 +325,23 @@ function File3Table({ batchId, enabled }: { batchId: string; enabled: boolean })
   const query = useFileText(batchId, "file3", enabled);
   const columns = useMemo<TableColumnsType<File3Row>>(
     () => [
-      { title: t("网格编号"), dataIndex: "grid_id", key: "grid_id", width: 110 },
-      { title: t("极性标志"), dataIndex: "polarity", key: "polarity", width: 100 },
       {
-        title: t("雷电流概率参数"),
+        title: columnTitle(t("网格编号"), t("风机所在网格的编号，由行列号按核心程序口径生成")),
+        dataIndex: "grid_id",
+        key: "grid_id",
+        width: 110,
+      },
+      {
+        title: columnTitle(t("极性标志"), t("雷电流极性标志，来自 file_3 固定序列化口径")),
+        dataIndex: "polarity",
+        key: "polarity",
+        width: 100,
+      },
+      {
+        title: columnTitle(t("雷电流概率参数"), t("核心程序使用的 6 个雷电流概率参数，按顺序写入 file_3")),
         key: "prob",
         children: [1, 2, 3, 4, 5, 6].map((i) => ({
-          title: `${t("概率")} ${i}`,
+          title: columnTitle(`${t("概率")} ${i}`, t(`第 ${i} 个雷电流概率参数，来自 file_3 固定序列化口径`)),
           dataIndex: `p${i}` as keyof File3Row,
           key: `p${i}`,
           width: 90,
@@ -303,6 +358,7 @@ function File3Table({ batchId, enabled }: { batchId: string; enabled: boolean })
           size="small"
           columns={columns}
           dataSource={parseFile3(text)}
+          sticky
           pagination={false}
           scroll={{ x: 850, y: "55vh" }}
         />
@@ -458,25 +514,45 @@ export function WindDataPrepDetailView(props: {
 
   const turbineColumns = useMemo<TableColumnsType<WindDataPrepTurbineRow>>(
     () => [
-      { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 100 },
       {
-        title: t("经纬度"),
+        title: columnTitle(t("风机编号"), t("风机点位文件中的顺序编号")),
+        dataIndex: "turbine_no",
+        key: "turbine_no",
+        width: 100,
+      },
+      {
+        title: columnTitle(t("经纬度"), t("风机经度、纬度坐标（十进制度），经度在前、纬度在后")),
         key: "coord",
         width: 180,
         render: (_value, record) => `${formatNumber(record.lon, 6)}, ${formatNumber(record.lat, 6)}`,
       },
-      { title: t("cell_i"), dataIndex: "cell_i", key: "cell_i", width: 80 },
-      { title: t("cell_j"), dataIndex: "cell_j", key: "cell_j", width: 80 },
-      { title: t("grid_id"), dataIndex: "grid_id", key: "grid_id", width: 90 },
       {
-        title: t("本格落雷"),
+        title: columnTitle(t("cell_i"), t("风机所在网格的列号（经度方向，从 1 起）")),
+        dataIndex: "cell_i",
+        key: "cell_i",
+        width: 80,
+      },
+      {
+        title: columnTitle(t("cell_j"), t("风机所在网格的行号（纬度方向，从 1 起）")),
+        dataIndex: "cell_j",
+        key: "cell_j",
+        width: 80,
+      },
+      {
+        title: columnTitle(t("grid_id"), t("风机所在网格的编号，由行列号按核心程序口径生成")),
+        dataIndex: "grid_id",
+        key: "grid_id",
+        width: 90,
+      },
+      {
+        title: columnTitle(t("本格落雷"), t("统计年限内落入风机所在网格的有效雷电定位记录条数")),
         dataIndex: "flash_count",
         key: "flash_count",
         width: 100,
         render: (value: number) => <Text strong>{value}</Text>,
       },
       {
-        title: t("东邻格（错位对照）"),
+        title: columnTitle(t("东邻格（错位对照）"), t("风机所在网格东侧相邻网格的落雷次数，用于错位对照；与本格相同显示灰色，不同显示橙色")),
         dataIndex: "flash_count_east",
         key: "flash_count_east",
         width: 140,
@@ -488,16 +564,38 @@ export function WindDataPrepDetailView(props: {
           ),
       },
       {
-        title: t("Nl（次/(格·年)）"),
+        title: columnTitle(t("Nl（次/(格·年)）"), t("本格落雷次数除以统计年限（6 年），即每年每格的平均落雷次数")),
         dataIndex: "nl",
         key: "nl",
         width: 130,
         render: (value: number) => formatNumber(value, 6),
       },
-      { title: t("风机高度"), dataIndex: "height", key: "height", width: 100, render: (v: number | null) => formatNumber(v, 2) },
-      { title: t("叶片长度"), dataIndex: "blade", key: "blade", width: 100, render: (v: number | null) => formatNumber(v, 2) },
-      { title: t("动静状态"), dataIndex: "motion", key: "motion", width: 90 },
-      { title: t("回路号"), dataIndex: "circuit", key: "circuit", width: 80 },
+      {
+        title: columnTitle(t("风机高度"), t("风机轮毂高度，单位米")),
+        dataIndex: "height",
+        key: "height",
+        width: 100,
+        render: (v: number | null) => formatNumber(v, 2),
+      },
+      {
+        title: columnTitle(t("叶片长度"), t("风机叶片长度，单位米")),
+        dataIndex: "blade",
+        key: "blade",
+        width: 100,
+        render: (v: number | null) => formatNumber(v, 2),
+      },
+      {
+        title: columnTitle(t("动静状态"), t("风机动/静状态标识，来自风机点位文件")),
+        dataIndex: "motion",
+        key: "motion",
+        width: 90,
+      },
+      {
+        title: columnTitle(t("回路号"), t("风机所属回路编号，核心程序据此索引回路参数")),
+        dataIndex: "circuit",
+        key: "circuit",
+        width: 80,
+      },
     ],
     [t],
   );
@@ -562,7 +660,13 @@ export function WindDataPrepDetailView(props: {
     key: `file-${file.name}`,
     label: t(file.label),
     children: (
-      <div className="wind-detail-tab-content">
+      <div
+        className={
+          file.name === "file2" || file.name === "file3"
+            ? "wind-detail-tab-content wind-data-prep-table-tab-card"
+            : "wind-detail-tab-content"
+        }
+      >
         {file.name === "p0abc" ? (
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <Button
@@ -617,17 +721,18 @@ export function WindDataPrepDetailView(props: {
       ? [
           {
             key: "turbines",
-            label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
+            label: t("风机明细"),
             children: (
-              <Card size="small">
+              <Card size="small" className="wind-data-prep-table-tab-card">
                 <Table<WindDataPrepTurbineRow>
                   rowKey="seq"
                   size="small"
                   loading={turbineQuery.isLoading}
                   columns={turbineColumns}
                   dataSource={turbineQuery.data?.items ?? []}
+                  sticky
                   pagination={false}
-                  scroll={{ x: 1500 }}
+                  scroll={{ x: 1500, y: "55vh" }}
                 />
               </Card>
             ),
@@ -679,7 +784,7 @@ export function WindDataPrepDetailView(props: {
         ) : null}
 
         <Tabs
-          className="admin-atp-models-detail-tabs wind-detail-tabs"
+          className="admin-atp-models-detail-tabs wind-detail-tabs wind-data-prep-detail-tabs"
           items={tabItems}
           activeKey={activeTab}
           onChange={(key) => setActiveTab(key)}
