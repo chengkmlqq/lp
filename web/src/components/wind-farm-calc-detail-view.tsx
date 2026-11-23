@@ -110,7 +110,7 @@ export function WindFarmCalcDetailView({
   const { t } = useI18n();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState("results");
+  const [activeTab, setActiveTab] = useState("overview");
   const [riskFilter, setRiskFilter] = useState<number | undefined>();
   const [suggestionFilter, setSuggestionFilter] = useState<number | undefined>();
   const [sortBy, setSortBy] = useState("seq");
@@ -219,7 +219,7 @@ export function WindFarmCalcDetailView({
   const completed = detail?.status === "completed";
 
   // 关键指标条：风险 I~IV + 需停运 + 全场停运，6 项一组无孤项；
-  // 原「概览」Tab 只有统计卡，去掉后默认落在逐台结果表，消除下半屏空白。
+  // 全部放进「概览」Tab，顶部不再常驻。
   const metricItems: WindDetailMetricItem[] = [
     ...[1, 2, 3, 4].map((level) => ({
       label: `${t("风险")} ${RISK_LABELS[level]}`,
@@ -249,6 +249,20 @@ export function WindFarmCalcDetailView({
       : null;
 
   const tabItems: NonNullable<TabsProps["items"]> = [
+    {
+      key: "overview",
+      label: t("概览"),
+      children: (
+        <div className="wind-detail-tab-content">
+          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
+          {detail ? (
+            <Card size="small" title={t("基本信息")}>
+              <WindDetailMeta items={metaItems} />
+            </Card>
+          ) : null}
+        </div>
+      ),
+    },
     {
       key: "results",
       label: `${t("逐台结果")} (${resultsQuery.data?.total ?? 0})`,
@@ -362,8 +376,6 @@ export function WindFarmCalcDetailView({
           subline={
             <WindDetailSubline
               items={[
-                <span key="prep">{t("来源批次")} {detail?.prep_batch_id || "-"}</span>,
-                <span key="task">{t("任务 ID")} {detail?.task_id || "-"}</span>,
                 <span key="start">{t("开始时间")} {formatDateTime(detail?.started_at)}</span>,
                 <span key="finish">{t("结束时间")} {formatDateTime(detail?.finished_at)}</span>,
                 detail && (detail.status === "processing" || detail.status === "pending") ? (
@@ -435,10 +447,6 @@ export function WindFarmCalcDetailView({
             description={t("以后端按 V 与 S 重算的风险等级为准，GBK 原文保留在结果表 raw_line 列。")}
           />
         ) : null}
-
-        {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
-
-        {detail ? <WindDetailMeta items={metaItems} /> : null}
 
         <Tabs
           className="admin-atp-models-detail-tabs wind-detail-tabs"
