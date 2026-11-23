@@ -3360,8 +3360,11 @@ export const EN_DICT: Record<string, string> = {
   "纬向网格数 ny": "Grid rows ny",
   "区域参数（来自 file_1）": "Regional parameters (from file_1)",
   "落雷次数（来自 file_4）": "Strike counts (from file_4)",
-  "风机清单（file_2）": "Turbine list (file_2)",
-  "网格编号（file_3）": "Grid IDs (file_3)",
+  "风机清单": "Turbine list",
+  // LP-108 风机明细表头（dataIndex/key 仍为 cell_i / cell_j / grid_id）
+  "风机网格列号": "Turbine grid column",
+  "风机网格行号": "Turbine grid row",
+  "风机网格编号": "Turbine grid ID",
   "雷电流概率参数": "Lightning current probability parameters",
   "极性标志": "Polarity flag",
   "概率": "Probability",

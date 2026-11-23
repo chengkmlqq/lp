@@ -60,8 +60,8 @@ function columnTitle(label: string, tip: string) {
 
 // file_1 / file_4 的内容已并入概览，仅剩三个产物 Tab（file_2 / file_3 / P0.abc）。
 const FILES = [
-  { name: "file2", label: "风机清单（file_2）" },
-  { name: "file3", label: "网格编号（file_3）" },
+  { name: "file2", label: "风机清单" },
+  { name: "file3", label: "网格编号" },
   { name: "p0abc", label: "P0.abc（地形高程）" },
 ];
 
@@ -527,19 +527,19 @@ export function WindDataPrepDetailView(props: {
         render: (_value, record) => `${formatNumber(record.lon, 6)}, ${formatNumber(record.lat, 6)}`,
       },
       {
-        title: columnTitle(t("cell_i"), t("风机所在网格的列号（经度方向，从 1 起）")),
+        title: columnTitle(t("风机网格列号"), t("风机所在网格的列号（经度方向，从 1 起）")),
         dataIndex: "cell_i",
         key: "cell_i",
         width: 80,
       },
       {
-        title: columnTitle(t("cell_j"), t("风机所在网格的行号（纬度方向，从 1 起）")),
+        title: columnTitle(t("风机网格行号"), t("风机所在网格的行号（纬度方向，从 1 起）")),
         dataIndex: "cell_j",
         key: "cell_j",
         width: 80,
       },
       {
-        title: columnTitle(t("grid_id"), t("风机所在网格的编号，由行列号按核心程序口径生成")),
+        title: columnTitle(t("风机网格编号"), t("风机所在网格的编号，由行列号按核心程序口径生成")),
         dataIndex: "grid_id",
         key: "grid_id",
         width: 90,
