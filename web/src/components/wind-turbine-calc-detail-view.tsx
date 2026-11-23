@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   App,
   Button,
   Card,
@@ -401,14 +400,6 @@ export function WindTurbineCalcDetailView({
             />
           </>
         }
-      />
-
-      <Alert
-        className="wind-detail-alert wind-detail-hint-alert"
-        type="warning"
-        showIcon
-        message={t("角度公式外推提示")}
-        description={t("角度击距公式只在 0–90° 范围内拟合，超过 90° 的旋转角按外推计算，结果仅供参考。")}
       />
 
       <Tabs
