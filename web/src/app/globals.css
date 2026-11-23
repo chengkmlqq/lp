@@ -3722,6 +3722,15 @@ body {
   overflow-y: auto;
 }
 
+/* LP-102：网格密度表/风机明细 Tab 的 Table 已自带纵向滚动（sticky + scroll.y），
+   这里只对带 wind-density-table-tab-card 标记的这两个面板关掉外层内容区滚动，
+   避免「整页 + 表格」两条纵向滚动条；概览/密度图 Tab 无该标记，滚动不受影响。
+   antd v6 中每个面板自身即 .ant-tabs-content（激活面板带 -active），故用 :has 命中标记卡片，
+   而不是 v5 的 .ant-tabs-tabpane-active。 */
+.wind-density-detail-pane .wind-density-detail-tabs .ant-tabs-content:has(.wind-density-table-tab-card) {
+  overflow-y: hidden;
+}
+
 /* LP-83：四张预生成图按 2×2 展示，窄屏退化为单列 */
 .wind-density-image-grid {
   display: grid;

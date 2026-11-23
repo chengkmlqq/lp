@@ -487,7 +487,7 @@ export function WindLightningDensityDetailView({
       key: "cells",
       label: t("网格密度表"),
       children: (
-        <Card size="small">
+        <Card size="small" className="wind-density-table-tab-card">
           <Table<WindLightningDensityCellRow>
             rowKey={(record) => `${record.cell_i}-${record.cell_j}`}
             size="small"
@@ -496,7 +496,7 @@ export function WindLightningDensityDetailView({
             loading={cellsQuery.isLoading}
             sticky
             pagination={false}
-            scroll={{ x: 1100, y: "55vh" }}
+            scroll={{ x: 1100, y: "calc(100vh - 400px)" }}
           />
         </Card>
       ),
@@ -505,7 +505,7 @@ export function WindLightningDensityDetailView({
       key: "turbines",
       label: t("风机明细"),
       children: (
-        <Card size="small">
+        <Card size="small" className="wind-density-table-tab-card">
           <Table<WindLightningDensityTurbineRow>
             rowKey={(record) => String(record.seq)}
             size="small"
@@ -514,7 +514,7 @@ export function WindLightningDensityDetailView({
             loading={turbinesQuery.isLoading}
             sticky
             pagination={false}
-            scroll={{ x: 900, y: "55vh" }}
+            scroll={{ x: 900, y: "calc(100vh - 400px)" }}
           />
         </Card>
       ),

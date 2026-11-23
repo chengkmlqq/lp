@@ -473,15 +473,35 @@ export default function WindLightningDensityListPage() {
         dataIndex: "batch_name",
         key: "batch_name",
         width: 240,
-        render: (_value, record) => (
-          <Button
-            type="link"
-            style={{ padding: 0, height: "auto" }}
-            onClick={() => openDetail(record.id, record.batch_name || record.id)}
-          >
-            {record.batch_name || record.id}
-          </Button>
-        ),
+        render: (_value, record) => {
+          const batchName = record.batch_name || record.id;
+          return (
+            <Button
+              type="link"
+              title={batchName}
+              style={{
+                padding: 0,
+                height: "auto",
+                display: "inline-block",
+                maxWidth: "100%",
+                overflow: "hidden",
+                verticalAlign: "middle",
+              }}
+              styles={{
+                content: {
+                  display: "block",
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                },
+              }}
+              onClick={() => openDetail(record.id, batchName)}
+            >
+              {batchName}
+            </Button>
+          );
+        },
       },
       {
         title: t("风电场"),
