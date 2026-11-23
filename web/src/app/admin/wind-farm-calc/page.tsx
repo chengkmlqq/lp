@@ -433,48 +433,66 @@ export default function WindFarmCalcListPage() {
         key: "actions",
         width: 160,
         fixed: "right",
-        render: (_value, record) => (
-          <ModoActionGroup
-            actions={[
-              {
-                key: "detail",
-                label: t("详情"),
-                icon: <EyeOutlined />,
-                onClick: () => openDetail(record.id, record.name || record.id),
-              },
-              {
-                key: "export",
-                label: t("导出 Excel"),
-                icon: <DownloadOutlined />,
-                visible: record.status === "completed",
-                onClick: () =>
-                  void downloadFileWithAuth(
-                    `${API_BASE}/${record.id}/export`,
-                    `${record.name || "wind-farm-calc"}-results.xlsx`,
-                  ),
-              },
-              {
-                key: "cancel",
-                label: t("取消"),
-                icon: <StopOutlined />,
-                danger: true,
-                visible: (record.status === "processing" || record.status === "pending") && canManage,
-                onClick: () => handleCancel(record),
-              },
-              {
-                key: "delete",
-                label: t("删除"),
-                icon: <DeleteOutlined />,
-                danger: true,
-                visible: canManage,
-                onClick: () => handleDelete(record),
-              },
-            ]}
-          />
-        ),
+        render: (_value, record) => {
+          const detailAction = {
+            key: "detail",
+            label: t("详情"),
+            icon: <EyeOutlined />,
+            onClick: () => openDetail(record.id, record.name || record.id),
+          };
+          const exportAction = {
+            key: "export",
+            label: t("导出 Excel"),
+            icon: <DownloadOutlined />,
+            visible: record.status === "completed",
+            onClick: () =>
+              void downloadFileWithAuth(
+                `${API_BASE}/${record.id}/export`,
+                `${record.name || "wind-farm-calc"}-results.xlsx`,
+              ),
+          };
+          const cancelAction = {
+            key: "cancel",
+            label: t("取消"),
+            icon: <StopOutlined />,
+            danger: true,
+            visible: (record.status === "processing" || record.status === "pending") && canManage,
+            onClick: () => handleCancel(record),
+          };
+          const logAction = {
+            key: "log",
+            label: t("运行日志"),
+            icon: <FileTextOutlined />,
+            visible: canReadLogs && !!record.task_id,
+            onClick: () => openLogViewer(record.task_id),
+          };
+          const deleteAction = {
+            key: "delete",
+            label: t("删除"),
+            icon: <DeleteOutlined />,
+            danger: true,
+            visible: canManage,
+            onClick: () => handleDelete(record),
+          };
+          // 与卡片视图保持一致：详情固定第一，失败状态优先把日志平铺为第二个按钮，
+          // 其余动作按既有顺序落入「⋯」下拉（隐藏项由 ModoActionGroup 过滤后再截取）。
+          const preferredKey =
+            record.status === "completed"
+              ? "export"
+              : record.status === "failed"
+                ? "log"
+                : record.status === "processing" || record.status === "pending"
+                  ? "cancel"
+                  : undefined;
+          const rank = (key: string) => (key === "detail" ? 0 : key === preferredKey ? 1 : 2);
+          const actions = [detailAction, exportAction, cancelAction, logAction, deleteAction].sort(
+            (a, b) => rank(a.key) - rank(b.key),
+          );
+          return <ModoActionGroup actions={actions} />;
+        },
       },
     ],
-    [batchNameById, canManage, handleCancel, handleDelete, openDetail, t],
+    [batchNameById, canManage, canReadLogs, handleCancel, handleDelete, openDetail, openLogViewer, t],
   );
 
   const paginationNode = (
