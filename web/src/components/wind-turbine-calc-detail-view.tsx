@@ -11,6 +11,7 @@ import {
   Empty,
   Table,
   Tabs,
+  Tooltip,
   Typography,
   type TableColumnsType,
   type TabsProps,
@@ -20,6 +21,7 @@ import {
   CloseOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  QuestionCircleOutlined,
   ReloadOutlined,
   StopOutlined,
   ThunderboltOutlined,
@@ -68,6 +70,18 @@ function formatDuration(seconds: number | null | undefined): string {
 function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
   return Number(value).toExponential(9);
+}
+
+/** 表头显式渲染灰色问号图标，悬浮显示解释文案；不依赖 antd Table 的 column.tooltip。 */
+function columnTitle(label: string, tip: string) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <Tooltip title={tip}>
+        <QuestionCircleOutlined className="text-gray-400" />
+      </Tooltip>
+    </span>
+  );
 }
 
 /**
@@ -192,10 +206,21 @@ export function WindTurbineCalcDetailView({
 
   const columns = useMemo<TableColumnsType<WindTurbineCalcResultRow>>(
     () => [
-      { title: t("旋转角 θ (deg)"), dataIndex: "theta_deg", key: "theta_deg", width: 160, render: (v: number) => v.toFixed(2) },
-      { title: t("屏蔽失效率"), dataIndex: "failure_rate", key: "failure_rate", render: (v: number) => v.toExponential(12) },
       {
-        title: t("失效率 (%)"),
+        title: columnTitle(t("旋转角 θ (deg)"), t("风轮旋转角度，单位为度（°）")),
+        dataIndex: "theta_deg",
+        key: "theta_deg",
+        width: 160,
+        render: (v: number) => v.toFixed(2),
+      },
+      {
+        title: columnTitle(t("屏蔽失效率"), t("该旋转角度下计算得到的屏蔽失效率")),
+        dataIndex: "failure_rate",
+        key: "failure_rate",
+        render: (v: number) => v.toExponential(12),
+      },
+      {
+        title: columnTitle(t("失效率 (%)"), t("屏蔽失效率换算成百分比（%）")),
         dataIndex: "failure_rate_pct",
         key: "failure_rate_pct",
         render: (v: number) => `${v.toFixed(9)}%`,
@@ -265,6 +290,20 @@ export function WindTurbineCalcDetailView({
       label: t("概览"),
       children: (
         <div className="wind-detail-tab-content">
+          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
+          {detail ? (
+            <Card size="small" title={t("基本信息")}>
+              <WindDetailMeta items={metaItems} />
+            </Card>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "chart",
+      label: t("失效率曲线"),
+      children: (
+        <div className="wind-detail-tab-content">
           {chartQuery.data ? (
             <Card size="small" title={t("失效率曲线")}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -280,15 +319,17 @@ export function WindTurbineCalcDetailView({
       ? [
           {
             key: "angles",
-            label: `${t("逐角度结果")} (${detail.angle_count})`,
+            label: t("逐角度结果"),
             children: (
-              <Card size="small" title={t("逐角度结果")}>
+              <Card size="small" className="wind-turbine-table-tab-card" title={t("逐角度结果")}>
                 <Table<WindTurbineCalcResultRow>
                   rowKey="theta_deg"
                   columns={columns}
                   dataSource={resultsQuery.data?.items ?? []}
                   loading={resultsQuery.isLoading}
+                  sticky
                   pagination={false}
+                  scroll={{ x: "max-content", y: "55vh" }}
                   locale={{ emptyText: <Empty description={t("暂无结果")} /> }}
                 />
               </Card>
@@ -370,12 +411,8 @@ export function WindTurbineCalcDetailView({
         description={t("角度击距公式只在 0–90° 范围内拟合，超过 90° 的旋转角按外推计算，结果仅供参考。")}
       />
 
-      {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
-
-      {detail ? <WindDetailMeta items={metaItems} /> : null}
-
       <Tabs
-        className="admin-atp-models-detail-tabs wind-detail-tabs"
+        className="admin-atp-models-detail-tabs wind-detail-tabs wind-turbine-detail-tabs"
         items={tabItems}
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key)}
