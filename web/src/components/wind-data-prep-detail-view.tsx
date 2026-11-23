@@ -231,7 +231,6 @@ function File2Table({
   const query = useFileText(batchId, "file2", enabled);
   const columns = useMemo<TableColumnsType<File2Row>>(
     () => [
-      { title: t("序号"), dataIndex: "seq", key: "seq", width: 64 },
       { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 100 },
       {
         title: t("经度"),
@@ -459,7 +458,6 @@ export function WindDataPrepDetailView(props: {
 
   const turbineColumns = useMemo<TableColumnsType<WindDataPrepTurbineRow>>(
     () => [
-      { title: t("序号"), dataIndex: "seq", key: "seq", width: 70 },
       { title: t("风机编号"), dataIndex: "turbine_no", key: "turbine_no", width: 100 },
       {
         title: t("经纬度"),
@@ -565,16 +563,18 @@ export function WindDataPrepDetailView(props: {
     label: t(file.label),
     children: (
       <div className="wind-detail-tab-content">
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            disabled={!completed}
-            onClick={() => void handleDownload(file.name, file.label)}
-          >
-            {t("下载")}
-          </Button>
-        </div>
+        {file.name === "p0abc" ? (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              disabled={!completed}
+              onClick={() => void handleDownload(file.name, file.label)}
+            >
+              {t("下载")}
+            </Button>
+          </div>
+        ) : null}
         {file.name === "p0abc" ? (
           <P0abcHeaderView header={detail?.p0abc_header} />
         ) : file.name === "file2" ? (
