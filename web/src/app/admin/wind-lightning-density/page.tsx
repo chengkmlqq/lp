@@ -45,7 +45,6 @@ import {
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -57,12 +56,11 @@ import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
+import { getJson, readApiError } from "@/lib/api";
 import { generateWindLightningTemplate, generateWindTurbineTemplate } from "@/lib/excel-import-utils";
 import type {
   WindLightningDensityBatchListResponse,
   WindLightningDensityBatchSummary,
-  WindLightningDensityExportType,
   WindLightningDensityPreviewResponse,
 } from "@/types/wind-lightning-density";
 
@@ -165,9 +163,8 @@ export default function WindLightningDensityListPage() {
   const { message, modal } = App.useApp();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
-  const canManage = hasPermission("wind_lightning_density.manage");
   // 删除口径对齐线路管理写操作（菜单可见即可操作）：有页面访问权限即可删除，
-  // 接口层同步放开 read||manage，避免"按钮可见但接口 403"。其余操作仍由 canManage 控制。
+  // 接口层同步放开 read||manage，避免"按钮可见但接口 403"。
   const canDelete = canRead;
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logOpen, setLogOpen] = useState(false);
@@ -447,27 +444,6 @@ export default function WindLightningDensityListPage() {
     }
   }, [buildCreateFormData, fetchWithAuth, form, message, refreshList, syncDraftName, t]);
 
-  const handleRecompute = useCallback(
-    (record: WindLightningDensityBatchSummary) => {
-      modal.confirm({
-        title: t("重算该批次？"),
-        content: t("将使用原始上传文件重新解析并覆盖当前网格与风机明细。"),
-        okText: t("重算"),
-        cancelText: t("取消"),
-        onOk: async () => {
-          const response = await fetchWithAuth(`${API_BASE}/${record.id}/recompute`, { method: "POST" });
-          if (!response.ok) {
-            message.error(await readApiError(response));
-            return;
-          }
-          message.success(t("已提交重算任务"));
-          refreshList();
-        },
-      });
-    },
-    [fetchWithAuth, message, modal, refreshList, t],
-  );
-
   const handleDelete = useCallback(
     (record: WindLightningDensityBatchSummary) => {
       modal.confirm({
@@ -490,20 +466,6 @@ export default function WindLightningDensityListPage() {
     [fetchWithAuth, message, modal, refreshList, t],
   );
 
-  const handleExport = useCallback(
-    async (record: WindLightningDensityBatchSummary, exportType: WindLightningDensityExportType) => {
-      try {
-        await downloadFileWithAuth(
-          `${API_BASE}/${record.id}/export?type=${exportType}`,
-          `${record.batch_name || "wind-lightning-density"}-${exportType}.xlsx`,
-        );
-      } catch (error) {
-        message.error((error as Error).message);
-      }
-    },
-    [message],
-  );
-
   const columns = useMemo<TableColumnsType<WindLightningDensityBatchSummary>>(
     () => [
       {
@@ -512,19 +474,21 @@ export default function WindLightningDensityListPage() {
         key: "batch_name",
         width: 240,
         render: (_value, record) => (
-          <Space direction="vertical" size={0}>
-            <Button
-              type="link"
-              style={{ padding: 0, height: "auto" }}
-              onClick={() => openDetail(record.id, record.batch_name || record.id)}
-            >
-              {record.batch_name || record.id}
-            </Button>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.wind_farm_name || "-"}
-            </Text>
-          </Space>
+          <Button
+            type="link"
+            style={{ padding: 0, height: "auto" }}
+            onClick={() => openDetail(record.id, record.batch_name || record.id)}
+          >
+            {record.batch_name || record.id}
+          </Button>
         ),
+      },
+      {
+        title: t("风电场"),
+        dataIndex: "wind_farm_name",
+        key: "wind_farm_name",
+        width: 160,
+        render: (_value, record) => record.wind_farm_name || "-",
       },
       {
         title: t("风机数"),
@@ -591,22 +555,6 @@ export default function WindLightningDensityListPage() {
         },
       },
       {
-        title: t("进度"),
-        dataIndex: "progress",
-        key: "progress",
-        width: 160,
-        render: (value: number, record) => {
-          const percent = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-          if (record.status === "pending" || record.status === "processing") {
-            return <Progress percent={percent} size="small" />;
-          }
-          if (record.status === "completed") {
-            return <Text type="success">{percent > 0 ? `${percent}%` : "100%"}</Text>;
-          }
-          return <Text type="secondary">—</Text>;
-        },
-      },
-      {
         title: t("创建时间"),
         dataIndex: "create_date",
         key: "create_date",
@@ -636,20 +584,6 @@ export default function WindLightningDensityListPage() {
                   openLogViewer(record.task_id, t("任务执行日志"), record.batch_name || record.id),
               },
               {
-                key: "recompute",
-                label: t("重算"),
-                icon: <ReloadOutlined />,
-                visible: canManage,
-                onClick: () => handleRecompute(record),
-              },
-              {
-                key: "export",
-                label: t("导出"),
-                icon: <DownloadOutlined />,
-                visible: record.status === "completed",
-                onClick: () => void handleExport(record, "all"),
-              },
-              {
                 key: "delete",
                 label: t("删除"),
                 icon: <DeleteOutlined />,
@@ -662,7 +596,7 @@ export default function WindLightningDensityListPage() {
         ),
       },
     ],
-    [canDelete, canManage, canReadLogs, openLogViewer, handleDelete, handleExport, handleRecompute, openDetail, t],
+    [canDelete, canReadLogs, openLogViewer, handleDelete, openDetail, t],
   );
 
   const paginationNode = (
@@ -761,40 +695,6 @@ export default function WindLightningDensityListPage() {
               <Dropdown
                 menu={{
                   items: [
-                    ...(canManage
-                      ? [
-                          {
-                            key: "recompute",
-                            label: (
-                              <Space size={4}>
-                                <ReloadOutlined />
-                                <span>{t("重算")}</span>
-                              </Space>
-                            ),
-                            onClick: (event) => {
-                              event.domEvent.stopPropagation();
-                              handleRecompute(record);
-                            },
-                          },
-                        ]
-                      : []),
-                    ...(record.status === "completed"
-                      ? [
-                          {
-                            key: "export",
-                            label: (
-                              <Space size={4}>
-                                <DownloadOutlined />
-                                <span>{t("导出")}</span>
-                              </Space>
-                            ),
-                            onClick: (event) => {
-                              event.domEvent.stopPropagation();
-                              void handleExport(record, "all");
-                            },
-                          },
-                        ]
-                      : []),
                     ...(canDelete
                       ? [
                           {

@@ -485,7 +485,7 @@ export function WindLightningDensityDetailView({
     },
     {
       key: "cells",
-      label: `${t("网格密度表")} (${cellsQuery.data?.total ?? 0})`,
+      label: t("网格密度表"),
       children: (
         <Card size="small">
           <Table<WindLightningDensityCellRow>
@@ -503,7 +503,7 @@ export function WindLightningDensityDetailView({
     },
     {
       key: "turbines",
-      label: `${t("风机明细")} (${detail?.turbine_count ?? 0})`,
+      label: t("风机明细"),
       children: (
         <Card size="small">
           <Table<WindLightningDensityTurbineRow>
