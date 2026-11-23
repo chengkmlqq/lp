@@ -12,11 +12,9 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   App,
   Button,
   Card,
-  Descriptions,
   Dropdown,
   Empty,
   Form,
@@ -39,7 +37,6 @@ import {
 } from "antd";
 import {
   CloudUploadOutlined,
-  CopyOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
@@ -47,7 +44,6 @@ import {
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 
@@ -64,10 +60,9 @@ import type {
   WindDataPrepBatchListResponse,
   WindDataPrepBatchSummary,
   WindDataPrepImportResponse,
-  WindDataPrepPreviewResponse,
 } from "@/types/wind-data-prep";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 const API_BASE = "/api/v1/wind-data-prep";
 const LIST_TAB_KEY = "list";
@@ -126,9 +121,8 @@ export default function WindDataPrepListPage() {
   const { message, modal } = App.useApp();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("wind_data_prep.read") || hasPermission("wind_data_prep.manage");
-  const canManage = hasPermission("wind_data_prep.manage");
   // 删除口径对齐线路管理写操作（菜单可见即可操作）：有页面访问权限即可删除，
-  // 接口层同步放开 read||manage，避免"按钮可见但接口 403"。其余操作仍由 canManage 控制。
+  // 接口层同步放开 read||manage，避免"按钮可见但接口 403"。
   const canDelete = canRead;
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logOpen, setLogOpen] = useState(false);
@@ -164,8 +158,6 @@ export default function WindDataPrepListPage() {
   const [turbineFiles, setTurbineFiles] = useState<UploadFile[]>([]);
   const [lightningFiles, setLightningFiles] = useState<UploadFile[]>([]);
   const [terrainFiles, setTerrainFiles] = useState<UploadFile[]>([]);
-  const [preview, setPreview] = useState<WindDataPrepPreviewResponse | null>(null);
-  const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -291,36 +283,18 @@ export default function WindDataPrepListPage() {
     [closeDetailTab, detailTabsData],
   );
 
-  const openWizard = useCallback(
-    (record?: WindDataPrepBatchSummary) => {
-      setPreview(null);
-      setTurbineFiles([]);
-      setLightningFiles([]);
-      setTerrainFiles([]);
-      form.resetFields();
-      form.setFieldsValue(
-        record
-          ? {
-              name: `${record.name || "风电场数据准备"}（副本）`,
-              wind_farm_name: record.wind_farm_name ?? undefined,
-              start_lon: record.start_lon,
-              start_lat: record.start_lat,
-              grid_nx: record.grid_nx,
-              grid_ny: record.grid_ny,
-              grid_step_deg: record.grid_step_deg,
-              risk_base_s: record.risk_base_s,
-              terrain_mode: record.terrain_mode as "zero" | "tif",
-            }
-          : {
-              grid_step_deg: 0.01,
-              risk_base_s: 1,
-              terrain_mode: "zero",
-            },
-      );
-      setWizardOpen(true);
-    },
-    [form],
-  );
+  const openWizard = useCallback(() => {
+    setTurbineFiles([]);
+    setLightningFiles([]);
+    setTerrainFiles([]);
+    form.resetFields();
+    form.setFieldsValue({
+      grid_step_deg: 0.01,
+      risk_base_s: 1,
+      terrain_mode: "zero",
+    });
+    setWizardOpen(true);
+  }, [form]);
 
   const buildFormData = useCallback(
     async (values: WizardValues, requireFiles: boolean): Promise<FormData | null> => {
@@ -374,22 +348,6 @@ export default function WindDataPrepListPage() {
     [lightningFiles, message, t, terrainFiles, turbineFiles],
   );
 
-  const handlePreview = useCallback(async () => {
-    const values = await form.validateFields();
-    const formData = await buildFormData(values, true);
-    if (!formData) return;
-    setPreviewing(true);
-    try {
-      const response = await fetchWithAuth(`${API_BASE}/preview`, { method: "POST", body: formData });
-      if (!response.ok) throw new Error(await readApiError(response));
-      setPreview((await response.json()) as WindDataPrepPreviewResponse);
-    } catch (error) {
-      message.error((error as Error).message);
-    } finally {
-      setPreviewing(false);
-    }
-  }, [buildFormData, fetchWithAuth, form, message]);
-
   const handleSubmit = useCallback(async () => {
     const values = await form.validateFields();
     const formData = await buildFormData(values, true);
@@ -401,7 +359,6 @@ export default function WindDataPrepListPage() {
       const result = (await response.json()) as WindDataPrepImportResponse;
       message.success(t("已提交数据准备任务，正在后台生成五文件"));
       setWizardOpen(false);
-      setPreview(null);
       setTurbineFiles([]);
       setLightningFiles([]);
       setTerrainFiles([]);
@@ -432,27 +389,6 @@ export default function WindDataPrepListPage() {
       message.error(t("雷电定位数据模板下载失败"));
     }
   }, [message, t]);
-
-  const handleRecompute = useCallback(
-    (record: WindDataPrepBatchSummary) => {
-      modal.confirm({
-        title: t("重跑该批次？"),
-        content: t("将使用原始上传文件按当前参数重新生成五个文件。"),
-        okText: t("重跑"),
-        cancelText: t("取消"),
-        onOk: async () => {
-          const response = await fetchWithAuth(`${API_BASE}/${record.id}/recompute`, { method: "POST" });
-          if (!response.ok) {
-            message.error(await readApiError(response));
-            return;
-          }
-          message.success(t("已提交重跑任务"));
-          refreshList();
-        },
-      });
-    },
-    [fetchWithAuth, message, modal, refreshList, t],
-  );
 
   const handleDelete = useCallback(
     (record: WindDataPrepBatchSummary) => {
@@ -607,20 +543,6 @@ export default function WindDataPrepListPage() {
                 onClick: () => handleDownloadPackage(record),
               },
               {
-                key: "recompute",
-                label: t("重跑"),
-                icon: <ReloadOutlined />,
-                visible: canManage,
-                onClick: () => handleRecompute(record),
-              },
-              {
-                key: "copy",
-                label: t("复制参数"),
-                icon: <CopyOutlined />,
-                visible: canManage,
-                onClick: () => openWizard(record),
-              },
-              {
                 key: "delete",
                 label: t("删除"),
                 icon: <DeleteOutlined />,
@@ -633,7 +555,7 @@ export default function WindDataPrepListPage() {
         ),
       },
     ],
-    [canDelete, canManage, canReadLogs, openLogViewer, handleDelete, handleDownloadPackage, handleRecompute, openDetail, openWizard, t],
+    [canDelete, canReadLogs, openLogViewer, handleDelete, handleDownloadPackage, openDetail, t],
   );
 
   const paginationNode = (
@@ -749,40 +671,6 @@ export default function WindDataPrepListPage() {
                             onClick: (event) => {
                               event.domEvent.stopPropagation();
                               handleDownloadPackage(record);
-                            },
-                          },
-                        ]
-                      : []),
-                    ...(canManage
-                      ? [
-                          {
-                            key: "recompute",
-                            label: (
-                              <Space size={4}>
-                                <ReloadOutlined />
-                                <span>{t("重跑")}</span>
-                              </Space>
-                            ),
-                            onClick: (event) => {
-                              event.domEvent.stopPropagation();
-                              handleRecompute(record);
-                            },
-                          },
-                        ]
-                      : []),
-                    ...(canManage
-                      ? [
-                          {
-                            key: "copy",
-                            label: (
-                              <Space size={4}>
-                                <CopyOutlined />
-                                <span>{t("复制参数")}</span>
-                              </Space>
-                            ),
-                            onClick: (event) => {
-                              event.domEvent.stopPropagation();
-                              openWizard(record);
                             },
                           },
                         ]
@@ -955,43 +843,9 @@ export default function WindDataPrepListPage() {
                 <p className="ant-upload-hint">{t("不做重采样；分辨率不符或未覆盖研究区域将直接阻断")}</p>
               </Upload.Dragger>
             </Form.Item>
-          ) : (
-            <Alert className="fl-span-2" type="info" showIcon message={t("默认零高程：按研究区域生成全 0 的 P0.abc。")} description={t("高程必须为 0–65535 的整数（P0.abc 用无符号 2 字节）。")} />
-          )}
+          ) : null}
         </div>
       </Form>
-
-      {preview ? (
-        <Card size="small" title={t("提交前校验报告")} style={{ marginTop: 12 }}>
-          <Descriptions column={2} size="small" bordered>
-            <Descriptions.Item label={t("风机数")}>{preview.turbine_count}</Descriptions.Item>
-            <Descriptions.Item label={t("范围内落雷")}>{preview.lightning_in_scope}</Descriptions.Item>
-            <Descriptions.Item label={t("非零网格数")}>{preview.nonzero_cell_count}</Descriptions.Item>
-            <Descriptions.Item label={t("数据时间跨度")}>{preview.time_span}</Descriptions.Item>
-            <Descriptions.Item label={t("Nl 最大/最小/均值")} span={2}>
-              {formatNumber(preview.nl_max)} / {formatNumber(preview.nl_min)} / {formatNumber(preview.nl_avg)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t("P0.abc 头部")} span={2}>
-              {JSON.stringify(preview.p0abc_header)}
-            </Descriptions.Item>
-          </Descriptions>
-          <Paragraph style={{ marginTop: 10, marginBottom: 0 }}>
-            {t("五文件行数 / 字节数")}：{JSON.stringify(preview.file_lines)} / {JSON.stringify(preview.file_sizes)}
-          </Paragraph>
-          {preview.report.checks.filter((item) => item.level !== "info").length ? (
-            <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
-              {preview.report.checks.map((item, index) => (
-                <li key={`${item.code}-${index}`}>
-                  <Tag color={item.passed ? (item.level === "warning" ? "orange" : "green") : "red"}>
-                    {item.passed ? (item.level === "warning" ? t("警告") : t("通过")) : t("错误阻断")}
-                  </Tag>
-                  {t(item.label)}：{t(item.message)}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </Card>
-      ) : null}
     </>
   );
 
@@ -1117,17 +971,11 @@ export default function WindDataPrepListPage() {
         width={760}
         open={wizardOpen}
         destroyOnHidden
-        onCancel={() => {
-          setWizardOpen(false);
-          setPreview(null);
-        }}
+        onCancel={() => setWizardOpen(false)}
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
           <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
             <Button onClick={() => setWizardOpen(false)}>{t("取消")}</Button>
-            <Button onClick={() => void handlePreview()} loading={previewing}>
-              {t("解析预览")}
-            </Button>
             <Button type="primary" onClick={() => void handleSubmit()} loading={submitting}>
               {t("提交并生成")}
             </Button>
