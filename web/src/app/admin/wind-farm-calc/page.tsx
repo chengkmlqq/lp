@@ -13,11 +13,9 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   App,
   Button,
   Card,
-  Descriptions,
   Dropdown,
   Empty,
   Form,
@@ -58,7 +56,6 @@ import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type {
   WindFarmCalcCreateResponse,
-  WindFarmCalcEngineInfo,
   WindFarmCalcJobListResponse,
   WindFarmCalcJobSummary,
   WindFarmCalcPrepBatchOptions,
@@ -108,13 +105,6 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${secs}s`;
 }
 
-function formatBytes(size: number | null | undefined): string {
-  if (!size && size !== 0) return "-";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
 const WIND_TABLE_MIN_SCROLL_Y = 180;
 const WIND_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const WIND_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -152,7 +142,6 @@ export default function WindFarmCalcListPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm<{ prep_batch_id: string; name: string }>();
-  const [selectedBatchId, setSelectedBatchId] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => setPage(1), [keyword, statusFilter]);
@@ -226,15 +215,6 @@ export default function WindFarmCalcListPage() {
   }, [viewMode, records.length, updateTableScrollHeight]);
 
 
-  // 引擎预检：exe 由 API 侧检查共享卷，Wine 由执行 worker 探测（首次探测可能短暂「探测中」）。
-  const engineQuery = useQuery({
-    queryKey: ["wind-farm-calc", "engine"],
-    enabled: createOpen && Boolean(user) && canRead,
-    queryFn: () => getJson<WindFarmCalcEngineInfo>(`${API_BASE}/engine`),
-    refetchInterval: (queryResult) =>
-      queryResult.state.data?.worker_probe_pending ? 3000 : false,
-  });
-
   const batchesQuery = useQuery({
     queryKey: ["wind-farm-calc", "prep-batches"],
     // 列表/卡片需要用批次 ID 回查批次名称，故页面可见时即加载，而非仅在新建弹窗打开时加载。
@@ -301,15 +281,9 @@ export default function WindFarmCalcListPage() {
   );
 
   const openCreate = useCallback(() => {
-    setSelectedBatchId(undefined);
     form.resetFields();
     setCreateOpen(true);
   }, [form]);
-
-  const selectedBatch = useMemo(
-    () => batchesQuery.data?.items.find((item) => item.id === selectedBatchId),
-    [batchesQuery.data, selectedBatchId],
-  );
 
   const handleSubmit = useCallback(async () => {
     const values = await form.validateFields();
@@ -694,109 +668,25 @@ export default function WindFarmCalcListPage() {
     );
   };
 
-  const engine = engineQuery.data;
-  const engineReady = Boolean(engine?.engine_exists && engine.worker_online && engine.worker_wine_available);
-  const engineAlertType: "success" | "warning" | "error" = engineReady
-    ? "success"
-    : engine && !engine.engine_exists
-      ? "error"
-      : "warning";
-  const engineAlertTitle = !engine
-    ? t("无法获取引擎信息")
-    : !engine.engine_exists
-      ? t("引擎未部署")
-      : !engine.worker_online
-        ? t("执行 worker 离线")
-        : engine.worker_wine_available
-          ? t("引擎已就绪")
-          : engine.worker_probe_pending
-            ? t("正在探测执行 worker 的 Wine")
-            : t("引擎文件已就绪，执行 worker 的 Wine 不可用");
-  const engineWineText = !engine
-    ? "-"
-    : engine.worker_wine_available
-      ? engine.worker_wine_version || t("可用")
-      : !engine.worker_online
-        ? t("未知（执行 worker 离线）")
-        : engine.worker_probe_pending
-          ? t("探测中…")
-          : t("不可用");
-  const engineDescription = engine ? (
-    <div className="flex flex-col gap-1">
-      <div>{t("路径")}: {engine.resolved || engine.configured}</div>
-      <div>{t("大小")}: {formatBytes(engine.size)} · MD5: {engine.md5 || "-"}</div>
-      <div>
-        {t("执行 worker")}: {engine.worker_name || "-"}（{engine.worker_online ? t("在线") : t("离线")}） · Wine: {engineWineText}
-      </div>
-      {engine.engine_exists ? (
-        <div>{t("Wine 由 wind_farm_calc 队列的执行 worker 提供，API 容器不参与计算。")}</div>
-      ) : null}
-      {!engine.worker_wine_available && engine.worker_wine_error ? (
-        <div>{t("Wine 错误")}: {engine.worker_wine_error}</div>
-      ) : null}
-      {engine.worker_checked_at ? (
-        <div>{t("探测时间")}: {formatDateTime(engine.worker_checked_at)}</div>
-      ) : null}
-    </div>
-  ) : null;
-
   const createContent = (
     <Form<{ prep_batch_id: string; name: string }> form={form} layout="vertical">
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message={t("输入只来自已完成的「风电场数据准备」批次")}
-        description={t("不开放直接上传 file_1~4 / P0.abc，以绕开数据校验。")}
-      />
-      <div className="fl-create-form-grid">
-        <Form.Item
-          label={t("数据准备批次")}
-          name="prep_batch_id"
-          rules={[{ required: true, message: t("请选择数据准备批次") }]}
-        >
-          <Select
-            loading={batchesQuery.isLoading}
-            placeholder={t("请选择已完成的批次")}
-            onChange={(value) => setSelectedBatchId(value)}
-            options={(batchesQuery.data?.items ?? []).map((item) => ({
-              value: item.id,
-              label: `${item.name || item.id}（${item.turbine_count} 台 · ${item.grid_nx}×${item.grid_ny}）`,
-            }))}
-          />
-        </Form.Item>
-        <Form.Item label={t("任务名称")} name="name">
-          <Input maxLength={128} placeholder={t("留空时使用批次名称")} />
-        </Form.Item>
-
-        <div className="fl-span-2">
-          {selectedBatch ? (
-            <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
-              <Descriptions.Item label={t("风机数")}>{selectedBatch.turbine_count}</Descriptions.Item>
-              <Descriptions.Item label={t("网格")}>{selectedBatch.grid_nx} × {selectedBatch.grid_ny}</Descriptions.Item>
-              <Descriptions.Item label={t("风险基准 S")}>{selectedBatch.risk_base_s}</Descriptions.Item>
-              <Descriptions.Item label={t("五文件齐全度")}>{selectedBatch.files_ready}/5</Descriptions.Item>
-            </Descriptions>
-          ) : (
-            <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-              {t("选择数据准备批次后显示批次摘要")}
-            </Text>
-          )}
-        </div>
-
-        <div className="fl-span-2">
-          {engineQuery.isLoading && !engine ? (
-            <Alert type="warning" showIcon message={t("正在获取引擎信息…")} />
-          ) : (
-            <Alert
-              type={engineAlertType}
-              showIcon
-              message={engineAlertTitle}
-              description={engineDescription}
-            />
-          )}
-        </div>
-      </div>
+      <Form.Item
+        label={t("数据准备批次")}
+        name="prep_batch_id"
+        rules={[{ required: true, message: t("请选择数据准备批次") }]}
+      >
+        <Select
+          loading={batchesQuery.isLoading}
+          placeholder={t("请选择已完成的批次")}
+          options={(batchesQuery.data?.items ?? []).map((item) => ({
+            value: item.id,
+            label: `${item.name || item.id}（${item.turbine_count} 台 · ${item.grid_nx}×${item.grid_ny}）`,
+          }))}
+        />
+      </Form.Item>
+      <Form.Item label={t("任务名称")} name="name">
+        <Input maxLength={128} placeholder={t("留空时使用批次名称")} />
+      </Form.Item>
     </Form>
   );
 
@@ -912,7 +802,7 @@ export default function WindFarmCalcListPage() {
 
       <Modal
         title={t("新建风电场计算")}
-        width={760}
+        width={520}
         open={createOpen}
         destroyOnHidden
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
