@@ -60,12 +60,17 @@ def export_platform_data(
     current_user: CurrentUser = Depends(require_any_permission("platform_data.manage")),
     db: Session = Depends(get_db),
 ) -> PlatformDataJobSummary:
-    """导出基础数据包：勾选类别 + 筛选条件，立即返回 job_id（异步打包，不阻塞）。"""
+    """导出基础数据包或 ATP 目录树：筛选条件 + 布局，立即返回 job_id（异步打包）。"""
     bad = [c for c in payload.categories if c not in PLATFORM_DATA_CATEGORIES]
     if bad:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"不支持的类别: {bad}（可选：{PLATFORM_DATA_CATEGORIES}）",
+        )
+    if payload.layout == "atp_tree" and "atp_models" not in payload.categories:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ATP 目录树布局只导出 ATP 模型，请勾选 atp_models 类别",
         )
     try:
         job = svc.init_export(
@@ -73,6 +78,7 @@ def export_platform_data(
             categories=payload.categories,
             filters=payload.filters,
             actor_user_id=current_user.user.id,
+            layout=payload.layout,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

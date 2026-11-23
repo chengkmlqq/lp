@@ -20,6 +20,7 @@ from ..models.param_category import SystemParamCategory
 from ..models.platform_data_job import PlatformDataJob
 from ..models.system_param import SystemParam
 from ..schemas.platform_data import PLATFORM_DATA_CATEGORIES
+from .atp_export_layout import ATP_TREE_LAYOUT
 from .atp_asset_service import (
     _parent_virtual_path,
     _write_archive_to_storage,
@@ -33,6 +34,8 @@ from .storage_driver import StorageDriverError, build_storage_driver, normalize_
 # 包结构 schema 版本：导入时校验，不兼容直接 failed。
 BUNDLE_SCHEMA_VERSION = "1"
 SUPPORTED_SCHEMA_VERSIONS = {"1"}
+# ATP 目录树包不供平台回导，独立 schema 版本可在导入时给出明确错误。
+ATP_TREE_BUNDLE_SCHEMA_VERSION = "atp-tree/1"
 
 PLATFORM_DATA_SOURCE_SITE = os.environ.get("LP_PLATFORM_SITE", "lp-platform")
 
@@ -201,9 +204,7 @@ def build_export_bundle(
         try:
             atp_bytes, _filename = export_assets_zip(
                 db,
-                voltage_level=filters.get("voltage_level"),
-                tower_type=filters.get("tower_type"),
-                scene_type=filters.get("scene"),
+                **_atp_filters(filters),
             )
         except HTTPException as exc:
             if exc.status_code == status.HTTP_404_NOT_FOUND:
@@ -239,6 +240,50 @@ def build_export_bundle(
     return buf.getvalue(), manifest
 
 
+def _atp_filters(filters: dict[str, Any]) -> dict[str, Any]:
+    """平台导出筛选条件映射到 export_assets_zip 的维度参数。"""
+    return {
+        "voltage_level": filters.get("voltage_level"),
+        "tower_type": filters.get("tower_type"),
+        "scene_type": filters.get("scene"),
+        "arrester_config": filters.get("arrester_config"),
+        "shield_wire": filters.get("shield_wire"),
+    }
+
+
+def build_atp_tree_bundle(
+    db: Session,
+    *,
+    filters: dict[str, Any] | None = None,
+) -> tuple[bytes, dict[str, Any]]:
+    """生成纯 ATP 目录树 zip：解压到 D:\\ATP 即可，不套 atp_models/ 前缀。
+
+    只导出激活版本和原始模型文件（.atp/.dat/.acp），不生成 .pch/.lib。
+    """
+    filters = filters or {}
+    content, _filename = export_assets_zip(
+        db,
+        **_atp_filters(filters),
+        layout=ATP_TREE_LAYOUT,
+    )
+    with zipfile.ZipFile(io.BytesIO(content)) as inner:
+        atp_manifest = json.loads(inner.read("_lp_export_manifest.json"))
+
+    manifest: dict[str, Any] = {
+        "bundle_schema_version": ATP_TREE_BUNDLE_SCHEMA_VERSION,
+        "bundle_version": "1.0",
+        "generated_at": _utcnow().isoformat(),
+        "source_site": PLATFORM_DATA_SOURCE_SITE,
+        "filters": filters,
+        "categories": ["atp_models"],
+        "layout": ATP_TREE_LAYOUT,
+        "counts": {"atp_models": atp_manifest.get("total_assets", 0)},
+        "exported_files": atp_manifest.get("exported_files", 0),
+        "checksums": {"atp_models": _sha256(content)},
+    }
+    return content, manifest
+
+
 # ─────────────────────────────────────────────────────────────
 # 任务创建与入队
 # ─────────────────────────────────────────────────────────────
@@ -248,11 +293,12 @@ def init_export(
     categories: list[str],
     filters: dict[str, Any] | None,
     actor_user_id: str | None,
+    layout: str = "bundle",
 ) -> PlatformDataJob:
     job = PlatformDataJob(
         kind="export",
         status="pending",
-        request_payload_json={"categories": categories, "filters": filters or {}},
+        request_payload_json={"categories": categories, "filters": filters or {}, "layout": layout},
         create_user=actor_user_id,
         create_date=_utcnow(),
     )
@@ -330,11 +376,14 @@ def run_export_job(db: Session, job_id: str) -> None:
     db.commit()
     try:
         req = job.request_payload_json or {}
-        content, manifest = build_export_bundle(
-            db,
-            categories=req.get("categories", []),
-            filters=req.get("filters", {}),
-        )
+        if req.get("layout") == ATP_TREE_LAYOUT:
+            content, manifest = build_atp_tree_bundle(db, filters=req.get("filters", {}))
+        else:
+            content, manifest = build_export_bundle(
+                db,
+                categories=req.get("categories", []),
+                filters=req.get("filters", {}),
+            )
         mount = _resolve_default_mount(db)
         path, file_id = _store_artifact(
             db,

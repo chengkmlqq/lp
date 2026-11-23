@@ -55,6 +55,13 @@ from ..schemas.atp_asset import (
     AtpModelSummary,
     AtpTagOptionsResponse,
 )
+from .atp_export_layout import (
+    ATP_TREE_LAYOUT,
+    LEGACY_LAYOUT,
+    SUPPORTED_EXPORT_LAYOUTS,
+    atp_tree_relative_dir,
+    safe_member_path,
+)
 from .legacy_atp_adapter import build_legacy_atp_status_checks
 from .push_service import publish_topic
 from .atp_model_format import FORMAT_LABELS as _MODEL_FORMAT_LABELS
@@ -2787,20 +2794,29 @@ def export_assets_zip(
     voltage_level: str | list[str] | None = None,
     tower_type: str | list[str] | None = None,
     scene_type: str | list[str] | None = None,
+    arrester_config: str | list[str] | None = None,
+    shield_wire: str | list[str] | None = None,
+    layout: str = LEGACY_LAYOUT,
 ) -> tuple[bytes, str]:
-    """按维度过滤批量导出 ATP 模型：每个模型一个目录 + manifest.json 清单，打 zip。
+    """按维度过滤批量导出 ATP 模型，返回 ``(zip 字节, 文件名)``。
 
-    - 仅导出 status=enabled 的模型（草稿/停用不下包）。
-    - 每个维度既接单值字符串（历史导出 job 复用）也接字符串数组（下拉多选）：
-      单值会包成单元素列表；同一维度内多值为 OR（IN），不同维度之间为 AND。
-      空白/空列表视为不过滤该维度。
-    - zip 内目录名 ``{code}_{version}``，防同 code 多版本覆盖。
-    - manifest.json 记录每个模型的元数据与文件数，便于离线核对；存储缺失的模型
-      记入 ``missing``，不中断整体导出。
-    - 模型文件合计体量小（单个模型几十 KB 量级），整包内存打包可接受；加 512MB
-      兜底上限防异常巨型数据把容器打爆。
-    - 返回 ``(zip 字节, 文件名)``。
+    两种布局：
+
+    * ``legacy``（默认）：``{code}_{version}/`` + 根 ``manifest.json``，供 LP 平台互导；
+    * ``atp_tree``：直接按 D 盘 ATP 目录结构打包：
+      ``{电压}/{塔型}/{场景}/{措施}/模型文件``，只取激活版本，只导出已入库的
+      ``.atp/.dat/.acp``（不生成也不导出 ``.pch/.lib`` 运行产物）。
+      清单文件改名 ``_lp_export_manifest.json``，避免混进 C# 使用的模型目录。
+
+    维度过滤：每维既接单值字符串也接字符串数组；同维 OR、跨维 AND，空白=不过滤。
+    仅导出 status=enabled 的模型；存储缺失写入 manifest 的 ``missing``，不中断整包。
+    512MB 上限兜底，防止异常巨型数据把容器打爆。
     """
+    if layout not in SUPPORTED_EXPORT_LAYOUTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的 ATP 导出布局: {layout!r}（可选：{sorted(SUPPORTED_EXPORT_LAYOUTS)}）",
+        )
 
     def _normalize(value: str | list[str] | None) -> list[str]:
         """单值/多值统一为去空白、去空、去重的字符串列表。"""
@@ -2819,36 +2835,104 @@ def export_assets_zip(
     normalized_voltage = _normalize(voltage_level)
     normalized_tower = _normalize(tower_type)
     normalized_scene = _normalize(scene_type)
-    stmt = select(AtpAssetVersion).where(AtpAssetVersion.status == "enabled").order_by(
-        AtpAssetVersion.voltage_level.asc(), AtpAssetVersion.code.asc(), AtpAssetVersion.version.asc()
-    )
+    normalized_arrester = _normalize(arrester_config)
+    normalized_shield = _normalize(shield_wire)
+
+    stmt = select(AtpAssetVersion).where(AtpAssetVersion.status == "enabled")
+    if layout == ATP_TREE_LAYOUT:
+        # ATP 树没有 version 层目录，只导出每个维度组合当前生效的版本。
+        stmt = stmt.where(AtpAssetVersion.is_active.is_(True))
     if normalized_voltage:
         stmt = stmt.where(AtpAssetVersion.voltage_level.in_(normalized_voltage))
     if normalized_tower:
         stmt = stmt.where(AtpAssetVersion.tower_type.in_(normalized_tower))
     if normalized_scene:
         stmt = stmt.where(AtpAssetVersion.scene_type.in_(normalized_scene))
+    if normalized_arrester:
+        stmt = stmt.where(AtpAssetVersion.arrester_config.in_(normalized_arrester))
+    if normalized_shield:
+        stmt = stmt.where(AtpAssetVersion.shield_wire.in_(normalized_shield))
+    stmt = stmt.order_by(
+        AtpAssetVersion.voltage_level.asc(), AtpAssetVersion.code.asc(), AtpAssetVersion.version.asc()
+    )
     assets = db.execute(stmt).scalars().all()
     if not assets:
+        no_match_hint = "（ATP 目录树仅导出激活版本）" if layout == ATP_TREE_LAYOUT else ""
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="没有符合筛选条件的已启用模型，无法打包下载",
+            detail=f"没有符合筛选条件的已启用模型，无法打包下载{no_match_hint}",
         )
 
-    # 同 storage_root_path 的多版本资产按挂载去重（同一目录只打包一次，避免重复内容）
-    seen_roots: dict[tuple[str, str], list[AtpAssetVersion]] = {}
-    for asset in assets:
-        mount_code, root_path = _resolve_asset_file_location(db, asset)
-        seen_roots.setdefault((mount_code, root_path), []).append(asset)
+    # 每个待写目录对应一组资产：legacy 按存储根去重，atp_tree 按目标目录择一。
+    export_groups: list[dict[str, Any]] = []
+    if layout == LEGACY_LAYOUT:
+        seen_roots: dict[tuple[str, str], list[AtpAssetVersion]] = {}
+        for asset in assets:
+            mount_code, root_path = _resolve_asset_file_location(db, asset)
+            seen_roots.setdefault((mount_code, root_path), []).append(asset)
+        for (mount_code, root_path), group in seen_roots.items():
+            primary = group[0]
+            export_groups.append(
+                {
+                    "mount_code": mount_code,
+                    "root_path": root_path,
+                    "group": group,
+                    "dir_name": f"{primary.code}_{primary.version}",
+                }
+            )
+        conflicts: list[dict[str, str]] = []
+    else:
+        seen_dirs: dict[str, AtpAssetVersion] = {}
+        conflicts = []
+        for asset in assets:
+            try:
+                dir_name = atp_tree_relative_dir(asset)
+            except ValueError as exc:
+                conflicts.append(
+                    {
+                        "code": asset.code,
+                        "version": asset.version,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if dir_name in seen_dirs:
+                previous = seen_dirs[dir_name]
+                conflicts.append(
+                    {
+                        "code": asset.code,
+                        "version": asset.version,
+                        "directory": dir_name,
+                        "reason": f"目标目录已被 {previous.code}@{previous.version} 占用，已跳过",
+                    }
+                )
+                continue
+            seen_dirs[dir_name] = asset
+            mount_code, root_path = _resolve_asset_file_location(db, asset)
+            export_groups.append(
+                {
+                    "mount_code": mount_code,
+                    "root_path": root_path,
+                    "group": [asset],
+                    "dir_name": dir_name,
+                }
+            )
 
     buf = io.BytesIO()
     manifest_entries: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
     total_bytes = 0
+    total_files = 0
     EXPORT_MAX_BYTES = 512 * 1024 * 1024
+    # 运行产物不随 ATP 目录树导出：.pch/.lib 由 ATP/wine 侧现场生成。
+    skipped_suffixes = {".pch", ".lib"} if layout == ATP_TREE_LAYOUT else set()
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
-        for (mount_code, root_path), group in seen_roots.items():
+        for group_info in export_groups:
+            mount_code = group_info["mount_code"]
+            root_path = group_info["root_path"]
+            group: list[AtpAssetVersion] = group_info["group"]
+            dir_name: str = group_info["dir_name"]
             try:
                 mount = _resolve_mount(db, mount_code)
                 driver = _build_driver_or_400(mount)
@@ -2863,10 +2947,21 @@ def export_assets_zip(
                 continue
 
             primary = group[0]
-            dir_name = f"{primary.code}_{primary.version}"
             file_count = 0
             for item in tree.files:
                 relative = _relative_from_root(root_path, item.path)
+                if PurePosixPath(relative).suffix.lower() in skipped_suffixes:
+                    continue
+                if layout == ATP_TREE_LAYOUT:
+                    try:
+                        archive_name = safe_member_path(dir_name, relative)
+                    except ValueError as exc:
+                        missing.append(
+                            {"code": primary.code, "version": primary.version, "reason": f"{relative}: {exc}"}
+                        )
+                        continue
+                else:
+                    archive_name = f"{dir_name}/{relative}"
                 try:
                     content = driver.read_file(item.path).content
                 except (StoragePathNotFoundError, StorageDriverError) as exc:
@@ -2878,8 +2973,9 @@ def export_assets_zip(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="导出数据量超过 512MB 上限，请缩小筛选范围（按电压等级/塔形）后重试",
                     )
-                archive.writestr(f"{dir_name}/{relative}", content)
+                archive.writestr(archive_name, content)
                 file_count += 1
+                total_files += 1
 
             for asset in group:
                 manifest_entries.append(
@@ -2894,8 +2990,7 @@ def export_assets_zip(
                         "shield_wire": asset.shield_wire,
                         "model_format": asset.model_format,
                         "storage_dir": dir_name,
-                        # 多版本资产共用同一存储目录（同 code 同 root_path）时标记 shared，
-                        # 文件内容在 storage_dir 下只有一份
+                        # legacy 多版本共用存储目录时标记 shared；atp_tree 只有激活版本。
                         "shared": len(group) > 1,
                         "file_count": file_count,
                         "is_active": asset.is_active,
@@ -2903,21 +2998,32 @@ def export_assets_zip(
                     }
                 )
 
+        if layout == ATP_TREE_LAYOUT:
+            manifest_name = "_lp_export_manifest.json"
+            manifest_schema = "lp.atp.export/atp-tree/1"
+        else:
+            manifest_name = "manifest.json"
+            manifest_schema = "lp.atp.asset-export/1"
         archive.writestr(
-            "manifest.json",
+            manifest_name,
             json.dumps(
                 {
-                    "schema": "lp.atp.asset-export/1",
+                    "schema": manifest_schema,
+                    "layout": layout,
                     "exported_at": utcnow().isoformat(),
                     "filters": {
                         "voltage_level": normalized_voltage or None,
                         "tower_type": normalized_tower or None,
                         "scene_type": normalized_scene or None,
+                        "arrester_config": normalized_arrester or None,
+                        "shield_wire": normalized_shield or None,
                     },
                     "total_assets": len(assets),
-                    "exported_dirs": len(seen_roots),
+                    "exported_dirs": len(export_groups),
+                    "exported_files": total_files,
                     "assets": manifest_entries,
                     "missing": missing,
+                    "conflicts": conflicts,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -2926,7 +3032,10 @@ def export_assets_zip(
 
     stamp = utcnow().strftime("%Y%m%d")
     scope = ("-".join(normalized_voltage)) if normalized_voltage else "all"
-    filename = f"atp-models-vl{scope}-{stamp}.zip"
+    if layout == ATP_TREE_LAYOUT:
+        filename = f"atp-tree-vl{scope}-{stamp}.zip"
+    else:
+        filename = f"atp-models-vl{scope}-{stamp}.zip"
     return buf.getvalue(), filename
 
 

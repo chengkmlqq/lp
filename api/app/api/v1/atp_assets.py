@@ -342,17 +342,33 @@ def get_atp_asset_overview_tree_endpoint(
 def export_atp_assets_endpoint(
     voltage_level: str | None = Query(default=None, description="按电压等级过滤（如 110）；不传 = 全部启用模型"),
     tower_type: str | None = Query(default=None, description="按塔形过滤，可选"),
+    scene_type: str | None = Query(default=None, description="按场景过滤（fanji/raoji1/...），可选"),
+    arrester_config: str | None = Query(default=None, description="按避雷器措施过滤（noM/M123/...），可选"),
+    shield_wire: str | None = Query(default=None, description="按避雷线配置过滤（with/single），可选"),
+    layout: str = Query(
+        default="legacy",
+        pattern="^(legacy|atp_tree)$",
+        description="legacy=LP 互导包；atp_tree=D 盘 ATP 目录树（激活版本，直接供 C# 使用）",
+    ),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
     db: Session = Depends(get_db),
 ):
-    """按电压等级/塔形打包下载已启用模型（zip：每模型一个目录 + manifest.json）。"""
+    """批量打包下载 ATP 模型，支持 LP 互导包与 D 盘 ATP 目录树两种布局。"""
     import io
 
     from fastapi.responses import StreamingResponse
 
     from ...services.atp_asset_service import export_assets_zip
 
-    data, filename = export_assets_zip(db, voltage_level=voltage_level, tower_type=tower_type)
+    data, filename = export_assets_zip(
+        db,
+        voltage_level=voltage_level,
+        tower_type=tower_type,
+        scene_type=scene_type,
+        arrester_config=arrester_config,
+        shield_wire=shield_wire,
+        layout=layout,
+    )
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/zip",

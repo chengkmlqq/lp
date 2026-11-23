@@ -30,6 +30,7 @@ from app.models.platform_data_job import PlatformDataJob
 from app.models.system_param import SystemParam
 from app.services import platform_data_service as svc
 from app.services.atp_asset_service import _publish_change as _atp_publish_change  # noqa: E402
+from app.services.atp_asset_service import export_assets_zip  # noqa: E402
 
 
 def _new_session() -> tuple[Session, any]:
@@ -107,6 +108,9 @@ def _seed_asset(db: Session) -> None:
         status="enabled",
         voltage_level="500kV",
         tower_type="cathead",
+        scene_type="fanji",
+        arrester_config="noM",
+        shield_wire="with",
         version="v1",
         is_active=True,
         is_published=True,
@@ -175,8 +179,12 @@ def _export_atp_manifest(db: Session, filters: dict) -> dict:
         return json.loads(z.read("atp_models/manifest.json"))
 
 
-def _run_export(db: Session, categories, filters=None) -> PlatformDataJob:
-    job = PlatformDataJob(kind="export", status="pending", request_payload_json={"categories": categories, "filters": filters or {}})
+def _run_export(db: Session, categories, filters=None, layout="bundle") -> PlatformDataJob:
+    job = PlatformDataJob(
+        kind="export",
+        status="pending",
+        request_payload_json={"categories": categories, "filters": filters or {}, "layout": layout},
+    )
     db.add(job)
     db.commit()
     try:
@@ -223,6 +231,98 @@ def test_export_bundle_structure():
     assert manifest["counts"]["dimensions"] == 3  # 2 类型 + 1 项
     assert manifest["counts"]["system_params"] == 1
     assert manifest["counts"]["atp_models"] == 1
+    db.close()
+
+
+def test_export_atp_tree_bundle_layout():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_business(db)
+    _seed_asset(db)
+
+    content, manifest = svc.build_atp_tree_bundle(db, filters={"voltage_level": "500kV"})
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        names = set(z.namelist())
+        assert "500kV/cathead/fanji/noM/work.atp" in names
+        assert "_lp_export_manifest.json" in names
+        assert "manifest.json" not in names
+        assert "atp_models/" not in names
+        tree_manifest = json.loads(z.read("_lp_export_manifest.json"))
+
+    assert manifest["bundle_schema_version"] == svc.ATP_TREE_BUNDLE_SCHEMA_VERSION
+    assert manifest["layout"] == "atp_tree"
+    assert manifest["counts"]["atp_models"] == 1
+    assert tree_manifest["assets"][0]["storage_dir"] == "500kV/cathead/fanji/noM"
+    db.close()
+
+
+def test_atp_tree_export_uses_active_version_and_skips_runtime_artifacts():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_asset(db)
+
+    inactive = AtpAssetVersion(
+        code="ATP66-test-inactive",
+        version_code="ATP66-test-inactive-v2",
+        name="非激活模型",
+        description="非激活模型",
+        status="enabled",
+        voltage_level="500kV",
+        tower_type="cathead",
+        scene_type="fanji",
+        arrester_config="noM",
+        shield_wire="with",
+        version="v2",
+        is_active=False,
+        is_published=False,
+        model_format="legacy",
+        storage_mount_code="main",
+        storage_root_path="/atp/ATP66-test-v2",
+        create_user="seed",
+        update_user="seed",
+    )
+    db.add(inactive)
+    db.commit()
+
+    mount = db.scalar(select(FileStorageMount).where(FileStorageMount.code == "main"))
+    from app.services.storage_driver import build_storage_driver
+
+    driver = build_storage_driver(mount.backend, mount)
+    for name, content in {
+        "work.atp": b"TEST ATP CONTENT",
+        "long.pch": b"SHOULD NOT EXPORT",
+        "dummy.lib": b"SHOULD NOT EXPORT",
+    }.items():
+        driver.write_file(f"/atp/ATP66-test-v1/{name}", content=content, content_type="text/plain")
+    driver.ensure_directory("/atp/ATP66-test-v2")
+    driver.write_file("/atp/ATP66-test-v2/work.atp", content=b"INACTIVE", content_type="text/plain")
+
+    content, filename = export_assets_zip(db, layout="atp_tree")
+    assert filename.startswith("atp-tree-")
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        names = set(z.namelist())
+        assert "500kV/cathead/fanji/noM/work.atp" in names
+        assert z.read("500kV/cathead/fanji/noM/work.atp") == b"TEST ATP CONTENT"
+        assert not any(name.endswith(".pch") or name.endswith(".lib") for name in names)
+        manifest = json.loads(z.read("_lp_export_manifest.json"))
+    assert manifest["total_assets"] == 1
+    assert manifest["assets"][0]["version"] == "v1"
+    db.close()
+
+
+def test_export_job_with_atp_tree_layout():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_business(db)
+    _seed_asset(db)
+
+    job = _run_export(db, ["atp_models"], layout="atp_tree")
+    assert job.status == "success"
+    filename, content, _mime = svc.download_job_artifact(db, job.id)
+    assert filename.endswith(".zip")
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        assert "500kV/cathead/fanji/noM/work.atp" in z.namelist()
+    assert job.manifest_json["layout"] == "atp_tree"
     db.close()
 
 

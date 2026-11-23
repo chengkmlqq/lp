@@ -81,6 +81,7 @@ export default function PlatformDataExportPage() {
 
   // ── 导出区 ────────────────────────────────────────────────────────
   const [exportCategories, setExportCategories] = useState<string[]>([]);
+  const [exportLayout, setExportLayout] = useState<"bundle" | "atp_tree">("bundle");
   const [filterVoltage, setFilterVoltage] = useState<string[]>([]);
   const [filterTower, setFilterTower] = useState<string[]>([]);
   const [filterScene, setFilterScene] = useState<string[]>([]);
@@ -225,12 +226,13 @@ export default function PlatformDataExportPage() {
       if (filterTower.length) filters.tower_type = filterTower;
       if (filterScene.length) filters.scene = filterScene;
     }
+    const effectiveLayout = atpModelsSelected ? exportLayout : "bundle";
     setExportLoading(true);
     try {
       const response = await fetchWithAuth(`/api/v1/admin/platform-data/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: exportCategories, filters }),
+        body: JSON.stringify({ categories: exportCategories, filters, layout: effectiveLayout }),
       });
       if (!response.ok) throw new Error(await readApiError(response));
       message.success(t("已创建导出任务，正在打包…"));
@@ -409,6 +411,17 @@ export default function PlatformDataExportPage() {
             </Form.Item>
             {atpModelsSelected ? (
               <>
+                <Form.Item label={t("ATP 格式")} style={{ marginBottom: 0 }}>
+                  <Select
+                    style={{ width: 210 }}
+                    value={exportLayout}
+                    onChange={(value) => setExportLayout(value as "bundle" | "atp_tree")}
+                    options={[
+                      { value: "bundle", label: t("平台数据包") },
+                      { value: "atp_tree", label: t("ATP 目录树（C#）") },
+                    ]}
+                  />
+                </Form.Item>
                 <Form.Item label={t("电压")} style={{ marginBottom: 0 }}>
                   <Select
                     mode="multiple"
@@ -459,6 +472,11 @@ export default function PlatformDataExportPage() {
               </Button>
             </Form.Item>
           </Form>
+          {atpModelsSelected && exportLayout === "atp_tree" ? (
+            <div style={{ color: "var(--gray-9)", fontSize: 12, marginTop: 8 }}>
+              {t("ATP 目录树按 电压/塔型/场景/措施 导出激活版本；解压到 D:\\ATP 后可直接供 C# 程序使用。")}
+            </div>
+          ) : null}
         </div>
       </Card>
 
