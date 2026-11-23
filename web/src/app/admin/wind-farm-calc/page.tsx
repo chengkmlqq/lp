@@ -237,9 +237,19 @@ export default function WindFarmCalcListPage() {
 
   const batchesQuery = useQuery({
     queryKey: ["wind-farm-calc", "prep-batches"],
-    enabled: createOpen && Boolean(user) && canRead,
+    // 列表/卡片需要用批次 ID 回查批次名称，故页面可见时即加载，而非仅在新建弹窗打开时加载。
+    enabled: Boolean(user) && canRead,
     queryFn: () => getJson<WindFarmCalcPrepBatchOptions>(`${API_BASE}/prep-batches`),
   });
+
+  // prep_batch_id → 批次名称，口径与新建表单 Select 的 label 一致；批次已删除时回退为原 ID。
+  const batchNameById = useMemo(() => {
+    const nameById = new Map<string, string>();
+    for (const item of batchesQuery.data?.items ?? []) {
+      nameById.set(item.id, item.name || item.id);
+    }
+    return nameById;
+  }, [batchesQuery.data]);
 
   const refreshList = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["wind-farm-calc"] });
@@ -388,7 +398,7 @@ export default function WindFarmCalcListPage() {
               {record.name || record.id}
             </Button>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {t("来源批次")}: {record.prep_batch_id.slice(0, 12)}…
+              {t("数据准备批次")}: {batchNameById.get(record.prep_batch_id) ?? record.prep_batch_id}
             </Text>
           </Space>
         ),
@@ -490,7 +500,7 @@ export default function WindFarmCalcListPage() {
         ),
       },
     ],
-    [canManage, handleCancel, handleDelete, openDetail, t],
+    [batchNameById, canManage, handleCancel, handleDelete, openDetail, t],
   );
 
   const paginationNode = (
@@ -624,7 +634,7 @@ export default function WindFarmCalcListPage() {
 
           <div className="flex flex-col gap-1 px-4 py-3">
             <Text type="secondary" className="text-xs truncate">
-              {t("来源批次")}：{record.prep_batch_id.slice(0, 12)}…
+              {t("数据准备批次")}：{batchNameById.get(record.prep_batch_id) ?? record.prep_batch_id}
             </Text>
             <Text type="secondary" className="text-xs">
               {t("风机数")}：{record.turbine_count}
