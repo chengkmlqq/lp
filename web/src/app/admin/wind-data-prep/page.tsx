@@ -527,7 +527,7 @@ export default function WindDataPrepListPage() {
               },
               {
                 key: "package",
-                label: t("下载 zip"),
+                label: t("下载"),
                 icon: <DownloadOutlined />,
                 visible: record.status === "completed",
                 onClick: () => handleDownloadPackage(record),
@@ -655,7 +655,7 @@ export default function WindDataPrepListPage() {
                             label: (
                               <Space size={4}>
                                 <DownloadOutlined />
-                                <span>{t("下载 zip")}</span>
+                                {t("下载")}
                               </Space>
                             ),
                             onClick: (event) => {
