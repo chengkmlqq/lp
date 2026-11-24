@@ -894,9 +894,6 @@ export default function WindLightningDensityListPage() {
         footer={
           <Space style={{ display: "flex", justifyContent: "flex-end" }}>
             <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
-            <Button onClick={handlePreview} loading={previewing}>
-              {t("解析预览")}
-            </Button>
             <Button type="primary" onClick={handleSubmit} loading={submitting}>
               {t("提交统计")}
             </Button>
