@@ -97,13 +97,7 @@ function formatNumber(value: number | null | undefined, digits = 5): string {
  * 独立路由页与列表页的动态详情标签共用此组件，避免复制详情页逻辑；
  * 顶部「引擎 MD5」等状态字段保持不变。
  */
-export function WindFarmCalcDetailView({
-  jobId,
-}: {
-  jobId: string;
-  // 保留 prop 以兼容列表页 Tab 调用；关闭入口已随「更多」菜单一并移除。
-  onClose?: () => void;
-}) {
+export function WindFarmCalcDetailView({ jobId }: { jobId: string }) {
   const { user } = useAuth();
   const { t } = useI18n();
 

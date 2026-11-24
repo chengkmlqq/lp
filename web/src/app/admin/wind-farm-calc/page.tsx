@@ -275,9 +275,9 @@ export default function WindFarmCalcListPage() {
           </Tooltip>
         ),
         closable: true,
-        children: <WindFarmCalcDetailView jobId={tab.key} onClose={() => closeDetailTab(tab.key)} />,
+        children: <WindFarmCalcDetailView jobId={tab.key} />,
       })),
-    [closeDetailTab, detailTabsData],
+    [detailTabsData],
   );
 
   const openCreate = useCallback(() => {
