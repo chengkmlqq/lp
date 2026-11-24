@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -263,9 +264,9 @@ export default function WindTurbineCalcListPage() {
           </Tooltip>
         ),
         closable: true,
-        children: <WindTurbineCalcDetailView jobId={tab.key} onClose={() => closeDetailTab(tab.key)} />,
+        children: <WindTurbineCalcDetailView jobId={tab.key} />,
       })),
-    [closeDetailTab, detailTabsData],
+    [detailTabsData],
   );
 
   const openCreate = useCallback(() => {
@@ -465,7 +466,7 @@ export default function WindTurbineCalcListPage() {
                 ...(canReadLogs && record.task_id
                   ? [{
                       key: "log",
-                      label: t("运行日志"),
+                      label: t("日志"),
                       icon: <FileTextOutlined />,
                       onClick: () => openLogViewer(record.task_id, label),
                     }]
@@ -520,7 +521,41 @@ export default function WindTurbineCalcListPage() {
     const meta = STATUS_META[record.status] ?? STATUS_META.pending;
     const active = record.status === "processing" || record.status === "pending";
     const title = record.name || t("未命名任务");
-    const extraActions: MenuProps["items"] = [
+    const taskId = record.task_id;
+    const canLog = canReadLogs && Boolean(taskId);
+
+    // 卡片操作最多平铺两个图标按钮：详情固定第一，第二位按状态取最相关动作，
+    // 其余收进「更多」下拉（参考风电场计算 / 线路管理卡片范式）。
+    type CardAction = {
+      key: string;
+      label: string;
+      icon: ReactNode;
+      danger?: boolean;
+      onClick: () => void;
+    };
+    const candidateActions: CardAction[] = [
+      {
+        key: "detail",
+        label: t("详情"),
+        icon: <EyeOutlined />,
+        onClick: () => openDetail(record.id, title),
+      },
+      ...(canLog && taskId
+        ? [
+            {
+              key: "log",
+              label: t("运行日志"),
+              icon: <FileTextOutlined />,
+              onClick: () => openLogViewer(taskId, title),
+            },
+          ]
+        : []),
+      {
+        key: "export",
+        label: t("导出 CSV"),
+        icon: <DownloadOutlined />,
+        onClick: () => handleExportCsv(record),
+      },
       ...(active && canManage
         ? [
             {
@@ -528,10 +563,7 @@ export default function WindTurbineCalcListPage() {
               label: t("取消"),
               icon: <StopOutlined />,
               danger: true,
-              onClick: (info: { domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
-                info.domEvent.stopPropagation();
-                handleCancel(record);
-              },
+              onClick: () => handleCancel(record),
             },
           ]
         : []),
@@ -542,14 +574,34 @@ export default function WindTurbineCalcListPage() {
               label: t("删除"),
               icon: <DeleteOutlined />,
               danger: true,
-              onClick: (info: { domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
-                info.domEvent.stopPropagation();
-                handleDelete(record);
-              },
+              onClick: () => handleDelete(record),
             },
           ]
         : []),
     ];
+    const preferredKey =
+      record.status === "failed"
+        ? "log"
+        : record.status === "completed"
+          ? "export"
+          : active
+            ? "cancel"
+            : undefined;
+    const rank = (key: string) => (key === "detail" ? 0 : key === preferredKey ? 1 : 2);
+    const actions = [...candidateActions].sort((a, b) => rank(a.key) - rank(b.key));
+    const primaryActions = actions.slice(0, 2);
+    const overflowActions = actions.slice(2);
+    const overflowMenuItems: MenuProps["items"] = overflowActions.map((action) => ({
+      key: action.key,
+      label: action.label,
+      icon: action.icon,
+      danger: action.danger,
+      onClick: (info) => {
+        info.domEvent?.stopPropagation();
+        action.onClick();
+      },
+    }));
+
     return (
       <Card
         key={record.id}
@@ -588,43 +640,22 @@ export default function WindTurbineCalcListPage() {
           <div className="admin-lightning-distribution-event-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
             {active ? <Progress percent={record.progress} size="small" className="flex-1 max-w-40" /> : <div />}
             <Space size="small" className="flex-wrap">
-              <Tooltip title={t("详情")}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openDetail(record.id, title);
-                  }}
-                />
-              </Tooltip>
-              {canReadLogs && record.task_id ? (
-                <Tooltip title={t("运行日志")}>
+              {primaryActions.map((action) => (
+                <Tooltip key={action.key} title={action.label}>
                   <Button
                     type="text"
                     size="small"
-                    icon={<FileTextOutlined />}
+                    danger={action.danger}
+                    icon={action.icon}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openLogViewer(record.task_id, title);
+                      action.onClick();
                     }}
                   />
                 </Tooltip>
-              ) : null}
-              <Tooltip title={t("导出 CSV")}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<DownloadOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleExportCsv(record);
-                  }}
-                />
-              </Tooltip>
-              {extraActions.length > 0 ? (
-                <Dropdown menu={{ items: extraActions }} trigger={["click"]}>
+              ))}
+              {overflowActions.length > 0 ? (
+                <Dropdown menu={{ items: overflowMenuItems }} trigger={["click"]}>
                   <Tooltip title={t("更多操作")}>
                     <Button
                       type="text"

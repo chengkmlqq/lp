@@ -1,44 +1,36 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
   Button,
   Card,
+  Descriptions,
   Empty,
   Table,
   Tabs,
   Tooltip,
   Typography,
+  type DescriptionsProps,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
 import {
-  ArrowLeftOutlined,
-  CloseOutlined,
-  DeleteOutlined,
   DownloadOutlined,
   QuestionCircleOutlined,
   ReloadOutlined,
-  StopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import {
   WindDetailHero,
-  WindDetailMeta,
-  WindDetailMetricStrip,
-  WindDetailMoreActions,
   WindDetailPaginationFooter,
   WindDetailSubline,
-  type WindDetailMetaItem,
-  type WindDetailMetricItem,
   type WindDetailPaginationConfig,
 } from "@/components/wind-detail-layout";
-import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
+import { downloadFileWithAuth, getJson } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type {
   WindTurbineCalcJobDetail,
@@ -87,19 +79,11 @@ function columnTitle(label: string, tip: string) {
  * 单风机计算详情视图。
  * 独立路由页与列表页的动态详情标签共用此组件，避免复制详情页逻辑。
  */
-export function WindTurbineCalcDetailView({
-  jobId,
-  onClose,
-}: {
-  jobId: string;
-  onClose?: () => void;
-}) {
-  const { message, modal } = App.useApp();
-  const { user, fetchWithAuth, hasPermission } = useAuth();
+export function WindTurbineCalcDetailView({ jobId }: { jobId: string }) {
+  const { message } = App.useApp();
+  const { user, fetchWithAuth } = useAuth();
   const { t } = useI18n();
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const canManage = hasPermission("wind_turbine_calc.manage");
 
   const [activeTab, setActiveTab] = useState("overview");
   const [page, setPage] = useState(1);
@@ -154,54 +138,13 @@ export function WindTurbineCalcDetailView({
     void queryClient.invalidateQueries({ queryKey: ["wind-turbine-calc"] });
   }, [queryClient]);
 
-  const handleExport = useCallback(
-    async (type: "csv" | "all") => {
-      try {
-        await downloadFileWithAuth(`${API_BASE}/${jobId}/export?type=${type}`, `wind-turbine-${jobId}.${type === "csv" ? "csv" : "zip"}`);
-      } catch (error) {
-        message.error((error as Error).message);
-      }
-    },
-    [jobId, message],
-  );
-
-  const handleCancel = useCallback(() => {
-    modal.confirm({
-      title: t("取消该计算任务？"),
-      content: t("取消会真正终止 MATLAB Runtime 进程组。"),
-      okText: t("取消任务"),
-      okButtonProps: { danger: true },
-      cancelText: t("返回"),
-      onOk: async () => {
-        const response = await fetchWithAuth(`${API_BASE}/${jobId}/cancel`, { method: "POST" });
-        if (!response.ok) {
-          message.error(await readApiError(response));
-          return;
-        }
-        message.success(t("已发送取消请求"));
-        refresh();
-      },
-    });
-  }, [fetchWithAuth, jobId, message, modal, refresh, t]);
-
-  const handleDelete = useCallback(() => {
-    modal.confirm({
-      title: t("删除该计算任务？"),
-      okText: t("删除"),
-      okButtonProps: { danger: true },
-      cancelText: t("返回"),
-      onOk: async () => {
-        const response = await fetchWithAuth(`${API_BASE}/${jobId}`, { method: "DELETE" });
-        if (!response.ok) {
-          message.error(await readApiError(response));
-          return;
-        }
-        message.success(t("已删除"));
-        refresh();
-        onClose?.();
-      },
-    });
-  }, [fetchWithAuth, jobId, message, modal, refresh, onClose, t]);
+  const handleExport = useCallback(async () => {
+    try {
+      await downloadFileWithAuth(`${API_BASE}/${jobId}/export?type=all`, `wind-turbine-${jobId}.zip`);
+    } catch (error) {
+      message.error((error as Error).message);
+    }
+  }, [jobId, message]);
 
   const columns = useMemo<TableColumnsType<WindTurbineCalcResultRow>>(
     () => [
@@ -229,41 +172,69 @@ export function WindTurbineCalcDetailView({
   );
 
   const completedAngles = detail ? Math.round((detail.progress / 100) * detail.angle_count) : 0;
-  const running = detail?.status === "processing" || detail?.status === "pending";
   const engineVersion = detail?.engine_version_tag || detail?.engine_version_hash?.slice(0, 12);
 
-  // 状态/阶段/进度/耗时/时间已在 Hero（chip + 副行），属性网格不再重复。
-  const metaItems: WindDetailMetaItem[] = [
-    { label: t("轮毂高度 h"), value: detail?.hub_height != null ? `${detail.hub_height} m` : "-" },
-    { label: t("叶片长度 R"), value: detail?.blade_length != null ? `${detail.blade_length} m` : "-" },
-    { label: t("起始雷电流 Ic"), value: detail?.start_current != null ? `${detail.start_current} kA` : "-" },
-    { label: t("接闪器径向位置"), value: detail?.receptor_radii?.join(", ") || "-" },
-    { label: t("旋转角列表"), value: detail?.angle_list?.join(", ") || "-" },
-    {
-      label: t("引擎版本"),
-      value: engineVersion
-        ? `${engineVersion}${detail?.runtime_version ? ` (${detail.runtime_version})` : ""}`
-        : "-",
-    },
-    ...(detail?.error_message
-      ? [{ label: t("错误信息"), span: 2 as const, value: <Text type="danger">{detail.error_message}</Text> }]
-      : []),
-  ];
-
-  // 关键指标条：Tab 内原 3 张统计卡上移，对应角度作为后缀保留，不再一处信息三处展示。
-  const metricItems: WindDetailMetricItem[] = [
-    { label: t("平均失效率"), value: formatRate(detail?.mean_failure_rate) },
-    {
-      label: t("最小失效率"),
-      value: formatRate(detail?.min_failure_rate),
-      suffix: `${t("对应角度")} ${detail?.min_failure_rate_theta ?? "-"}`,
-    },
-    {
-      label: t("最大失效率"),
-      value: formatRate(detail?.max_failure_rate),
-      suffix: `${t("对应角度")} ${detail?.max_failure_rate_theta ?? "-"}`,
-    },
-  ];
+  // 基本信息统一汇入带边框的 key-value 表格（参考地闪密度详情页概览范式），
+  // 原基本字段与三个失效率指标并列展示，失效率数值沿用 formatRate。
+  const overviewItems: DescriptionsProps["items"] = detail
+    ? [
+        {
+          key: "hub_height",
+          label: t("轮毂高度 h"),
+          children: detail.hub_height != null ? `${detail.hub_height} m` : "-",
+        },
+        {
+          key: "blade_length",
+          label: t("叶片长度 R"),
+          children: detail.blade_length != null ? `${detail.blade_length} m` : "-",
+        },
+        {
+          key: "start_current",
+          label: t("起始雷电流 Ic"),
+          children: detail.start_current != null ? `${detail.start_current} kA` : "-",
+        },
+        { key: "receptor_radii", label: t("接闪器径向位置"), children: detail.receptor_radii?.join(", ") || "-" },
+        { key: "angle_list", label: t("旋转角列表"), children: detail.angle_list?.join(", ") || "-" },
+        {
+          key: "engine_version",
+          label: t("引擎版本"),
+          children: engineVersion
+            ? `${engineVersion}${detail.runtime_version ? ` (${detail.runtime_version})` : ""}`
+            : "-",
+        },
+        { key: "mean_failure_rate", label: t("平均失效率"), children: formatRate(detail.mean_failure_rate) },
+        {
+          key: "min_failure_rate",
+          label: t("最小失效率"),
+          children: (
+            <>
+              {formatRate(detail.min_failure_rate)}
+              <span className="wind-detail-metric-suffix">{t("对应角度")} {detail.min_failure_rate_theta ?? "-"}</span>
+            </>
+          ),
+        },
+        {
+          key: "max_failure_rate",
+          label: t("最大失效率"),
+          children: (
+            <>
+              {formatRate(detail.max_failure_rate)}
+              <span className="wind-detail-metric-suffix">{t("对应角度")} {detail.max_failure_rate_theta ?? "-"}</span>
+            </>
+          ),
+        },
+        ...(detail.error_message
+          ? [
+              {
+                key: "error_message",
+                label: t("错误信息"),
+                span: 2,
+                children: <Text type="danger">{detail.error_message}</Text>,
+              },
+            ]
+          : []),
+      ]
+    : [];
 
   // 分页底栏由当前激活 Tab 驱动，仅逐角度结果 Tab 需要分页。
   const activePagination: WindDetailPaginationConfig | null =
@@ -289,10 +260,9 @@ export function WindTurbineCalcDetailView({
       label: t("概览"),
       children: (
         <div className="wind-detail-tab-content">
-          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
           {detail ? (
             <Card size="small" title={t("基本信息")}>
-              <WindDetailMeta items={metaItems} />
+              <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={overviewItems} />
             </Card>
           ) : null}
         </div>
@@ -304,7 +274,7 @@ export function WindTurbineCalcDetailView({
       children: (
         <div className="wind-detail-tab-content">
           {chartQuery.data ? (
-            <Card size="small" title={t("失效率曲线")}>
+            <Card size="small">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={chartQuery.data} alt="failure rate chart" style={{ maxWidth: "100%", width: 900 }} />
             </Card>
@@ -320,7 +290,7 @@ export function WindTurbineCalcDetailView({
             key: "angles",
             label: t("逐角度结果"),
             children: (
-              <Card size="small" className="wind-turbine-table-tab-card" title={t("逐角度结果")}>
+              <Card size="small" className="wind-turbine-table-tab-card">
                 <Table<WindTurbineCalcResultRow>
                   rowKey="theta_deg"
                   columns={columns}
@@ -359,46 +329,15 @@ export function WindTurbineCalcDetailView({
           />
         }
         actions={
-          <>
-            {detail?.status === "completed" ? (
-              <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => handleExport("all")}>
-                {t("导出结果包")}
-              </Button>
-            ) : (
-              <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={refresh}>
-                {t("刷新")}
-              </Button>
-            )}
-            <WindDetailMoreActions
-              label={t("更多")}
-              items={[
-                {
-                  key: "csv",
-                  label: t("导出 CSV"),
-                  icon: <DownloadOutlined />,
-                  disabled: detail?.status !== "completed",
-                  onClick: () => void handleExport("csv"),
-                },
-                ...(detail?.status === "completed"
-                  ? [{ key: "refresh", label: t("刷新"), icon: <ReloadOutlined />, onClick: refresh }]
-                  : []),
-                ...(canManage && running
-                  ? [{ key: "cancel", label: t("取消任务"), icon: <StopOutlined />, danger: true, onClick: handleCancel }]
-                  : []),
-                ...(canManage && detail && !running
-                  ? [{ key: "delete", label: t("删除"), icon: <DeleteOutlined />, danger: true, onClick: handleDelete }]
-                  : []),
-                onClose
-                  ? { key: "close", label: t("关闭"), icon: <CloseOutlined />, onClick: onClose }
-                  : {
-                      key: "back",
-                      label: t("返回列表"),
-                      icon: <ArrowLeftOutlined />,
-                      onClick: () => router.push("/admin/wind-turbine-calc"),
-                    },
-              ]}
-            />
-          </>
+          detail?.status === "completed" ? (
+            <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={handleExport}>
+              {t("导出结果包")}
+            </Button>
+          ) : (
+            <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={refresh}>
+              {t("刷新")}
+            </Button>
+          )
         }
       />
 
