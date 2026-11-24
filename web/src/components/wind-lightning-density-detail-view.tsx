@@ -371,12 +371,18 @@ export function WindLightningDensityDetailView({
 
   const completed = detail?.status === "completed";
 
-  // 概览 13 项信息统一汇入一张带边框的 Descriptions 表格，不再分组卡片 + 分隔线。
-  const overviewItems: DescriptionsProps["items"] = detail
+  // LP-117：概览 13 项信息按类别拆成三组带边框 Descriptions（参照防雷计算详情页的分区块表格风格）。
+  // 字段值、格式化与 i18n 与拆分前保持一致；每项只归属一组，不丢不重。
+  const basicInfoItems: DescriptionsProps["items"] = detail
     ? [
         { key: "wind_farm", label: t("风电场"), children: detail.wind_farm_name || "-" },
         { key: "turbine_source", label: t("风机文件"), children: detail.turbine_source_file_name || "-" },
         { key: "lightning_source", label: t("雷电文件"), children: detail.lightning_source_file_name || "-" },
+      ]
+    : [];
+
+  const gridItems: DescriptionsProps["items"] = detail
+    ? [
         {
           key: "bbox",
           label: t("统计范围"),
@@ -392,9 +398,14 @@ export function WindLightningDensityDetailView({
         { key: "grid_size", label: t("网格数"), children: `${detail.grid_x_count} × ${detail.grid_y_count}` },
         { key: "grid_step", label: t("网格步长"), children: `${detail.grid_step_deg}°` },
         { key: "margin", label: t("外扩边距"), children: `${detail.margin_deg}°` },
+        { key: "area_km2", label: t("范围面积 (km²)"), children: formatNumber(detail.area_km2, 2) },
+      ]
+    : [];
+
+  const resultItems: DescriptionsProps["items"] = detail
+    ? [
         { key: "turbine_count", label: t("风机数"), children: detail.turbine_count ?? 0 },
         { key: "valid_records", label: t("有效落雷"), children: detail.valid_records ?? 0 },
-        { key: "area_km2", label: t("范围面积 (km²)"), children: formatNumber(detail.area_km2, 2) },
         { key: "overall_density", label: t("平均密度 次/(km²·年)"), children: formatNumber(detail.overall_density, 4) },
         { key: "peak_density", label: t("峰值密度 次/(km²·年)"), children: formatNumber(detail.peak_density, 4) },
         {
@@ -444,14 +455,20 @@ export function WindLightningDensityDetailView({
       children: (
         <div className="wind-detail-tab-content">
           {detail ? (
-            <Card size="small" className="wind-detail-overview-card">
-              <Descriptions
-                bordered
-                size="small"
-                column={{ xs: 1, sm: 2 }}
-                items={overviewItems}
-              />
-            </Card>
+            <>
+              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
+                <div className="fl-create-form-block-title">{t("基本信息 / 数据来源")}</div>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={basicInfoItems} />
+              </section>
+              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
+                <div className="fl-create-form-block-title">{t("统计范围与网格")}</div>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={gridItems} />
+              </section>
+              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
+                <div className="fl-create-form-block-title">{t("统计结果")}</div>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={resultItems} />
+              </section>
+            </>
           ) : null}
         </div>
       ),

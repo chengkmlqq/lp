@@ -3710,6 +3710,10 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "范围内落雷": "In-range strikes",
   "统计范围": "Study area",
   "面积（km²）": "Area (km²)",
+  // ── LP-117：地闪密度概览分区块标题 ──
+  "基本信息 / 数据来源": "Basic Information / Data Source",
+  "统计范围与网格": "Study Area & Grid",
+  "统计结果": "Statistics Results",
   "当前账号没有风电场地闪密度统计的访问权限": "This account has no access to wind farm ground flash density statistics",
   "返回列表": "Back to list",
   "运行日志": "Run log",
