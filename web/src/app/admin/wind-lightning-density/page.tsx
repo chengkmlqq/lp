@@ -617,7 +617,7 @@ export default function WindLightningDensityListPage() {
               },
               {
                 key: "package",
-                label: t("打包下载"),
+                label: t("下载"),
                 icon: <DownloadOutlined />,
                 visible: record.status === "completed" && canRead,
                 onClick: () => handlePackageDownload(record),
@@ -741,7 +741,7 @@ export default function WindLightningDensityListPage() {
                             label: (
                               <Space size={4}>
                                 <DownloadOutlined />
-                                <span>{t("打包下载")}</span>
+                                <span>{t("下载")}</span>
                               </Space>
                             ),
                             onClick: (event) => {
