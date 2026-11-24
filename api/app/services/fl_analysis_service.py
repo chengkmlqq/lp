@@ -50,7 +50,7 @@ from ..schemas.fl_analysis import (
     FlAnalysisTowerResultSummary,
 )
 from .atp_asset_service import _truncate_output
-from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, execute_multi_phase_binary_search_external, execute_shielding_binary_search_external, resolve_external_waveform_job
+from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, execute_multi_phase_binary_search_external, execute_shielding_binary_search_external, resolve_arrester_config, resolve_external_waveform_job
 from .legacy_atp_adapter import ResolvedLegacyAtpJob, _normalize_tower_shape_code, execute_legacy_atp_tower_analysis, resolve_legacy_atp_job
 from .fl_analysis_report import build_report_document, build_report_summary_payload
 from .fl_analysis_rules import (
@@ -915,6 +915,9 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
             def _resolve_external_job_for_tower(snapshot):
                 # 独立 session：每塔用本塔 session 重新解析资产，asset 归属本塔 session，避免 DetachedInstanceError
                 tower_type = snapshot.tower_type or ""
+                # 逐塔避雷器配置：用本塔 profile（scenario 已覆写则用覆写后的）推导 M 配置，
+                # 同一任务内不同塔可命中不同避雷器模型，不再共用任务级配置。
+                tower_profile = payload.get("profile_json") or snapshot.profile_json or {}
                 return resolve_external_waveform_job(
                     db,
                     external_adapter=job.external_adapter if job.external_adapter in {"atp", "wine"} else "atp",
@@ -922,6 +925,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                     tower_type=tower_type,
                     line_voltage_kv=job.line.voltage_kv if job.line else None,
                     scene_type=_auto_scene_type_for_options(execution_options),
+                    tower_profile=tower_profile,
                 )
             payload = {
                 "base_tower_json": snapshot.base_tower_json or {},
@@ -1040,6 +1044,9 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             baseline_result=baseline_result,
                         )
                     graded = execution.result_json
+                    # 记录本塔实际使用的避雷器配置（逐塔推导，供排查与测试核对）
+                    graded["counterstrike_arrester_config"] = resolved_job.arrester_config
+                    graded["counterstrike_arrester_source"] = resolved_job.arrester_source
                     # 单相反击二分阶段完成
                     tower_tracker.mark_phase_done()
                     # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）—— 普通计算同样要做 ──
@@ -1077,6 +1084,9 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                         tower_type=snapshot.tower_type or "",
                                         line_voltage_kv=_raoji_voltage_kv,
                                         scene_type=f"raoji{_idx}",
+                                        tower_profile=payload.get("profile_json")
+                                        or snapshot.profile_json
+                                        or {},
                                     )
                                 except Exception as _exc:
                                     # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
@@ -1257,6 +1267,9 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             baseline_result=baseline_result,
                         )
                     graded = execution.result_json
+                    # 记录本塔实际使用的避雷器配置（逐塔推导，供排查与测试核对）
+                    graded["counterstrike_arrester_config"] = resolved_job.arrester_config
+                    graded["counterstrike_arrester_source"] = resolved_job.arrester_source
                     # 多相二分阶段完成，进入下一阶段（绕击二分或结果回填）
                     tower_tracker.mark_phase_done()
                     # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）──────────────
@@ -1297,6 +1310,9 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                             tower_type=snapshot.tower_type or "",
                                             line_voltage_kv=_raoji_voltage_kv,
                                             scene_type=f"raoji{_idx}",
+                                            tower_profile=payload.get("profile_json")
+                                            or snapshot.profile_json
+                                            or {},
                                         )
                                     except Exception as _exc:
                                         # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
@@ -1773,6 +1789,7 @@ def execute_job(job_id: str) -> None:
                         tower_type=snapshots[0].tower_type if snapshots else None,
                         line_voltage_kv=job.line.voltage_kv if job.line else None,
                         scene_type=_auto_scene_type_for_options(execution_options),
+                        tower_profile=snapshots[0].profile_json if snapshots else None,
                     )
                     # LP-13：显式记录版本主键 / 模型级 id / 版本号 / 版本 code，
                     # 避免仅存版本 id 后无法直观区分同一模型的多版本。
@@ -1783,6 +1800,8 @@ def execute_job(job_id: str) -> None:
                     summary["external_model_model_id"] = external_job.asset.model_id
                     summary["external_model_version"] = external_job.asset.version
                     summary["external_model_version_code"] = external_job.asset.version_code
+                    # 代表塔实际使用的避雷器配置（逐塔配置见各塔结果 external_execution）
+                    summary["external_model_arrester_config"] = external_job.arrester_config
                 except Exception as exc:
                     # ⚠️ 对齐 C#：计算方法明确选了 ATP（或适配器为 atp/wine）时，必须用 ATP 引擎。
                     # 若解不出资产/引擎，直接抛错，绝不静默回退到规程公式——否则计算结果与 C# 不一致
@@ -1841,7 +1860,11 @@ def execute_job(job_id: str) -> None:
             if external_job is None:
                 return None
             tower_type = snapshot.tower_type or ""
-            cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
+            # 缓存键必须带避雷器配置：同一塔型不同 A/B/C 相的塔命中不同资产
+            _arrester_cfg, _ = resolve_arrester_config(
+                job.adapter_config_json or {}, snapshot.profile_json or {}
+            )
+            cache_key = f"{_normalize_tower_shape_code(tower_type) or '<default>'}|{_arrester_cfg}"
             if cache_key in external_job_cache:
                 return external_job_cache[cache_key]
             # ⚠️ 2026-09-13 修复：必须传「有效适配器」——job.external_adapter 对页面建的任务是
@@ -1857,6 +1880,7 @@ def execute_job(job_id: str) -> None:
                 tower_type=tower_type,
                 line_voltage_kv=job.line.voltage_kv if job.line else None,
                 scene_type=_auto_scene_type_for_options(execution_options),
+                tower_profile=snapshot.profile_json or {},
             )
             external_job_cache[cache_key] = resolved
             return resolved

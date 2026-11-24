@@ -7,6 +7,7 @@ import re
 import struct
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -1487,6 +1488,55 @@ def get_asset_by_id(db: Session, asset_id: str) -> AtpAssetVersion | None:
     return db.execute(select(AtpAssetVersion).where(AtpAssetVersion.id == asset_id)).scalar_one_or_none()
 
 
+# 每基塔 A/B/C 相避雷器配置字段（值与 C# 输入 CSV「A相/B相/C相是否安装避雷器」一致）
+ARRESTER_PHASE_KEYS: tuple[str, ...] = ("arrester_a", "arrester_b", "arrester_c")
+ARRESTER_PHASE_DIGITS: tuple[str, ...] = ("1", "2", "3")
+_ARRESTER_INSTALLED_VALUES = {"是", "y", "yes", "true", "1", "装", "安装"}
+
+
+def _arrester_phase_installed(value: Any) -> bool:
+    """判断单相避雷器是否安装。兼容 "是"/"否"、0/1、"true"/"false" 与布尔值。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    return str(value or "").strip().lower() in _ARRESTER_INSTALLED_VALUES
+
+
+def derive_arrester_config_from_profile(tower_profile: Mapping[str, Any] | None) -> str:
+    """A/B/C 三相避雷器安装状态 → ATP 模型避雷器配置码（对齐 C# 桌面版口径）。
+
+    装了哪几相就拼哪几个数字：A→1、B→2、C→3，全不装为 noM。
+    例：A 是 → M1；A/B 是 → M12；A/B/C 是 → M123；B/C 是 → M23；A/C 是 → M13。
+    """
+    if not isinstance(tower_profile, Mapping):
+        return "noM"
+    digits = "".join(
+        digit
+        for key, digit in zip(ARRESTER_PHASE_KEYS, ARRESTER_PHASE_DIGITS, strict=True)
+        if _arrester_phase_installed(tower_profile.get(key))
+    )
+    return f"M{digits}" if digits else "noM"
+
+
+def resolve_arrester_config(
+    adapter_config_json: Mapping[str, Any] | None,
+    tower_profile: Mapping[str, Any] | None,
+) -> tuple[str, str]:
+    """按分级优先级确定避雷器配置，返回 (配置码, 来源)。
+
+    1. adapter_config_json.arrester_config 显式指定（接口/测试指定，最高优先）；
+    2. 当前塔 profile 的 arrester_a/b/c 推导（逐塔不同）；
+    3. 兜底 noM（历史数据无该字段时行为不变）。
+    """
+    explicit = str((adapter_config_json or {}).get("arrester_config") or "").strip()
+    if explicit:
+        return explicit, "adapter_config"
+    if isinstance(tower_profile, Mapping) and any(key in tower_profile for key in ARRESTER_PHASE_KEYS):
+        return derive_arrester_config_from_profile(tower_profile), "tower_profile"
+    return "noM", "default"
+
+
 def _auto_resolve_asset(
     db: Session,
     *,
@@ -1494,6 +1544,7 @@ def _auto_resolve_asset(
     line_voltage_kv: int | None,
     scene_type: str | None,
     adapter_config_json: dict[str, Any],
+    tower_profile: Mapping[str, Any] | None = None,
 ) -> AtpAssetVersion:
     """按线路杆塔参数自动选 ATP 资产（对齐 C# 桌面版 match_model 自动匹配模板）。
 
@@ -1501,7 +1552,8 @@ def _auto_resolve_asset(
       1. (voltage_level, tower_type, scene_type, arrester_config) 精确
       2. (voltage_level, tower_type, scene_type) 任意避雷器配置
       3. (voltage_level, scene_type) 任意塔型
-    避雷器配置缺省取 noM（C# 任务输入 A/B/C相=否，即无避雷器）。
+    避雷器配置按分级取值：adapter_config_json 显式指定 > 当前塔 profile 的
+    arrester_a/b/c 推导 > 兜底 noM（对齐 C# 任务输入 A/B/C 相=否，即无避雷器）。
     塔型支持 C# 式编码（s500guxing→guxing）与 DB 规范编码（500-guxing）归一。
 
     版本选择（LP-16）：同维度组（同一 model_id）内仅按「发布状态」is_published 定位，
@@ -1526,9 +1578,7 @@ def _auto_resolve_asset(
     if not scene:
         # 缺省按反击 fanji（普通计算主场景）
         scene = "fanji"
-    arrester = str(config.get("arrester_config") or "noM").strip()
-    if not arrester:
-        arrester = "noM"
+    arrester, arrester_source = resolve_arrester_config(config, tower_profile)
     # 避雷线维度（多版本归一后）：adapter_config 显式传 shield_wire（with/without）；
     # 缺省不过滤——存量 4 段路径资产视为有避雷线，行为不变。
     shield_wire = str(config.get("shield_wire") or "").strip() or None
@@ -1559,6 +1609,15 @@ def _auto_resolve_asset(
         asset = _query(tower, arrester)
         if asset is None:
             asset = _query(tower, None)
+            if asset is not None:
+                logger.warning(
+                    "[ATP] 塔型=%s 未找到避雷器配置=%s 的资产（来源=%s），回退 asset=%s（避雷器=%s）",
+                    tower,
+                    arrester,
+                    arrester_source,
+                    asset.code,
+                    asset.arrester_config,
+                )
         if asset is None:
             raise RuntimeError(
                 f"未找到匹配的 ATP 资产（电压={voltage_kv} 塔型={tower} 场景={scene} 避雷器={arrester}），"
@@ -1574,10 +1633,13 @@ def _auto_resolve_asset(
                 f"未找到匹配的 ATP 资产（电压={voltage_kv} 场景={scene} 避雷器={arrester}），请先在资产库导入对应模板并发布"
             )
     logger.info(
-        "[ATP] 自动选资产：电压=%s 塔型=%s 场景=%s → asset=%s (%s)",
+        "[ATP] 自动选资产：电压=%s 塔型=%s 场景=%s 避雷器=%s(来源=%s,命中=%s) → asset=%s (%s)",
         voltage_kv,
         tower,
         scene,
+        arrester,
+        arrester_source,
+        asset.arrester_config,
         asset.code,
         asset.id,
     )
@@ -1601,6 +1663,9 @@ class ResolvedExternalWaveformJob:
     environment: dict[str, str]
     contract: dict[str, Any]
     parameter_bindings: dict[str, Any]
+    # 本次实际解析使用的避雷器配置码（A/B/C 相推导或显式指定）及其来源，供结果落库核对。
+    arrester_config: str = "noM"
+    arrester_source: str = "default"
 
 
 @dataclass(slots=True)
@@ -1738,17 +1803,23 @@ def resolve_external_waveform_job(
     tower_type: str | None = None,
     line_voltage_kv: int | None = None,
     scene_type: str | None = None,
+    tower_profile: Mapping[str, Any] | None = None,
 ) -> ResolvedExternalWaveformJob:
     adapter = str(external_adapter or "").strip().lower()
     if adapter not in {"atp", "wine"}:
         raise RuntimeError(f"Unsupported external adapter: {external_adapter}")
 
     config = dict(adapter_config_json or {})
+    # 避雷器配置分级：显式 adapter_config > 当前塔 A/B/C 相推导 > noM
+    effective_arrester, arrester_source = resolve_arrester_config(config, tower_profile)
     asset_id = str(config.get("asset_id") or config.get("model_id") or "").strip()
     if asset_id:
         asset = get_asset_by_id(db, asset_id)
         if asset is None:
             raise RuntimeError(f"指定的 ATP 资产不存在: {asset_id}")
+        # 接口/测试显式指定资产时，以资产自带的避雷器配置为准，不被逐塔推导覆盖
+        effective_arrester = str(getattr(asset, "arrester_config", "") or effective_arrester)
+        arrester_source = "asset_id"
     else:
         # LP-xxx 自动选资产（对齐 C# 桌面版：不选资产，按线路电压等级 + 塔型 + 场景自动匹配模板）
         asset = _auto_resolve_asset(
@@ -1757,6 +1828,7 @@ def resolve_external_waveform_job(
             line_voltage_kv=line_voltage_kv,
             scene_type=scene_type,
             adapter_config_json=config,
+            tower_profile=tower_profile,
         )
 
     worktree = _resolve_asset_worktree(db, asset=asset, tower_type=tower_type)
@@ -1815,6 +1887,8 @@ def resolve_external_waveform_job(
         environment=environment,
         contract=contract,
         parameter_bindings=parameter_bindings,
+        arrester_config=effective_arrester,
+        arrester_source=arrester_source,
     )
 
 
@@ -3340,6 +3414,10 @@ def _merge_external_result(
         "asset_id": resolved_job.asset.id,
         "asset_code": resolved_job.asset.code,
         "asset_name": resolved_job.asset.name,
+        # 实际使用的避雷器配置（逐塔推导 / 显式指定），便于排查与测试核对
+        "arrester_config": resolved_job.arrester_config,
+        "arrester_source": resolved_job.arrester_source,
+        "asset_arrester_config": getattr(resolved_job.asset, "arrester_config", None),
         "entry_file": resolved_job.entry_file,
         "result_file": resolved_job.result_file,
         "storage_mount_code": resolved_job.storage_mount_code,

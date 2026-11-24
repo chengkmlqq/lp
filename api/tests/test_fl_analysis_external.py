@@ -165,6 +165,10 @@ def _seed_asset(
     manifest_json: dict[str, object] | None = None,
     entry_file: str = "work.atp",
     template: str | None = None,
+    arrester_config: str = "noM",
+    scene_type: str = "fanji",
+    tower_type: str = "ganzi",
+    published: bool = False,
 ) -> AtpAssetVersion:
     if template is not None:
         asset_root = tmp_path / "vfs" / "atp-assets" / code
@@ -178,10 +182,12 @@ def _seed_asset(
         description="",
         status="enabled",
         voltage_level="110",
-        tower_type="ganzi",
-        scene_type="fanji",
+        tower_type=tower_type,
+        scene_type=scene_type,
+        arrester_config=arrester_config,
         storage_mount_code="main",
         storage_root_path=f"/atp-assets/{code}",
+        is_published=published,
     )
     session.add(asset)
     session.flush()
@@ -728,5 +734,230 @@ def test_auto_resolve_ignores_unpublished_asset(tmp_path) -> None:
                 scene_type="fanji",
                 adapter_config_json={},
             )
+    finally:
+        session.close()
+
+
+def _seed_published_asset(session: Session, **kwargs) -> AtpAssetVersion:
+    """已发布资产：供 _auto_resolve_asset 的发布态筛选命中。"""
+    kwargs.setdefault("published", True)
+    return _seed_asset(session, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        ({"arrester_a": "是", "arrester_b": "是", "arrester_c": "是"}, "M123"),
+        ({"arrester_a": "是", "arrester_b": "是", "arrester_c": "否"}, "M12"),
+        ({"arrester_a": "是", "arrester_b": "否", "arrester_c": "是"}, "M13"),
+        ({"arrester_a": "否", "arrester_b": "是", "arrester_c": "是"}, "M23"),
+        ({"arrester_a": "是", "arrester_b": "否", "arrester_c": "否"}, "M1"),
+        ({"arrester_a": "否", "arrester_b": "是", "arrester_c": "否"}, "M2"),
+        ({"arrester_a": "否", "arrester_b": "否", "arrester_c": "是"}, "M3"),
+        ({"arrester_a": "否", "arrester_b": "否", "arrester_c": "否"}, "noM"),
+        # 兼容 1/0、布尔与大小写写法
+        ({"arrester_a": "1", "arrester_b": "0", "arrester_c": ""}, "M1"),
+        ({"arrester_a": True, "arrester_b": False, "arrester_c": True}, "M13"),
+        # 历史数据：字段缺失 / 为空 → 回落 noM（行为不变）
+        ({}, "noM"),
+        ({"arrester_a": None, "arrester_b": None, "arrester_c": None}, "noM"),
+        ({"arrester_a": "", "arrester_b": "", "arrester_c": ""}, "noM"),
+        (None, "noM"),
+    ],
+)
+def test_derive_arrester_config_from_profile(profile, expected) -> None:
+    assert fl_analysis_external.derive_arrester_config_from_profile(profile) == expected
+
+
+def test_resolve_arrester_config_priority() -> None:
+    all_installed = {"arrester_a": "是", "arrester_b": "是", "arrester_c": "是"}
+    # 显式指定最高优先
+    assert fl_analysis_external.resolve_arrester_config(
+        {"arrester_config": "M2"}, all_installed
+    ) == ("M2", "adapter_config")
+    # 其次按当前塔 A/B/C 相推导
+    assert fl_analysis_external.resolve_arrester_config({}, all_installed) == (
+        "M123",
+        "tower_profile",
+    )
+    # 兜底 noM
+    assert fl_analysis_external.resolve_arrester_config({}, None) == ("noM", "default")
+
+
+def test_auto_resolve_asset_per_tower_arrester_config(tmp_path) -> None:
+    """同一电压/塔型/场景下，按每基塔 A/B/C 相各自命中不同避雷器模型。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_published_asset(session, tmp_path=tmp_path, code="arr-noM", arrester_config="noM")
+        _seed_published_asset(session, tmp_path=tmp_path, code="arr-M2", arrester_config="M2")
+        _seed_published_asset(session, tmp_path=tmp_path, code="arr-M123", arrester_config="M123")
+        session.commit()
+
+        def _resolve(profile):
+            return fl_analysis_external._auto_resolve_asset(
+                session,
+                tower_type="ganzi",
+                line_voltage_kv=110,
+                scene_type="fanji",
+                adapter_config_json={},
+                tower_profile=profile,
+            )
+
+        assert _resolve({"arrester_a": "否", "arrester_b": "是", "arrester_c": "否"}).code == "arr-M2"
+        assert _resolve({"arrester_a": "是", "arrester_b": "是", "arrester_c": "是"}).code == "arr-M123"
+        # 历史数据无该字段 → noM，行为不变
+        assert _resolve({"arrester_a": None, "arrester_b": None, "arrester_c": None}).code == "arr-noM"
+    finally:
+        session.close()
+
+
+def test_auto_resolve_asset_explicit_config_overrides_tower_profile(tmp_path) -> None:
+    """接口显式传 arrester_config 时以其为准，不被逐塔推导覆盖。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_published_asset(session, tmp_path=tmp_path, code="arr-explicit-M1", arrester_config="M1")
+        _seed_published_asset(session, tmp_path=tmp_path, code="arr-explicit-M123", arrester_config="M123")
+        session.commit()
+
+        resolved = fl_analysis_external._auto_resolve_asset(
+            session,
+            tower_type="ganzi",
+            line_voltage_kv=110,
+            scene_type="fanji",
+            adapter_config_json={"arrester_config": "M1"},
+            tower_profile={"arrester_a": "是", "arrester_b": "是", "arrester_c": "是"},
+        )
+        assert resolved.code == "arr-explicit-M1"
+    finally:
+        session.close()
+
+
+def test_resolve_external_job_records_per_tower_arrester_config(tmp_path) -> None:
+    """解析结果记录实际命中配置与来源，且逐塔独立（绕击场景同样按塔推导）。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        _seed_published_asset(
+            session,
+            tmp_path=tmp_path,
+            code="rj-noM",
+            arrester_config="noM",
+            template=ATP_TEMPLATE_SCRIPT,
+        )
+        _seed_published_asset(
+            session,
+            tmp_path=tmp_path,
+            code="rj-M2",
+            arrester_config="M2",
+            template=ATP_TEMPLATE_SCRIPT,
+        )
+        session.commit()
+
+        resolved = fl_analysis_external.resolve_external_waveform_job(
+            session,
+            external_adapter="atp",
+            adapter_config_json={},
+            tower_type="ganzi",
+            line_voltage_kv=110,
+            scene_type="fanji",
+            tower_profile={"arrester_a": "否", "arrester_b": "是", "arrester_c": "否"},
+        )
+        assert resolved.asset.code == "rj-M2"
+        assert resolved.arrester_config == "M2"
+        assert resolved.arrester_source == "tower_profile"
+
+        # 历史数据（无 A/B/C 字段）→ noM
+        resolved_legacy = fl_analysis_external.resolve_external_waveform_job(
+            session,
+            external_adapter="atp",
+            adapter_config_json={},
+            tower_type="ganzi",
+            line_voltage_kv=110,
+            scene_type="fanji",
+            tower_profile={},
+        )
+        assert resolved_legacy.asset.code == "rj-noM"
+        assert resolved_legacy.arrester_config == "noM"
+        assert resolved_legacy.arrester_source == "default"
+    finally:
+        session.close()
+
+
+def test_resolve_external_job_explicit_asset_not_overridden_by_profile(tmp_path) -> None:
+    """接口显式指定 asset_id 时仍以其为准，不被逐塔推导覆盖。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset_noM = _seed_published_asset(
+            session,
+            tmp_path=tmp_path,
+            code="rj-pinned-noM",
+            arrester_config="noM",
+            template=ATP_TEMPLATE_SCRIPT,
+        )
+        _seed_published_asset(
+            session,
+            tmp_path=tmp_path,
+            code="rj-unused-M123",
+            arrester_config="M123",
+            template=ATP_TEMPLATE_SCRIPT,
+        )
+        session.commit()
+
+        resolved = fl_analysis_external.resolve_external_waveform_job(
+            session,
+            external_adapter="atp",
+            adapter_config_json={"asset_id": asset_noM.id},
+            tower_type="ganzi",
+            line_voltage_kv=110,
+            scene_type="fanji",
+            tower_profile={"arrester_a": "是", "arrester_b": "是", "arrester_c": "是"},
+        )
+        assert resolved.asset.id == asset_noM.id
+        assert resolved.arrester_config == "noM"
+        assert resolved.arrester_source == "asset_id"
+    finally:
+        session.close()
+
+
+def test_resolve_external_job_raoji_scene_uses_per_tower_arrester(tmp_path) -> None:
+    """绕击 A/B/C 相（raoji1/2/3）同样按该塔 A/B/C 相配置选模型，而非任务级统一配置。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        _seed_published_asset(
+            session,
+            tmp_path=tmp_path,
+            code="raoji1-noM",
+            arrester_config="noM",
+            scene_type="raoji1",
+            template=ATP_TEMPLATE_SCRIPT,
+        )
+        _seed_published_asset(
+            session,
+            tmp_path=tmp_path,
+            code="raoji1-M2",
+            arrester_config="M2",
+            scene_type="raoji1",
+            template=ATP_TEMPLATE_SCRIPT,
+        )
+        session.commit()
+
+        resolved = fl_analysis_external.resolve_external_waveform_job(
+            session,
+            external_adapter="atp",
+            adapter_config_json={},
+            tower_type="ganzi",
+            line_voltage_kv=110,
+            scene_type="raoji1",
+            tower_profile={"arrester_a": "否", "arrester_b": "是", "arrester_c": "否"},
+        )
+        assert resolved.asset.code == "raoji1-M2"
+        assert resolved.arrester_config == "M2"
     finally:
         session.close()
