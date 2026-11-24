@@ -18,7 +18,6 @@ import {
   type TabsProps,
 } from "antd";
 import {
-  CloudDownloadOutlined,
   DatabaseOutlined,
   DownloadOutlined,
   QuestionCircleOutlined,
@@ -27,8 +26,6 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import {
   WindDetailHero,
-  WindDetailMeta,
-  WindDetailMetricStrip,
   WindDetailPaginationFooter,
   WindDetailSubline,
   type WindDetailMetaItem,
@@ -58,11 +55,10 @@ function columnTitle(label: string, tip: string) {
   );
 }
 
-// file_1 / file_4 的内容已并入概览，仅剩三个产物 Tab（file_2 / file_3 / P0.abc）。
+// file_1 / file_4 / P0.abc 的内容已并入概览，仅剩两个产物 Tab（file_2 / file_3）。
 const FILES = [
   { name: "file2", label: "风机清单" },
   { name: "file3", label: "网格编号" },
-  { name: "p0abc", label: "P0.abc（地形高程）" },
 ];
 
 function formatNumber(value: number | null | undefined, digits = 4): string {
@@ -625,7 +621,7 @@ export function WindDataPrepDetailView(props: {
     { label: t("纬向网格数 ny"), value: detail?.grid_ny ?? "-" },
   ];
 
-  // 关键指标条：8 项全部放进「概览」Tab，顶部不再常驻。
+  // 关键指标：8 项以表格形式放进「概览」Tab 的「统计结果 / 关键指标」区块。
   const metricItems: WindDetailMetricItem[] = [
     { label: t("风机数"), value: detail?.turbine_count ?? 0 },
     { label: t("范围内落雷数"), value: detail?.lightning_in_scope ?? 0 },
@@ -655,33 +651,13 @@ export function WindDataPrepDetailView(props: {
         }
       : null;
 
-  // 剩余三个产物各占一个 Tab，排在「概览」「风机明细」之后。
+  // 剩余两个产物各占一个 Tab，排在「概览」「风机明细」之后；P0.abc 已并入概览。
   const fileTabs = FILES.map((file) => ({
     key: `file-${file.name}`,
     label: t(file.label),
     children: (
-      <div
-        className={
-          file.name === "file2" || file.name === "file3"
-            ? "wind-detail-tab-content wind-data-prep-table-tab-card"
-            : "wind-detail-tab-content"
-        }
-      >
-        {file.name === "p0abc" ? (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button
-              size="small"
-              icon={<DownloadOutlined />}
-              disabled={!completed}
-              onClick={() => void handleDownload(file.name, file.label)}
-            >
-              {t("下载")}
-            </Button>
-          </div>
-        ) : null}
-        {file.name === "p0abc" ? (
-          <P0abcHeaderView header={detail?.p0abc_header} />
-        ) : file.name === "file2" ? (
+      <div className="wind-detail-tab-content wind-data-prep-table-tab-card">
+        {file.name === "file2" ? (
           <File2Table
             batchId={batchId}
             enabled={completed && activeTab === "file-file2"}
@@ -700,20 +676,61 @@ export function WindDataPrepDetailView(props: {
       label: t("概览"),
       children: (
         <div className="wind-detail-tab-content">
-          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
           {detail ? (
             <>
-              <Card size="small" title={t("基本信息")}>
-                <WindDetailMeta items={basicMetaItems} />
-              </Card>
-              <Card size="small" title={t("区域参数（来自 file_1）")}>
-                <WindDetailMeta items={regionMetaItems} />
-              </Card>
+              <section className="fl-create-form-block">
+                <div className="fl-create-form-block-title">{t("基本信息 / 数据来源")}</div>
+                <Descriptions bordered size="small" column={2}>
+                  {basicMetaItems.map((item, index) => (
+                    <Descriptions.Item key={index} label={item.label}>
+                      {item.value ?? "-"}
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </section>
+              <section className="fl-create-form-block">
+                <div className="fl-create-form-block-title">{t("区域参数（来自 file_1）")}</div>
+                <Descriptions bordered size="small" column={2}>
+                  {regionMetaItems.map((item, index) => (
+                    <Descriptions.Item key={index} label={item.label}>
+                      {item.value ?? "-"}
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </section>
+              <section className="fl-create-form-block">
+                <div className="fl-create-form-block-title">{t("统计结果 / 关键指标")}</div>
+                <Descriptions bordered size="small" column={2}>
+                  {metricItems.map((item, index) => (
+                    <Descriptions.Item key={index} label={item.label}>
+                      {item.value ?? "-"}
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </section>
             </>
           ) : null}
-          <Card size="small" title={t("落雷次数（来自 file_4）")}>
+          <section className="fl-create-form-block">
+            <div className="fl-create-form-block-title">{t("落雷次数（来自 file_4）")}</div>
             <File4Table batchId={batchId} enabled={completed} turbineNos={turbineNos} />
-          </Card>
+          </section>
+          <section className="fl-create-form-block">
+            <div
+              className="fl-create-form-block-title"
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+            >
+              <span>{t("P0.abc 头部（地形高程）")}</span>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                disabled={!completed}
+                onClick={() => void handleDownload("p0abc", "P0.abc（地形高程）")}
+              >
+                {t("下载")}
+              </Button>
+            </div>
+            <P0abcHeaderView header={detail?.p0abc_header} />
+          </section>
         </div>
       ),
     },
@@ -759,17 +776,6 @@ export function WindDataPrepDetailView(props: {
                 ) : null,
               ]}
             />
-          }
-          actions={
-            <Button
-              size="small"
-              type="primary"
-              icon={<CloudDownloadOutlined />}
-              disabled={!completed}
-              onClick={() => void downloadFileWithAuth(`${API_BASE}/${batchId}/package`, `${detail?.name || "wind-data-prep"}-five-files.zip`)}
-            >
-              {t("下载五文件 zip")}
-            </Button>
           }
         />
 

@@ -468,16 +468,6 @@ export default function WindDataPrepListPage() {
         ),
       },
       {
-        title: t("产物齐全度"),
-        key: "files_ready",
-        width: 110,
-        render: (_value, record) => (
-          <Tag color={record.files_ready === 5 ? "success" : record.files_ready > 0 ? "warning" : "default"}>
-            {record.files_ready}/5
-          </Tag>
-        ),
-      },
-      {
         title: t("S 基准值"),
         dataIndex: "risk_base_s",
         key: "risk_base_s",
@@ -612,7 +602,7 @@ export default function WindDataPrepListPage() {
               {t("范围内落雷数")}：{record.lightning_in_scope}
             </Text>
             <Text type="secondary" className="text-xs">
-              {t("产物齐全度")}：{record.files_ready}/5 · {t("S 基准值")}：{formatNumber(record.risk_base_s, 3)}
+              {t("S 基准值")}：{formatNumber(record.risk_base_s, 3)}
             </Text>
             <Text type="secondary" className="text-xs">
               {t("创建时间")}：{formatDateTime(record.create_date)}
