@@ -1793,6 +1793,41 @@ def _sort_tree(nodes: list[dict[str, Any]]) -> None:
             _sort_tree(children)
 
 
+# 树统计只需要的列：模型身份五维 + 避雷线、展示版本挑选字段、搜索匹配字段。
+# 刻意不复用 list_models 的全列白名单——树是懒加载接口，每次展开都会调用，少读大列。
+_TREE_VERSION_COLUMNS = (
+    AtpAssetVersion.id,
+    AtpAssetVersion.model_id,
+    AtpAssetVersion.code,
+    AtpAssetVersion.name,
+    AtpAssetVersion.description,
+    AtpAssetVersion.voltage_level,
+    AtpAssetVersion.tower_type,
+    AtpAssetVersion.scene_type,
+    AtpAssetVersion.arrester_config,
+    AtpAssetVersion.shield_wire,
+    AtpAssetVersion.is_active,
+    AtpAssetVersion.is_published,
+    AtpAssetVersion.published_date,
+    AtpAssetVersion.create_date,
+)
+
+
+def _load_tree_display_versions(db: Session) -> list[Any]:
+    """树统计口径（LP-123）：按模型身份分组，每组只取展示版本（§6.2）。
+
+    与 list_models 完全同一口径——一模型一条（维度组合 + 避雷线），展示版本按
+    is_active → 最新已发布 → 最新创建 选取。普通计数 / 搜索计数 / has_children
+    判定共用本函数返回的集合，保证未生效版本不被计入、树节点数与卡片列表（含
+    「全部」节点，取自 /api/v1/atp/models 的 total）一致。
+    """
+    rows = db.execute(select(*_TREE_VERSION_COLUMNS).select_from(AtpAssetVersion)).all()
+    groups: dict[tuple, list[Any]] = {}
+    for row in rows:
+        groups.setdefault(_model_dimension_key(row), []).append(row)
+    return [_pick_display_version(group) for group in groups.values()]
+
+
 def list_asset_tree_children(
     db: Session,
     *,
@@ -1805,29 +1840,34 @@ def list_asset_tree_children(
     - keyword 非空 → 树内搜索：返回过滤后的嵌套树（保留命中节点及其全部后代），
       与前端旧 filterAtpTreeNodes 语义一致（命中节点保留全部后代、未命中中间节点保留命中子分支）
     - 逐段解析路径，过滤出该路径下的资产，按下一层维度聚合（去重 code + 计数）
+    - 计数口径与模型卡片列表完全一致：按模型身份分组、每组只取展示版本，
+      一模型只计一次、未生效版本不计入（普通计数 / 搜索计数 / has_children 三处共用）
     - 每个节点带 has_children（该值下是否存在更深维度资产）供前端标记叶子
     - label 从 DimensionItem 解析（dimension_type 见 _ATP_TREE_LEVELS 第三元），缺失回落 code
     """
-    # 树内搜索：查匹配资产 → 构建完整路径树 → 过滤保留命中分支 → 嵌套序列化
+    # 三处计数共用同一份「展示版本」集合：一模型一条，未生效版本不参与任何计数
+    display_versions = _load_tree_display_versions(db)
+
+    # 树内搜索：过滤展示版本 → 构建完整路径树 → 过滤保留命中分支 → 嵌套序列化
     if keyword and keyword.strip():
         kw = keyword.strip().lower()
-        like = f"%{kw}%"
-        assets = db.execute(
-            select(AtpAssetVersion).where(
-                or_(
-                    AtpAssetVersion.code.ilike(like),
-                    AtpAssetVersion.name.ilike(like),
-                    AtpAssetVersion.description.ilike(like),
-                )
-            )
-        ).scalars().all()
 
-        # 构建完整路径树（与前端 buildAtpTreeNodes 同构）
+        def _keyword_matches(version: Any) -> bool:
+            haystack = " ".join(
+                str(_row_field(version, field) or "")
+                for field in ("code", "name", "description")
+            ).lower()
+            return kw in haystack
+
+        matched = [v for v in display_versions if _keyword_matches(v)]
+
+        # 构建完整路径树（与前端 buildAtpTreeNodes 同构）。一模型只走一次，
+        # 节点 count 即该路径下的模型数（与卡片列表口径一致）。
         nodes: dict[str, dict[str, Any]] = {}
-        for asset in assets:
+        for asset in matched:
             parent_key = ""
             for prefix, field, _dim_type in _ATP_TREE_LEVELS:
-                code = getattr(asset, field)
+                code = _row_field(asset, field)
                 if not code or not str(code).strip():
                     break
                 code_str = str(code).strip()
@@ -1906,64 +1946,65 @@ def list_asset_tree_children(
         return []
 
     next_field, next_dimension_type = _ATP_TREE_LEVELS[level_index][1], _ATP_TREE_LEVELS[level_index][2]
-    attr = getattr(AtpAssetVersion, next_field)
 
-    stmt = (
-        select(attr, func.count())
-        .select_from(AtpAssetVersion)
-        .where(attr.isnot(None))
-        .group_by(attr)
-    )
-    for field, code in filters.items():
-        stmt = stmt.where(getattr(AtpAssetVersion, field) == code)
+    def _matches_path(version: Any) -> bool:
+        # 与 list_models 的维度筛选口径一致：NULL 归一为 ''，再与（已 strip 的）路径值比较
+        for field, code in filters.items():
+            if str(_row_field(version, field) or "").strip() != code.strip():
+                return False
+        return True
 
-    rows = db.execute(stmt).all()
-    if not rows:
+    # 当前层按维度聚合：scoped 已是「一模型一条」的展示版本，故 count 即模型数
+    scoped = [v for v in display_versions if _matches_path(v)]
+    counts: dict[str, int] = {}
+    for version in scoped:
+        code = _row_field(version, next_field)
+        if code is None or not str(code).strip():
+            continue
+        code_str = str(code).strip()
+        counts[code_str] = counts.get(code_str, 0) + 1
+
+    if not counts:
         return []
 
     # 批量解析 label：dimension_type + code → name
-    codes = [str(row[0]) for row in rows]
+    codes = list(counts)
     label_map: dict[str, str] = {}
-    if codes:
-        dim_rows = db.execute(
-            select(DimensionItem.code, DimensionItem.name).where(
-                DimensionItem.dimension_type == next_dimension_type,
-                DimensionItem.code.in_(codes),
-            )
-        ).all()
-        label_map = {code: name for code, name in dim_rows}
+    dim_rows = db.execute(
+        select(DimensionItem.code, DimensionItem.name).where(
+            DimensionItem.dimension_type == next_dimension_type,
+            DimensionItem.code.in_(codes),
+        )
+    ).all()
+    label_map = {code: name for code, name in dim_rows}
 
-    # has_children：该值下是否存在更深维度资产
-    deeper_attr = None
-    if level_index + 1 < len(_ATP_TREE_LEVELS):
-        deeper_attr = getattr(AtpAssetVersion, _ATP_TREE_LEVELS[level_index + 1][1])
+    # has_children：该值下是否存在更深维度资产（与普通计数共用 scoped，口径一致）
+    deeper_field = (
+        _ATP_TREE_LEVELS[level_index + 1][1]
+        if level_index + 1 < len(_ATP_TREE_LEVELS)
+        else None
+    )
 
     result: list[dict[str, Any]] = []
-    for code, count in rows:
-        code_str = str(code)
-        # 计数修正：当前层 group_by 已按此值聚合，count 即该路径下资产数
+    for code_str, count in counts.items():
         key_prefix = f"{_ATP_TREE_LEVELS[level_index][0]}:{code_str}"
-        if path:
-            full_key = f"{path}|{key_prefix}"
-        else:
-            full_key = key_prefix
+        full_key = f"{path}|{key_prefix}" if path else key_prefix
 
         has_children = False
-        if deeper_attr is not None:
-            deeper_stmt = select(func.count()).select_from(AtpAssetVersion).where(
-                getattr(AtpAssetVersion, next_field) == code_str,
-                deeper_attr.isnot(None),
+        if deeper_field is not None:
+            has_children = any(
+                str(_row_field(v, next_field) or "").strip() == code_str
+                and _row_field(v, deeper_field) is not None
+                and str(_row_field(v, deeper_field)).strip()
+                for v in scoped
             )
-            for field, code_filter in filters.items():
-                deeper_stmt = deeper_stmt.where(getattr(AtpAssetVersion, field) == code_filter)
-            has_children = int(db.scalar(deeper_stmt) or 0) > 0
 
         result.append(
             {
                 "key": full_key,
                 "code": code_str,
                 "label": label_map.get(code_str, code_str),
-                "count": int(count),
+                "count": count,
                 "has_children": has_children,
             }
         )
