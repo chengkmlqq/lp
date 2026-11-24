@@ -3745,6 +3745,13 @@ body {
   overflow-y: hidden;
 }
 
+/* LP-122：风电场计算详情页的逐台结果表自带纵向滚动（sticky + scroll.y），
+   仿照 LP-102/LP-106 只对带 wind-farm-calc-table-tab-card 标记的面板关掉外层内容区滚动，
+   避免「整页 + 表格」两条纵向滚动条；概览 Tab 无标记，滚动不受影响。 */
+.wind-detail-tabs .ant-tabs-content:has(.wind-farm-calc-table-tab-card) {
+  overflow-y: hidden;
+}
+
 /* LP-83：四张预生成图按 2×2 展示，窄屏退化为单列 */
 .wind-density-image-grid {
   display: grid;

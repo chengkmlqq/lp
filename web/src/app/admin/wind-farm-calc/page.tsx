@@ -94,17 +94,6 @@ function formatDateTime(value: string | null | undefined): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined) return "-";
-  const total = Math.round(seconds);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
-}
-
 const WIND_TABLE_MIN_SCROLL_Y = 180;
 const WIND_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const WIND_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -415,13 +404,6 @@ export default function WindFarmCalcListPage() {
         },
       },
       {
-        title: t("耗时"),
-        dataIndex: "duration_seconds",
-        key: "duration_seconds",
-        width: 90,
-        render: (value: number | null) => formatDuration(value),
-      },
-      {
         title: t("创建时间"),
         dataIndex: "create_date",
         key: "create_date",
@@ -440,9 +422,16 @@ export default function WindFarmCalcListPage() {
             icon: <EyeOutlined />,
             onClick: () => openDetail(record.id, record.name || record.id),
           };
+          const logAction = {
+            key: "log",
+            label: t("运行日志"),
+            icon: <FileTextOutlined />,
+            visible: canReadLogs && !!record.task_id,
+            onClick: () => openLogViewer(record.task_id),
+          };
           const exportAction = {
             key: "export",
-            label: t("导出 Excel"),
+            label: t("导出"),
             icon: <DownloadOutlined />,
             visible: record.status === "completed",
             onClick: () =>
@@ -459,13 +448,6 @@ export default function WindFarmCalcListPage() {
             visible: (record.status === "processing" || record.status === "pending") && canManage,
             onClick: () => handleCancel(record),
           };
-          const logAction = {
-            key: "log",
-            label: t("运行日志"),
-            icon: <FileTextOutlined />,
-            visible: canReadLogs && !!record.task_id,
-            onClick: () => openLogViewer(record.task_id),
-          };
           const deleteAction = {
             key: "delete",
             label: t("删除"),
@@ -474,18 +456,21 @@ export default function WindFarmCalcListPage() {
             visible: canManage,
             onClick: () => handleDelete(record),
           };
-          // 与卡片视图保持一致：详情固定第一，失败状态优先把日志平铺为第二个按钮，
-          // 其余动作按既有顺序落入「⋯」下拉（隐藏项由 ModoActionGroup 过滤后再截取）。
+          // 与卡片视图保持一致：详情固定第一；已完成且日志可用时日志平铺为第二个按钮、
+          // 导出紧随其后落入「⋯」，日志不可用时导出仍可平铺；其余状态沿用原有优先级。
+          const hasLog = canReadLogs && !!record.task_id;
           const preferredKey =
             record.status === "completed"
-              ? "export"
+              ? hasLog
+                ? "log"
+                : "export"
               : record.status === "failed"
                 ? "log"
                 : record.status === "processing" || record.status === "pending"
                   ? "cancel"
                   : undefined;
           const rank = (key: string) => (key === "detail" ? 0 : key === preferredKey ? 1 : 2);
-          const actions = [detailAction, exportAction, cancelAction, logAction, deleteAction].sort(
+          const actions = [detailAction, logAction, exportAction, cancelAction, deleteAction].sort(
             (a, b) => rank(a.key) - rank(b.key),
           );
           return <ModoActionGroup actions={actions} />;
@@ -525,6 +510,7 @@ export default function WindFarmCalcListPage() {
       danger?: boolean;
       onClick: () => void;
     };
+    const hasLog = canReadLogs && !!taskId;
     const candidateActions: CardAction[] = [
       {
         key: "detail",
@@ -532,11 +518,21 @@ export default function WindFarmCalcListPage() {
         icon: <EyeOutlined />,
         onClick: () => openDetail(record.id, record.name || record.id),
       },
+      ...(hasLog
+        ? [
+            {
+              key: "log",
+              label: t("运行日志"),
+              icon: <FileTextOutlined />,
+              onClick: () => openLogViewer(taskId),
+            },
+          ]
+        : []),
       ...(record.status === "completed"
         ? [
             {
               key: "export",
-              label: t("导出 Excel"),
+              label: t("导出"),
               icon: <DownloadOutlined />,
               onClick: () =>
                 void downloadFileWithAuth(
@@ -557,16 +553,6 @@ export default function WindFarmCalcListPage() {
             },
           ]
         : []),
-      ...(canReadLogs && taskId
-        ? [
-            {
-              key: "log",
-              label: t("运行日志"),
-              icon: <FileTextOutlined />,
-              onClick: () => openLogViewer(taskId),
-            },
-          ]
-        : []),
       ...(canManage
         ? [
             {
@@ -579,9 +565,12 @@ export default function WindFarmCalcListPage() {
           ]
         : []),
     ];
+    // 已完成且日志可用时日志平铺为第二个按钮、导出紧随其后落入「更多」；日志不可用时导出仍可平铺。
     const preferredKey =
       record.status === "completed"
-        ? "export"
+        ? hasLog
+          ? "log"
+          : "export"
         : record.status === "failed"
           ? "log"
           : record.status === "processing" || record.status === "pending"
@@ -639,7 +628,7 @@ export default function WindFarmCalcListPage() {
               ))}
             </Space>
             <Text type="secondary" className="text-xs">
-              {t("耗时")}：{formatDuration(record.duration_seconds)} · {t("创建时间")}：{formatDateTime(record.create_date)}
+              {t("创建时间")}：{formatDateTime(record.create_date)}
             </Text>
             {record.status === "failed" && record.error_message ? (
               <Text type="danger" className="text-xs" ellipsis={{ tooltip: record.error_message }}>

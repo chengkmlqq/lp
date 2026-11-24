@@ -6,6 +6,7 @@ import {
   Alert,
   Button,
   Card,
+  Descriptions,
   Empty,
   Progress,
   Select,
@@ -15,12 +16,12 @@ import {
   Tag,
   Tooltip,
   Typography,
+  type DescriptionsProps,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
 import {
   CalculatorOutlined,
-  DownloadOutlined,
   QuestionCircleOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -28,15 +29,11 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import {
   WindDetailHero,
-  WindDetailMeta,
-  WindDetailMetricStrip,
   WindDetailPaginationFooter,
   WindDetailSubline,
-  type WindDetailMetaItem,
-  type WindDetailMetricItem,
   type WindDetailPaginationConfig,
 } from "@/components/wind-detail-layout";
-import { downloadFileWithAuth, getJson } from "@/lib/api";
+import { getJson } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type {
   WindFarmCalcJobDetail,
@@ -181,32 +178,50 @@ export function WindFarmCalcDetailView({ jobId }: { jobId: string }) {
   );
 
   const titleText = detail?.name || jobId;
-  // 任务名称已在 Hero；开始/结束时间已在副行，属性网格只留真正的基本属性。
-  const metaItems: WindDetailMetaItem[] = [
-    { label: t("阶段"), value: detail?.stage || "-" },
-    { label: t("风机数"), value: detail?.turbine_count ?? 0 },
-    { label: t("耗时"), value: formatDuration(detail?.duration_seconds) },
-    { label: t("集电线停运"), value: detail?.circuit_shutdown_count ?? 0 },
-    { label: t("引擎 MD5"), value: detail?.engine_md5 || "-" },
-    { label: t("来源批次"), span: 2, value: detail?.prep_batch_id || "-" },
-    ...(detail?.error_message
-      ? [{ label: t("失败原因"), span: 2 as const, value: <Text type="danger">{detail.error_message}</Text> }]
-      : []),
-  ];
-
   const completed = detail?.status === "completed";
 
-  // 关键指标条：风险 I~IV + 需停运 + 全场停运，6 项一组无孤项；
-  // 全部放进「概览」Tab，顶部不再常驻。
-  const metricItems: WindDetailMetricItem[] = [
-    ...[1, 2, 3, 4].map((level) => ({
-      label: `${t("风险")} ${RISK_LABELS[level]}`,
-      value: (detail?.[RISK_COUNT_KEYS[level]] as number) ?? 0,
-      tone: (RISK_COLORS[level] === "red" ? "danger" : undefined) as WindDetailMetricItem["tone"],
-    })),
-    { label: t("需停运"), value: detail?.shutdown_count ?? 0 },
-    { label: t("全场停运"), value: detail?.farm_shutdown_count ?? 0 },
-  ];
+  // 概览按类别拆成三组带边框 Descriptions（参照地闪密度详情页 LP-117）。
+  // 字段值、格式化与 i18n 与拆分前保持一致，每项只归属一组，不丢不重。
+  const taskInfoItems: DescriptionsProps["items"] = detail
+    ? [
+        { key: "stage", label: t("阶段"), children: detail.stage || "-" },
+        { key: "engine_md5", label: t("引擎 MD5"), children: detail.engine_md5 || "-" },
+        { key: "prep_batch", label: t("来源批次"), span: 2, children: detail.prep_batch_id || "-" },
+        ...(detail.error_message
+          ? [
+              {
+                key: "error",
+                label: t("失败原因"),
+                span: 2 as const,
+                children: <Text type="danger">{detail.error_message}</Text>,
+              },
+            ]
+          : []),
+      ]
+    : [];
+
+  const statsItems: DescriptionsProps["items"] = detail
+    ? [
+        { key: "turbine_count", label: t("风机数"), children: detail.turbine_count ?? 0 },
+        { key: "duration", label: t("耗时"), children: formatDuration(detail.duration_seconds) },
+        { key: "circuit_shutdown", label: t("集电线停运"), children: detail.circuit_shutdown_count ?? 0 },
+      ]
+    : [];
+
+  const riskItems: DescriptionsProps["items"] = detail
+    ? [
+        ...[1, 2, 3, 4].map((level) => {
+          const count = (detail[RISK_COUNT_KEYS[level]] as number) ?? 0;
+          return {
+            key: `risk_${level}`,
+            label: `${t("风险")} ${RISK_LABELS[level]}`,
+            children: RISK_COLORS[level] === "red" ? <Text type="danger">{count}</Text> : count,
+          };
+        }),
+        { key: "shutdown", label: t("需停运"), children: detail.shutdown_count ?? 0 },
+        { key: "farm_shutdown", label: t("全场停运"), children: detail.farm_shutdown_count ?? 0 },
+      ]
+    : [];
 
   // 分页底栏由当前激活 Tab 驱动，仅逐台结果 Tab 需要分页。
   const activePagination: WindDetailPaginationConfig | null =
@@ -232,11 +247,21 @@ export function WindFarmCalcDetailView({ jobId }: { jobId: string }) {
       label: t("概览"),
       children: (
         <div className="wind-detail-tab-content">
-          {detail ? <WindDetailMetricStrip items={metricItems} /> : null}
           {detail ? (
-            <Card size="small" title={t("基本信息")}>
-              <WindDetailMeta items={metaItems} />
-            </Card>
+            <>
+              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
+                <div className="fl-create-form-block-title">{t("基本信息 / 任务信息")}</div>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={taskInfoItems} />
+              </section>
+              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
+                <div className="fl-create-form-block-title">{t("统计结果")}</div>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={statsItems} />
+              </section>
+              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
+                <div className="fl-create-form-block-title">{t("风险分布")}</div>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={riskItems} />
+              </section>
+            </>
           ) : null}
         </div>
       ),
@@ -245,7 +270,7 @@ export function WindFarmCalcDetailView({ jobId }: { jobId: string }) {
       key: "results",
       label: t("逐台结果"),
       children: (
-        <Card size="small">
+        <Card size="small" className="wind-farm-calc-table-tab-card">
           <Space style={{ marginBottom: 12 }} wrap>
             <span>{t("风险等级")}:</span>
             <Select
@@ -305,16 +330,7 @@ export function WindFarmCalcDetailView({ jobId }: { jobId: string }) {
           />
         }
         actions={
-          completed ? (
-            <Button
-              size="small"
-              type="primary"
-              icon={<DownloadOutlined />}
-              onClick={() => void downloadFileWithAuth(`${API_BASE}/${jobId}/export`, `${detail.name || "wind-farm-calc"}-results.xlsx`)}
-            >
-              {t("导出 Excel")}
-            </Button>
-          ) : (
+          completed ? null : (
             <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => void detailQuery.refetch()}>
               {t("刷新")}
             </Button>
