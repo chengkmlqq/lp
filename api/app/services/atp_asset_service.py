@@ -56,10 +56,12 @@ from ..schemas.atp_asset import (
     AtpTagOptionsResponse,
 )
 from .atp_export_layout import (
+    ATP_ROOT_DEFAULT,
     ATP_TREE_LAYOUT,
     LEGACY_LAYOUT,
     SUPPORTED_EXPORT_LAYOUTS,
     atp_tree_relative_dir,
+    rewrite_atp_model_bytes,
     safe_member_path,
 )
 from .legacy_atp_adapter import build_legacy_atp_status_checks
@@ -2847,6 +2849,10 @@ def export_assets_zip(
     * ``atp_tree``：直接按 D 盘 ATP 目录结构打包：
       ``{电压}/{塔型}/{场景}/{措施}/模型文件``，只取激活版本，只导出已入库的
       ``.atp/.dat/.acp``（不生成也不导出 ``.pch/.lib`` 运行产物）。
+      包内 ``.atp`` 的 ``$INCLUDE``/``$INSERT`` 目录段会重写为
+      ``D:\\ATP\\{电压}\\{塔型}\\{场景}\\{措施}\\``（C# 不做运行时路径重构，见
+      ``atp_export_layout.rewrite_atp_model_bytes``）；改写条数与超 80 列告警
+      记入清单 ``include_rewrite``。
       清单文件改名 ``_lp_export_manifest.json``，避免混进 C# 使用的模型目录。
 
     维度过滤：每维既接单值字符串也接字符串数组；同维 OR、跨维 AND，空白=不过滤。
@@ -2967,6 +2973,11 @@ def export_assets_zip(
     EXPORT_MAX_BYTES = 512 * 1024 * 1024
     # 运行产物不随 ATP 目录树导出：.pch/.lib 由 ATP/wine 侧现场生成。
     skipped_suffixes = {".pch", ".lib"} if layout == ATP_TREE_LAYOUT else set()
+    # atp_tree 包要直接给 C# 用：C# 不做运行时路径重构，必须把 $INCLUDE/$INSERT
+    # 改写成 C# 机器上的绝对路径（根固定 D:\ATP），否则会打开上传者机器的原始路径。
+    include_rewritten_files = 0
+    include_rewritten_lines = 0
+    include_rewrite_warnings: list[dict[str, Any]] = []
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
         for group_info in export_groups:
@@ -3008,6 +3019,15 @@ def export_assets_zip(
                 except (StoragePathNotFoundError, StorageDriverError) as exc:
                     missing.append({"code": primary.code, "version": primary.version, "reason": f"{relative}: {exc}"})
                     continue
+                if layout == ATP_TREE_LAYOUT and PurePosixPath(relative).suffix.lower() == ".atp":
+                    content, _rw = rewrite_atp_model_bytes(content, dir_name)
+                    if _rw.get("changed"):
+                        include_rewritten_files += 1
+                        include_rewritten_lines += int(_rw["changed"])
+                    for _warn in _rw.get("warnings") or []:
+                        include_rewrite_warnings.append(
+                            {**_warn, "directory": dir_name, "file": relative}
+                        )
                 total_bytes += len(content)
                 if total_bytes > EXPORT_MAX_BYTES:
                     raise HTTPException(
@@ -3065,6 +3085,18 @@ def export_assets_zip(
                     "assets": manifest_entries,
                     "missing": missing,
                     "conflicts": conflicts,
+                    **(
+                        {
+                            "atp_root": ATP_ROOT_DEFAULT,
+                            "include_rewrite": {
+                                "rewritten_files": include_rewritten_files,
+                                "rewritten_lines": include_rewritten_lines,
+                                "warnings": include_rewrite_warnings,
+                            },
+                        }
+                        if layout == ATP_TREE_LAYOUT
+                        else {}
+                    ),
                 },
                 ensure_ascii=False,
                 indent=2,

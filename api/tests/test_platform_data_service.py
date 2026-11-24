@@ -243,7 +243,7 @@ def test_export_atp_tree_bundle_layout():
     content, manifest = svc.build_atp_tree_bundle(db, filters={"voltage_level": "500kV"})
     with zipfile.ZipFile(io.BytesIO(content)) as z:
         names = set(z.namelist())
-        assert "500kV/cathead/fanji/noM/work.atp" in names
+        assert "500/cathead/fanji/noM/work.atp" in names
         assert "_lp_export_manifest.json" in names
         assert "manifest.json" not in names
         assert "atp_models/" not in names
@@ -252,7 +252,7 @@ def test_export_atp_tree_bundle_layout():
     assert manifest["bundle_schema_version"] == svc.ATP_TREE_BUNDLE_SCHEMA_VERSION
     assert manifest["layout"] == "atp_tree"
     assert manifest["counts"]["atp_models"] == 1
-    assert tree_manifest["assets"][0]["storage_dir"] == "500kV/cathead/fanji/noM"
+    assert tree_manifest["assets"][0]["storage_dir"] == "500/cathead/fanji/noM"
     db.close()
 
 
@@ -301,12 +301,44 @@ def test_atp_tree_export_uses_active_version_and_skips_runtime_artifacts():
     assert filename.startswith("atp-tree-")
     with zipfile.ZipFile(io.BytesIO(content)) as z:
         names = set(z.namelist())
-        assert "500kV/cathead/fanji/noM/work.atp" in names
-        assert z.read("500kV/cathead/fanji/noM/work.atp") == b"TEST ATP CONTENT"
+        assert "500/cathead/fanji/noM/work.atp" in names
+        assert z.read("500/cathead/fanji/noM/work.atp") == b"TEST ATP CONTENT"
         assert not any(name.endswith(".pch") or name.endswith(".lib") for name in names)
         manifest = json.loads(z.read("_lp_export_manifest.json"))
     assert manifest["total_assets"] == 1
     assert manifest["assets"][0]["version"] == "v1"
+    db.close()
+
+
+def test_atp_tree_export_rewrites_include_path_to_csharp_root():
+    """C# 不做运行时路径重构，导出包必须把 $INCLUDE 指向 D:\\ATP\\{目录}。"""
+    db = _new_session()
+    _seed_storage(db)
+    _seed_asset(db)
+
+    mount = db.scalar(select(FileStorageMount).where(FileStorageMount.code == "main"))
+    from app.services.storage_driver import build_storage_driver
+
+    driver = build_storage_driver(mount.backend, mount)
+    raw = (
+        "C test\r\n"
+        "$INCLUDE, C:\\ATP6\\ATP-EMTP_6_0\\ATP\\short.lib, X0129A, X0129B, X0129C\r\n"
+        "$INCLUDE, C:\\ATP60work\\batch\\110_ganzi_fanji\\dahao.lib, LINE1A $$\r\n"
+    ).encode("gbk")
+    driver.write_file("/atp/ATP66-test-v1/work.atp", content=raw, content_type="text/plain")
+
+    content, _filename = export_assets_zip(db, layout="atp_tree")
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        text = z.read("500/cathead/fanji/noM/work.atp").decode("gbk")
+        manifest = json.loads(z.read("_lp_export_manifest.json"))
+
+    assert "$INCLUDE,D:\\ATP\\500\\cathead\\fanji\\noM\\short.lib, X0129A, X0129B, X0129C" in text
+    assert "$INCLUDE,D:\\ATP\\500\\cathead\\fanji\\noM\\dahao.lib, LINE1A $$" in text
+    assert "C:\\ATP6" not in text
+    assert manifest["atp_root"] == "D:\\ATP"
+    assert manifest["include_rewrite"]["rewritten_files"] == 1
+    assert manifest["include_rewrite"]["rewritten_lines"] == 2
+    assert manifest["include_rewrite"]["warnings"] == []
     db.close()
 
 
@@ -321,7 +353,7 @@ def test_export_job_with_atp_tree_layout():
     filename, content, _mime = svc.download_job_artifact(db, job.id)
     assert filename.endswith(".zip")
     with zipfile.ZipFile(io.BytesIO(content)) as z:
-        assert "500kV/cathead/fanji/noM/work.atp" in z.namelist()
+        assert "500/cathead/fanji/noM/work.atp" in z.namelist()
     assert job.manifest_json["layout"] == "atp_tree"
     db.close()
 

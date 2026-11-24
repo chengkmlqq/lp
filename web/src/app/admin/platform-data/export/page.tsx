@@ -474,7 +474,7 @@ export default function PlatformDataExportPage() {
           </Form>
           {atpModelsSelected && exportLayout === "atp_tree" ? (
             <div style={{ color: "var(--gray-9)", fontSize: 12, marginTop: 8 }}>
-              {t("ATP 目录树按 电压/塔型/场景/措施 导出激活版本；解压到 D:\\ATP 后可直接供 C# 程序使用。")}
+              {t("ATP 目录树按 电压/塔型/场景/措施 导出激活版本，包内 $INCLUDE 已重写为 D:\\ATP 下的绝对路径；解压到 D:\\ATP 后可直接供 C# 程序使用。")}
             </div>
           ) : null}
         </div>

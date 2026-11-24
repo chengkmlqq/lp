@@ -279,6 +279,8 @@ def build_atp_tree_bundle(
         "layout": ATP_TREE_LAYOUT,
         "counts": {"atp_models": atp_manifest.get("total_assets", 0)},
         "exported_files": atp_manifest.get("exported_files", 0),
+        "atp_root": atp_manifest.get("atp_root"),
+        "include_rewrite": atp_manifest.get("include_rewrite", {}),
         "checksums": {"atp_models": _sha256(content)},
     }
     return content, manifest
