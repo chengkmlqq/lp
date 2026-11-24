@@ -3370,6 +3370,19 @@ export const EN_DICT: Record<string, string> = {
   "概率": "Probability",
   "度": "Deg",
   "对应风机编号": "Turbine no.",
+  // ── LP-115 风电场计算详情页·逐台结果表头 tooltip ──
+  "风机编号": "Turbine no.",
+  "回路号": "Circuit no.",
+  "经纬度": "Longitude / latitude",
+  "计算值 V": "Calculated value V",
+  "停运建议": "Shutdown recommendation",
+  "风机点位文件中的顺序编号，用于标识每台风机": "Sequential number from the turbine point file, used to identify each turbine",
+  "风机所在位置的经度与纬度，十进制度；经度在前、纬度在后": "Longitude and latitude of the turbine in decimal degrees; longitude first, then latitude",
+  "后端按规程重算得到的风险判定值 V，与 S 共同参与风险等级判定": "Risk indicator V recomputed by the backend per the guideline, used together with S to determine the risk level",
+  "后端依据计算值 V 与 S 重算得到的风险等级（I~IV），以服务端结果为准；与 GBK 原文的差异见概览提示":
+    "Risk level (I–IV) recomputed by the backend from V and S; the server result takes precedence. See the overview notice for differences from the original GBK value",
+  "依据该风机风险等级给出的处置建议：无 / 停运 / 集电线停运 / 风电场停运": "Action recommendation based on the turbine's risk level: none / shutdown / collector-line shutdown / wind-farm shutdown",
+  "该风机所在的集电回路编号；为空表示未分配回路": "Collector circuit the turbine belongs to; empty means no circuit assigned",
 }
 
 export const MENU_LABELS_EN: Record<string, string> = {
