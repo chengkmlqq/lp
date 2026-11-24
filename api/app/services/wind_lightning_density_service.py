@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import re
 import zipfile
@@ -72,6 +73,31 @@ IMAGE_VARIANT_FILENAMES = {
     "nearest-km2": "3_nearest_km2.png",
     "nearest-cell": "4_nearest_cell.png",
 }
+
+# Excel 导出与整包 CSV 共用列头，避免两处列定义漂移。
+CELL_EXPORT_HEADERS: tuple[str, ...] = (
+    "列号 i",
+    "行号 j",
+    "中心经度",
+    "中心纬度",
+    "西边界",
+    "东边界",
+    "南边界",
+    "北边界",
+    "落雷次数",
+    "密度(次/(格·年))",
+    "密度(次/(km²·年))",
+    "风机数",
+)
+TURBINE_EXPORT_HEADERS: tuple[str, ...] = (
+    "序号",
+    "风机编号",
+    "经度",
+    "纬度",
+    "网格列号 i",
+    "网格行号 j",
+    "网格密度(次/(km²·年))",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1095,6 +1121,41 @@ def _load_export_rows(
     return list(cells), list(turbines)
 
 
+def _cell_export_rows(cells: Sequence[WindLightningDensityCell]) -> list[list[Any]]:
+    return [
+        [
+            cell.cell_i,
+            cell.cell_j,
+            cell.center_lon,
+            cell.center_lat,
+            cell.min_lon,
+            cell.max_lon,
+            cell.min_lat,
+            cell.max_lat,
+            cell.strike_count,
+            cell.density_per_cell_year,
+            cell.density_per_km2_year,
+            cell.turbine_count,
+        ]
+        for cell in cells
+    ]
+
+
+def _turbine_export_rows(turbines: Sequence[WindLightningDensityTurbine]) -> list[list[Any]]:
+    return [
+        [
+            turbine.seq,
+            turbine.turbine_no or "",
+            turbine.lon,
+            turbine.lat,
+            turbine.cell_i,
+            turbine.cell_j,
+            turbine.cell_density,
+        ]
+        for turbine in turbines
+    ]
+
+
 def export_excel(db: Session, batch_id: str, *, export_type: str) -> tuple[bytes, str]:
     """Excel 导出：cells / turbines / all（all 含概览 + 网格 + 风机）。"""
     if export_type not in {"cells", "turbines", "all"}:
@@ -1152,61 +1213,76 @@ def export_excel(db: Session, batch_id: str, *, export_type: str) -> tuple[bytes
         )
 
     if export_type in {"cells", "all"}:
-        add_sheet(
-            "网格",
-            [
-                "列号 i",
-                "行号 j",
-                "中心经度",
-                "中心纬度",
-                "西边界",
-                "东边界",
-                "南边界",
-                "北边界",
-                "落雷次数",
-                "密度(次/(格·年))",
-                "密度(次/(km²·年))",
-                "风机数",
-            ],
-            [
-                [
-                    cell.cell_i,
-                    cell.cell_j,
-                    cell.center_lon,
-                    cell.center_lat,
-                    cell.min_lon,
-                    cell.max_lon,
-                    cell.min_lat,
-                    cell.max_lat,
-                    cell.strike_count,
-                    cell.density_per_cell_year,
-                    cell.density_per_km2_year,
-                    cell.turbine_count,
-                ]
-                for cell in cells
-            ],
-        )
+        add_sheet("网格", CELL_EXPORT_HEADERS, _cell_export_rows(cells))
 
     if export_type in {"turbines", "all"}:
-        add_sheet(
-            "风机",
-            ["序号", "风机编号", "经度", "纬度", "网格列号 i", "网格行号 j", "网格密度(次/(km²·年))"],
-            [
-                [
-                    turbine.seq,
-                    turbine.turbine_no or "",
-                    turbine.lon,
-                    turbine.lat,
-                    turbine.cell_i,
-                    turbine.cell_j,
-                    turbine.cell_density,
-                ]
-                for turbine in turbines
-            ],
-        )
+        add_sheet("风机", TURBINE_EXPORT_HEADERS, _turbine_export_rows(turbines))
 
     buffer = io.BytesIO()
     workbook.save(buffer)
     suffix = {"cells": "网格", "turbines": "风机", "all": "全部"}[export_type]
     filename = f"{batch.batch_name or '风电场地闪密度'}-{suffix}.xlsx"
     return buffer.getvalue(), filename
+
+
+def _csv_bytes(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> bytes:
+    """utf-8-sig：Excel 直接双击打开中文列头不乱码。"""
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer)
+    writer.writerow(list(headers))
+    writer.writerows([list(row) for row in rows])
+    return buffer.getvalue().encode("utf-8-sig")
+
+
+def _archive_input_name(name: str | None, fallback: str) -> str:
+    """上传文件名只取文件名本身，避免其中的路径分隔符写进 ZIP。"""
+    cleaned = re.sub(r"[\\/]", "_", (name or "").strip())
+    return cleaned or fallback
+
+
+def _load_package_file(key: str | None, label: str) -> bytes:
+    """读取对象存储中的原始输入；缺失/失败/空内容都给出明确错误，不打空文件进包。"""
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{label}未归档，无法打包下载",
+        )
+    try:
+        content = minio_storage.get_object(key)
+    except minio_storage.MinioStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"读取{label}失败：{exc}",
+        ) from exc
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{label}内容为空，无法打包下载",
+        )
+    return content
+
+
+def build_package(db: Session, batch_id: str) -> tuple[bytes, str]:
+    """整包下载：网格 CSV + 风机 CSV + 两份原始输入文件 + 4 张密度图。"""
+    batch = _get_batch_or_404(db, batch_id)
+    if batch.status != "completed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="批次尚未完成，暂无可下载产物")
+    cells, turbines = _load_export_rows(db, batch)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("网格密度表.csv", _csv_bytes(CELL_EXPORT_HEADERS, _cell_export_rows(cells)))
+        archive.writestr("风机明细.csv", _csv_bytes(TURBINE_EXPORT_HEADERS, _turbine_export_rows(turbines)))
+        archive.writestr(
+            _archive_input_name(batch.turbine_source_file_name, "turbines.txt"),
+            _load_package_file(batch.turbine_object_key, "原始风机文件"),
+        )
+        archive.writestr(
+            _archive_input_name(batch.lightning_source_file_name, "lightning.csv"),
+            _load_package_file(batch.lightning_object_key, "原始雷电文件"),
+        )
+        for variant_key, interpolation, unit in IMAGE_VARIANT_COMBOS:
+            content, _ = get_batch_image(db, batch_id, unit=unit, interpolation=interpolation)
+            archive.writestr(IMAGE_VARIANT_FILENAMES[variant_key], content)
+    safe_name = re.sub(r'[\\/:*?"<>|]', "_", batch.batch_name or "wind-lightning-density")
+    return buffer.getvalue(), f"{safe_name}-package.zip"

@@ -222,6 +222,21 @@ def export_wind_lightning_density_excel(
     )
 
 
+@router.get("/{batch_id}/package")
+def download_wind_lightning_density_package(
+    batch_id: str,
+    _: CurrentUser = Depends(require_any_permission(*_READ_PERMISSIONS)),
+    db: Session = Depends(get_db),
+) -> Response:
+    """打包下载整批产物：网格 CSV + 风机 CSV + 原始输入文件 + 4 张密度图。"""
+    content, filename = service.build_package(db, batch_id)
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers=_attachment_headers(filename),
+    )
+
+
 # ---------------------------------------------------------------------------
 # 重算 / 删除
 # ---------------------------------------------------------------------------

@@ -689,3 +689,62 @@ def test_build_images_zip_contains_four_pngs() -> None:
                 )
     finally:
         db.close()
+
+
+def test_build_package_contains_csv_inputs_and_four_images() -> None:
+    from unittest.mock import patch
+
+    from fastapi import HTTPException
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    from app.services import wind_lightning_density_service as service
+
+    analysis = _analyze(FUJIAN_CSV)
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        batch = _seed_batch(db, analysis)
+        batch.image_variants_json = {key: f"stored/{key}" for key in service.IMAGE_VARIANT_KEYS}
+        db.commit()
+
+        def fake_get(key: str) -> bytes:
+            if key == batch.turbine_object_key:
+                return b"turbine,input\n"
+            if key == batch.lightning_object_key:
+                return b"lightning,input\n"
+            return f"PNG:{key}".encode()
+
+        with patch.object(service.minio_storage, "get_object", side_effect=fake_get):
+            archive_bytes, filename = service.build_package(db, batch.id)
+
+        assert filename == "福建B1测试场-package.zip"
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            names = archive.namelist()
+            assert names[:4] == [
+                "网格密度表.csv",
+                "风机明细.csv",
+                "file_2.txt",
+                "lightning.csv",
+            ]
+            assert names[4:] == [
+                service.IMAGE_VARIANT_FILENAMES[key] for key in service.IMAGE_VARIANT_KEYS
+            ]
+            assert archive.read("file_2.txt") == b"turbine,input\n"
+            assert archive.read("lightning.csv") == b"lightning,input\n"
+            cells_csv = archive.read("网格密度表.csv").decode("utf-8-sig")
+            turbines_csv = archive.read("风机明细.csv").decode("utf-8-sig")
+            assert cells_csv.splitlines()[0] == "列号 i,行号 j,中心经度,中心纬度,西边界,东边界,南边界,北边界,落雷次数,密度(次/(格·年)),密度(次/(km²·年)),风机数"
+            assert turbines_csv.splitlines()[0].startswith("序号,风机编号,经度,纬度")
+            assert len(cells_csv.splitlines()) == len(analysis.cells) + 1
+            assert len(turbines_csv.splitlines()) == len(analysis.turbines) + 1
+
+        batch.status = "processing"
+        db.commit()
+        with pytest.raises(HTTPException) as exc:
+            service.build_package(db, batch.id)
+        assert exc.value.status_code == 409
+    finally:
+        db.close()

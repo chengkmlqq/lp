@@ -56,7 +56,7 @@ import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { getJson, readApiError } from "@/lib/api";
+import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
 import { generateWindLightningTemplate, generateWindTurbineTemplate } from "@/lib/excel-import-utils";
 import type {
   WindLightningDensityBatchListResponse,
@@ -466,6 +466,18 @@ export default function WindLightningDensityListPage() {
     [fetchWithAuth, message, modal, refreshList, t],
   );
 
+  const handlePackageDownload = useCallback(
+    (record: WindLightningDensityBatchSummary) => {
+      void downloadFileWithAuth(
+        `${API_BASE}/${record.id}/package`,
+        `${record.batch_name || "wind-lightning-density"}-package.zip`,
+      ).catch((error: unknown) => {
+        message.error((error as Error).message);
+      });
+    },
+    [message],
+  );
+
   const columns = useMemo<TableColumnsType<WindLightningDensityBatchSummary>>(
     () => [
       {
@@ -604,6 +616,13 @@ export default function WindLightningDensityListPage() {
                   openLogViewer(record.task_id, t("任务执行日志"), record.batch_name || record.id),
               },
               {
+                key: "package",
+                label: t("打包下载"),
+                icon: <DownloadOutlined />,
+                visible: record.status === "completed" && canRead,
+                onClick: () => handlePackageDownload(record),
+              },
+              {
                 key: "delete",
                 label: t("删除"),
                 icon: <DeleteOutlined />,
@@ -616,7 +635,7 @@ export default function WindLightningDensityListPage() {
         ),
       },
     ],
-    [canDelete, canReadLogs, openLogViewer, handleDelete, openDetail, t],
+    [canDelete, canRead, canReadLogs, openLogViewer, handleDelete, handlePackageDownload, openDetail, t],
   );
 
   const paginationNode = (
@@ -715,6 +734,23 @@ export default function WindLightningDensityListPage() {
               <Dropdown
                 menu={{
                   items: [
+                    ...(record.status === "completed" && canRead
+                      ? [
+                          {
+                            key: "package",
+                            label: (
+                              <Space size={4}>
+                                <DownloadOutlined />
+                                <span>{t("打包下载")}</span>
+                              </Space>
+                            ),
+                            onClick: (event) => {
+                              event.domEvent.stopPropagation();
+                              handlePackageDownload(record);
+                            },
+                          },
+                        ]
+                      : []),
                     ...(canDelete
                       ? [
                           {
