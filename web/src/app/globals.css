@@ -364,8 +364,8 @@ body {
 
 /* ═══════════════════════════════════════════════════════════
  * 双列侧边导航（迁移自 kb_compilation：对齐 MODO narrow 菜单）
- * 第一列 104px 一级方块卡（图标上/文字下，60px 高、radius 8、
- * 选中 fill-2 #EFF4F9 + 图标主色；kb 原为 80px，因本系统一级菜单最长 6 字而加宽）
+ * 第一列 116px 一级方块卡（图标上/文字下，最小 60px 高、radius 8、
+ * 选中 fill-2 #EFF4F9 + 图标主色；kb 原为 80px，因本系统一级菜单最长 7 字而加宽）
  * + 第二列 160px 子菜单（白底、项 36px/radius 4/间距 8、选中 fill-2 + 主色）
  * ═══════════════════════════════════════════════════════════ */
 .kb-nav {
@@ -374,8 +374,9 @@ body {
   min-width: 0;
 }
 .kb-nav-rail {
-  /* 一级菜单名最长 6 字（如「雷电幅值统计」），rail 需保证文字可用宽 ≥ 72px */
-  width: 104px;
+  /* 一级菜单名最长 7 字（如「风电场数据准备」），rail 需保证文字可用宽 ≥ 84px：
+     116 - 16（rail 内边距）- 8（卡片内边距）= 92px */
+  width: 116px;
   flex-shrink: 0;
   box-sizing: border-box;
   display: flex;
@@ -392,7 +393,7 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  height: 60px;
+  min-height: 60px;
   padding: 8px 4px;
   row-gap: 4px;
   margin-bottom: 8px;
@@ -420,9 +421,15 @@ body {
   text-align: center;
   color: #4d5e7d;
   font-weight: 400;
+  /* 中文标签（≤7 字）在 92px 可用宽内单行放得下；英文标签更长，
+     允许折行且最多 3 行，超出以省略号收尾，保证不溢出侧栏。
+     完整的菜单名另有卡片 title 悬浮提示兜底。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .kb-nav-card.is-active {
   background: #eff4f9;

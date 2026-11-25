@@ -671,7 +671,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         {isDesktop && (
           <div
             className="admin-design-sider"
-            style={{ width: !subCollapsed && hasSub ? 264 : 104 }}
+            style={{ width: !subCollapsed && hasSub ? 276 : 116 }}
           >
             {renderKbNav()}
             {hasSub && (
