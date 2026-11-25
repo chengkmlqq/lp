@@ -66,6 +66,7 @@ Theta_deg,FailureRate,FailureRate_pct
 ```
 
 - 数值精度：至少保留 12 位有效数字（建议 `%.17g`）。回归基准容差是 **1e-9**，`%.4f` 这类写法必然对不上。
+- 后端只信任 `angle_list` 里的角度：CSV 若多出未请求的行（历史产物写死 `0:10:110` 全角度扫描），均值/最小/最大及其对应角度、逐角度结果、曲线都会按请求角度过滤，并在任务日志里记「其中 N 个不在请求的 angle_list 内」；缺少任一请求角度则任务失败（不猜值）。因此产物**仍应按 `params.angle_list` 计算**——过滤只能纠正展示，省不掉算力。
 - 建议**每算完一个角度就 flush 一行**：后端按 CSV 数据行数推任务进度（`wind_turbine_calc_service.py` 的进度循环），一次性写完会让进度条一直停在 5%。
 - 可选输出 `results/failure_rate_by_theta.png` 或 cwd 下的同名 PNG；没有则由后端用 matplotlib 按 CSV 现画。
 
@@ -318,6 +319,7 @@ PY
 | 启动即退出，日志提示许可未同意 | R2025a Runtime 强制 `AGREE_TO_MATLAB_RUNTIME_LICENSE=yes` | 启动脚本里 `export`（§3.4），worker compose 里也设了 |
 | `bash: run_main_angle.sh: No such file` / 脚本报缺参数 | 上传的是 mcc 原始脚本，且文件名不对 | 用 §3.4 改造后、命名为 `run_main_angle.sh` 再打包 |
 | 任务一直 `pending` | `matlab-wind` 队列没有消费者 | `docker compose ps` 看 `matlab-wind-worker` 是否在跑；不要用 `celery-worker` 顶替 |
+| 单角度任务耗时 ~2.5h，结果卡片出现未请求角度（如 60°） | 编译产物写死 `theta_list = 0:10:110`，无视 `params.json` 的 `angle_list`，每轮 ~12min，12 轮 ≈ 2.5h | 重新编译成按 `params.angle_list` 逐角度计算（日志应打印「角度数=N」且 CSV 行数 = N）；后端已按请求角度过滤统计，但耗时只能靠引擎侧修复 |
 | 任务卡在 5% | 产物最后才写 CSV | 每算完一个角度 flush 一行 |
 | 结果"看起来对"但回归超差 | 精度截断，或有人改了积分步长 | 用 `%.17g`；算法文件保持原样 |
 | 单风机产物放到判别 worker | Runtime 版本不匹配 | 只能进 `matlab-wind`；`matlab-diagnostics` 是 R2023a |

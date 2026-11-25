@@ -42,6 +42,9 @@ GOLDEN_MEAN = 0.006840169911441951
 
 CSV_HEADER = ["Theta_deg", "FailureRate", "FailureRate_pct"]
 
+# 请求角度与 CSV 行角度的匹配容差（deg）。CSV 由 %g 输出，正常误差远小于此值。
+ANGLE_MATCH_TOLERANCE = 1e-6
+
 
 class WindTurbineCalcError(ValueError):
     """参数校验或结果解析失败。"""
@@ -125,17 +128,61 @@ class ParsedRow:
 @dataclass
 class ParsedCsv:
     rows: list[ParsedRow]
+    all_rows: list[ParsedRow]
     mean_failure_rate: float
     min_failure_rate: float
     max_failure_rate: float
     min_failure_rate_theta: float
     max_failure_rate_theta: float
 
+    @property
+    def has_unrequested_rows(self) -> bool:
+        """CSV 是否含有请求角度之外的行（历史编译产物会写死 0–110° 全角度）。"""
+        return len(self.all_rows) > len(self.rows)
 
-def parse_failure_rate_csv(raw: bytes) -> ParsedCsv:
+
+def select_rows_for_angles(
+    rows: list[ParsedRow],
+    angle_list: list[float],
+    *,
+    tolerance: float = ANGLE_MATCH_TOLERANCE,
+) -> tuple[list[ParsedRow], list[float]]:
+    """按请求角度挑出 CSV 对应行，返回 (匹配行, 缺失角度)。
+
+    引擎可能返回整条 0–110° 曲线（历史编译产物无视 params.json 的 angle_list），
+    统计与曲线一律以用户请求的角度为准，避免展示未请求角度的峰值。
+    """
+    selected: list[ParsedRow] = []
+    missing: list[float] = []
+    used: set[int] = set()
+    targets: list[float] = []
+    for angle in angle_list:
+        target = float(angle)
+        # 请求里重复的角度只统计一次，避免同一行被落库两次
+        if any(abs(target - seen) <= tolerance for seen in targets):
+            continue
+        targets.append(target)
+        match = next(
+            (
+                index
+                for index, row in enumerate(rows)
+                if index not in used and abs(row.theta_deg - target) <= tolerance
+            ),
+            None,
+        )
+        if match is None:
+            missing.append(target)
+        else:
+            used.add(match)
+            selected.append(rows[match])
+    return selected, missing
+
+
+def parse_failure_rate_csv(raw: bytes, *, angle_list: list[float] | None = None) -> ParsedCsv:
     """解析 results/failure_rate_by_theta.csv。
 
     兼容 UTF-8 BOM、表头大小写、额外空白列；仅接受三列核心字段。
+    传入 ``angle_list`` 时，统计口径只取请求角度对应的行（``all_rows`` 保留原始全量行）。
     """
     text = raw.decode("utf-8-sig", errors="replace")
     reader = csv.reader(io.StringIO(text))
@@ -159,11 +206,23 @@ def parse_failure_rate_csv(raw: bytes) -> ParsedCsv:
         rows.append(ParsedRow(theta_deg=theta, failure_rate=rate, failure_rate_pct=pct))
     if not rows:
         raise WindTurbineCalcError("failure_rate_by_theta.csv 无有效数据行")
-    rates = [r.failure_rate for r in rows]
-    min_row = min(rows, key=lambda r: r.failure_rate)
-    max_row = max(rows, key=lambda r: r.failure_rate)
+    stat_rows = rows
+    if angle_list:
+        selected, missing = select_rows_for_angles(rows, angle_list)
+        if missing:
+            returned = ", ".join(f"{r.theta_deg:g}" for r in rows[:36])
+            missing_text = ", ".join(f"{angle:g}" for angle in missing)
+            raise WindTurbineCalcError(
+                f"引擎返回的角度与请求不一致，缺少请求角度 {missing_text}°；"
+                f"CSV 实际返回角度 {returned}°。请确认编译产物是否按 params.json 的 angle_list 计算"
+            )
+        stat_rows = selected
+    rates = [r.failure_rate for r in stat_rows]
+    min_row = min(stat_rows, key=lambda r: r.failure_rate)
+    max_row = max(stat_rows, key=lambda r: r.failure_rate)
     return ParsedCsv(
-        rows=rows,
+        rows=stat_rows,
+        all_rows=rows,
         mean_failure_rate=sum(rates) / len(rates),
         min_failure_rate=min_row.failure_rate,
         max_failure_rate=max_row.failure_rate,
@@ -211,7 +270,11 @@ def render_chart_png(parsed: ParsedCsv, *, title: str = "单风机屏蔽失效�
 
     fig, ax = plt.subplots(figsize=(9, 5.2))
     ax.plot(x, y, marker="o", linewidth=2, color="#1f77b4")
-    ax.fill_between(x, y, min(y) * 0.9, color="#1f77b4", alpha=0.12)
+    if len(x) > 1:
+        ax.fill_between(x, y, min(y) * 0.9, color="#1f77b4", alpha=0.12)
+    else:
+        # 单角度任务只有一个点：留出横向余量，避免点贴在坐标轴边缘
+        ax.set_xlim(x[0] - 10, x[0] + 10)
     ax.set_title(title if has_cjk else "Failure Rate vs Rotation Angle")
     ax.set_xlabel("旋转角 (deg)" if has_cjk else "Rotation angle (deg)")
     ax.set_ylabel("屏蔽失效率" if has_cjk else "Shielding failure rate")

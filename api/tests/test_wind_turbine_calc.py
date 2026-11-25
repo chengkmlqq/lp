@@ -35,6 +35,52 @@ def test_golden_min_max_and_theta() -> None:
     assert parsed.max_failure_rate_theta == calc.GOLDEN_ANGLES[calc.GOLDEN_FAILURE_RATES.index(parsed.max_failure_rate)]
 
 
+def test_parse_csv_restricts_single_angle_to_requested_rows() -> None:
+    """单角度任务：历史引擎会返回整条 0–110° 曲线，统计口径只能取请求角度。"""
+    parsed = calc.parse_failure_rate_csv(calc.golden_csv_bytes(), angle_list=[0])
+    assert [r.theta_deg for r in parsed.rows] == [0.0]
+    assert parsed.max_failure_rate_theta == 0.0
+    assert parsed.min_failure_rate_theta == 0.0
+    assert abs(parsed.max_failure_rate - calc.GOLDEN_FAILURE_RATES[0]) <= 1e-12
+    assert abs(parsed.mean_failure_rate - calc.GOLDEN_FAILURE_RATES[0]) <= 1e-12
+    assert len(parsed.all_rows) == 12
+    assert parsed.has_unrequested_rows is True
+
+
+def test_parse_csv_restricts_multi_angles_to_requested_rows() -> None:
+    parsed = calc.parse_failure_rate_csv(calc.golden_csv_bytes(), angle_list=[0, 30, 60, 90])
+    assert [r.theta_deg for r in parsed.rows] == [0.0, 30.0, 60.0, 90.0]
+    assert parsed.max_failure_rate_theta == 60.0
+    assert abs(parsed.mean_failure_rate - sum(calc.GOLDEN_FAILURE_RATES[i] for i in (0, 3, 6, 9)) / 4) <= 1e-12
+    assert parsed.has_unrequested_rows is True
+
+
+def test_parse_csv_dedupes_repeated_requested_angles() -> None:
+    parsed = calc.parse_failure_rate_csv(calc.golden_csv_bytes(), angle_list=[0, 0])
+    assert [r.theta_deg for r in parsed.rows] == [0.0]
+
+
+def test_parse_csv_keeps_all_rows_when_angles_match_request() -> None:
+    parsed = calc.parse_failure_rate_csv(calc.golden_csv_bytes(), angle_list=list(calc.GOLDEN_ANGLES))
+    assert len(parsed.rows) == 12
+    assert parsed.has_unrequested_rows is False
+    assert abs(parsed.mean_failure_rate - calc.GOLDEN_MEAN) <= 1e-9
+
+
+def test_parse_csv_rejects_missing_requested_angle() -> None:
+    """引擎返回的角度不含请求角度时不能猜值，直接报错暴露契约不符。"""
+    with pytest.raises(calc.WindTurbineCalcError) as excinfo:
+        calc.parse_failure_rate_csv(calc.golden_csv_bytes(), angle_list=[0, 15])
+    assert "15" in str(excinfo.value)
+
+
+def test_single_angle_chart_renders() -> None:
+    parsed = calc.parse_failure_rate_csv(calc.golden_csv_bytes(), angle_list=[0])
+    png = calc.render_chart_png(parsed)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert len(png) > 1000
+
+
 def test_parse_csv_with_bom_and_whitespace() -> None:
     raw = (
         "\ufeff Theta_deg , FailureRate , FailureRate_pct \n"

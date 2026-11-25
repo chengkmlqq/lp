@@ -615,14 +615,21 @@ def run_job(
             raise calc.WindTurbineCalcError("核心程序未产出 results/failure_rate_by_theta.csv 或文件为空")
 
         report(92, "parsing")
-        parsed = calc.parse_failure_rate_csv(csv_path.read_bytes())
+        parsed = calc.parse_failure_rate_csv(csv_path.read_bytes(), angle_list=params["angle_list"])
+        if parsed.has_unrequested_rows:
+            extra = len(parsed.all_rows) - len(parsed.rows)
+            log(
+                f"引擎返回 {len(parsed.all_rows)} 个角度，其中 {extra} 个不在请求的 angle_list 内"
+                f"（疑似旧版引擎全角度扫描）；统计与曲线已按请求角度过滤"
+            )
 
-        # 曲线：优先产物自带 PNG，否则用 matplotlib 按 CSV 生成
+        # 曲线：优先产物自带 PNG；若已按请求角度过滤，产物 PNG 画的仍是全角度曲线，改用过滤后数据现画
         chart_bytes: bytes | None = None
-        for candidate in (workdir / "results" / "failure_rate_by_theta.png", workdir / "failure_rate_by_theta.png"):
-            if candidate.is_file() and candidate.stat().st_size > 0:
-                chart_bytes = candidate.read_bytes()
-                break
+        if not parsed.has_unrequested_rows:
+            for candidate in (workdir / "results" / "failure_rate_by_theta.png", workdir / "failure_rate_by_theta.png"):
+                if candidate.is_file() and candidate.stat().st_size > 0:
+                    chart_bytes = candidate.read_bytes()
+                    break
         if chart_bytes is None:
             chart_bytes = calc.render_chart_png(parsed)
 
