@@ -332,8 +332,8 @@ def test_atp_tree_export_rewrites_include_path_to_csharp_root():
         text = z.read("500/cathead/fanji/noM/work.atp").decode("gbk")
         manifest = json.loads(z.read("_lp_export_manifest.json"))
 
-    assert "$INCLUDE,D:\\ATP\\500\\cathead\\fanji\\noM\\short.lib, X0129A, X0129B, X0129C" in text
-    assert "$INCLUDE,D:\\ATP\\500\\cathead\\fanji\\noM\\dahao.lib, LINE1A $$" in text
+    assert "$INCLUDE,D:\\ATP\\500\\cathead\\fanji\\noM\\short.lib,X0129A,X0129B,X0129C" in text
+    assert "$INCLUDE,D:\\ATP\\500\\cathead\\fanji\\noM\\dahao.lib,LINE1A $$" in text
     assert "C:\\ATP6" not in text
     assert manifest["atp_root"] == "D:\\ATP"
     assert manifest["include_rewrite"]["rewritten_files"] == 1

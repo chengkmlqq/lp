@@ -70,7 +70,7 @@ def test_include_path_rewritten_to_csharp_root():
     result = rewrite_atp_include_paths(line, "110/ganzi/fanji/M123")
     assert result["changed"] == 1
     assert result["text"] == (
-        "$INCLUDE,D:\\ATP\\110\\ganzi\\fanji\\M123\\short.lib, X0129A, X0129B, X0129C\n"
+        "$INCLUDE,D:\\ATP\\110\\ganzi\\fanji\\M123\\short.lib,X0129A,X0129B,X0129C\n"
     )
     assert result["warnings"] == []
 
@@ -98,7 +98,7 @@ def test_rewrite_is_idempotent_when_already_pointing_at_target():
 def test_relative_include_is_also_normalized():
     line = "$INCLUDE, short.lib, X0129A\n"
     result = rewrite_atp_include_paths(line, "500/ganzi/fanji/noM")
-    assert result["text"] == "$INCLUDE,D:\\ATP\\500\\ganzi\\fanji\\noM\\short.lib, X0129A\n"
+    assert result["text"] == "$INCLUDE,D:\\ATP\\500\\ganzi\\fanji\\noM\\short.lib,X0129A\n"
 
 
 def test_unrelated_lines_are_untouched():
@@ -108,13 +108,16 @@ def test_unrelated_lines_are_untouched():
     assert result["text"] == text
 
 
-def test_long_target_path_warns_about_80_columns():
-    line = "$INCLUDE, C:\\ATP6\\short.lib, X0129A, X0129B, X0129C $$\n"
-    result = rewrite_atp_include_paths(line, "1000/sihuita/raoji1/shuzhi-noM")
+def test_long_target_path_is_compressed_to_fit_80_columns():
+    # 330kV 实测形态：长路径 + 4 个节点名，压缩空格前 81 列会 KILL=79。
+    line = "$INCLUDE, C:\\ATP6\\short.lib, X0140A, X0140B, X0140C, XX0126 $$\n"
+    result = rewrite_atp_include_paths(line, "330/ganzi/raoji1/noM")
     assert result["changed"] == 1
-    assert len(result["warnings"]) == 1
-    assert result["warnings"][0]["columns"] > 80
-    assert "KILL=79" in result["warnings"][0]["reason"]
+    assert result["warnings"] == []
+    assert result["rewritten"][0]["columns"] <= 80
+    assert result["text"] == (
+        "$INCLUDE,D:\\ATP\\330\\ganzi\\raoji1\\noM\\short.lib,X0140A,X0140B,X0140C,XX0126 $$\n"
+    )
 
 
 def test_target_include_path_uses_default_csharp_root():
@@ -135,4 +138,4 @@ def test_rewrite_model_bytes_keeps_gbk_text_and_crlf():
     assert diag["changed"] == 1
     decoded = content.decode("gbk")
     assert "C 中文注释\r\n" in decoded
-    assert "$INCLUDE,D:\\ATP\\110\\ganzi\\fanji\\M123\\short.lib, X0129A\r\n" in decoded
+    assert "$INCLUDE,D:\\ATP\\110\\ganzi\\fanji\\M123\\short.lib,X0129A\r\n" in decoded

@@ -215,7 +215,12 @@ def rewrite_atp_include_paths(
 
         new_line = f"{head},{target}{note}"
         if kind == "$INCLUDE" and sep2:
-            new_line += f",{tail}"
+            # ATP 卡片只有 80 列：$INCLUDE 后面常跟 3~4 个节点名，原模型写作
+            # ``, X0140A, X0140B, X0140C``，逗号后的空格没有语义但白占列数。
+            # 330kV 及以上长路径 + 4 节点名会顶到 81 列触发 KILL=79。
+            # 这里统一压缩为 ``,X0140A,X0140B,X0140C``；实测导出包 738 条超列
+            # 告警全部可由这一步消除（2026-11-25 对 702 个模型的实测统计）。
+            new_line += "," + re.sub(r",\s+", ",", tail.strip())
 
         columns = len(new_line.encode("gbk", errors="replace"))
         if columns > ATP_CARD_MAX_COLUMNS:
