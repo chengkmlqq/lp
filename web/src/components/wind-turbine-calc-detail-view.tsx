@@ -58,9 +58,10 @@ function formatDuration(seconds: number | null | undefined): string {
   return h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`;
 }
 
+/** 失效率以百分数展示，保留 4 位小数，与曲线标题（0.6840%）的 %.4f%% 口径一致。 */
 function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
-  return Number(value).toExponential(9);
+  return `${(Number(value) * 100).toFixed(4)}%`;
 }
 
 /** 表头显式渲染灰色问号图标，悬浮显示解释文案；不依赖 antd Table 的 column.tooltip。 */
@@ -209,7 +210,9 @@ export function WindTurbineCalcDetailView({ jobId }: { jobId: string }) {
           children: (
             <>
               {formatRate(detail.min_failure_rate)}
-              <span className="wind-detail-metric-suffix">{t("对应角度")} {detail.min_failure_rate_theta ?? "-"}</span>
+              <span className="wind-detail-metric-suffix">
+                {t("对应角度")} {detail.min_failure_rate_theta != null ? `${detail.min_failure_rate_theta}°` : "-"}
+              </span>
             </>
           ),
         },
@@ -219,7 +222,9 @@ export function WindTurbineCalcDetailView({ jobId }: { jobId: string }) {
           children: (
             <>
               {formatRate(detail.max_failure_rate)}
-              <span className="wind-detail-metric-suffix">{t("对应角度")} {detail.max_failure_rate_theta ?? "-"}</span>
+              <span className="wind-detail-metric-suffix">
+                {t("对应角度")} {detail.max_failure_rate_theta != null ? `${detail.max_failure_rate_theta}°` : "-"}
+              </span>
             </>
           ),
         },
