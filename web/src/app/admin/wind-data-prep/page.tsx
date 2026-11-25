@@ -59,7 +59,6 @@ import { generateWindLightningTemplate, generateWindTurbineTemplate } from "@/li
 import type {
   WindDataPrepBatchListResponse,
   WindDataPrepBatchSummary,
-  WindDataPrepImportResponse,
 } from "@/types/wind-data-prep";
 
 const { Text } = Typography;
@@ -356,21 +355,24 @@ export default function WindDataPrepListPage() {
     try {
       const response = await fetchWithAuth(API_BASE, { method: "POST", body: formData });
       if (!response.ok) throw new Error(await readApiError(response));
-      const result = (await response.json()) as WindDataPrepImportResponse;
       message.success(t("已提交数据准备任务，正在后台生成五文件"));
       setWizardOpen(false);
       setTurbineFiles([]);
       setLightningFiles([]);
       setTerrainFiles([]);
       form.resetFields();
+      // 提交后停留在列表页：回到第 1 页并清空状态筛选，确保新批次可见；
+      // 列表已有 4 秒轮询，进度会自动推进，无需跳转详情。
+      setStatusFilter(undefined);
+      setPage(1);
+      setActiveTabKey(LIST_TAB_KEY);
       refreshList();
-      openDetail(result.batch_id, (values.name || values.wind_farm_name || "").trim() || result.batch_id);
     } catch (error) {
       message.error((error as Error).message);
     } finally {
       setSubmitting(false);
     }
-  }, [buildFormData, fetchWithAuth, form, message, openDetail, refreshList, t]);
+  }, [buildFormData, fetchWithAuth, form, message, refreshList, t]);
 
   const handleDownloadTurbineTemplate = useCallback(() => {
     try {
