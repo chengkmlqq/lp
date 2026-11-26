@@ -49,6 +49,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { WindDataPrepDetailView } from "@/components/wind-data-prep-detail-view";
+import { WindModelMappingPanel } from "@/components/wind-model-mapping";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
@@ -65,6 +66,7 @@ const { Text } = Typography;
 
 const API_BASE = "/api/v1/wind-data-prep";
 const LIST_TAB_KEY = "list";
+const MODEL_TAB_KEY = "models";
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
   pending: { color: "default", label: "待处理" },
@@ -948,6 +950,14 @@ export default function WindDataPrepListPage() {
                   {paginationNode}
                 </div>
               </div>
+            ),
+          },
+          {
+            key: MODEL_TAB_KEY,
+            label: <>{t("型号参数映射")}</>,
+            closable: false,
+            children: (
+              <WindModelMappingPanel active={activeTabKey === MODEL_TAB_KEY} />
             ),
           },
           ...detailTabs,
