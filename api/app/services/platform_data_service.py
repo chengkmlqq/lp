@@ -30,7 +30,13 @@ from .atp_asset_service import (
     get_asset_by_id,
 )
 from .file_service import list_enabled_mounts
-from .storage_driver import StorageDriverError, build_storage_driver, normalize_virtual_path
+from .storage_driver import (
+    StorageDriverError,
+    StoragePathNotFoundError,
+    build_storage_driver,
+    normalize_virtual_path,
+)
+from .audit_service import compose_audit_detail, write_audit_log
 
 # 包结构 schema 版本：导入时校验，不兼容直接 failed。
 BUNDLE_SCHEMA_VERSION = "1"
@@ -784,3 +790,64 @@ def download_job_artifact(db: Session, job_id: str) -> tuple[str, bytes, str]:
     content = _read_artifact_bytes(db, storage_path=job.artifact_storage_path)
     filename = f"platform-data-{job.kind}-{job.id}.zip"
     return filename, content, ARTIFACT_MIME
+
+
+def delete_job(db: Session, *, job_id: str, actor_user_id: str | None) -> None:
+    """删除已结束的任务及其产物。运行中/排队中的任务拒绝删除，避免产物被删后任务失败。"""
+    job = db.get(PlatformDataJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    if job.status in {"pending", "running"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="任务排队中或执行中，无法删除",
+        )
+
+    storage_path = job.artifact_storage_path
+    artifact_file_id = job.artifact_file_id
+    audit_detail = compose_audit_detail(
+        f"job_id={job.id}",
+        f"kind={job.kind}",
+        f"status={job.status}",
+        f"artifact_path={storage_path or '-'}",
+    )
+
+    db.delete(job)
+    db.flush()
+
+    # 仅当没有其他任务引用同一产物时才清理文件与索引，避免误删被复用的包。
+    if storage_path:
+        still_referenced = db.scalar(
+            select(func.count())
+            .select_from(PlatformDataJob)
+            .where(PlatformDataJob.artifact_storage_path == storage_path)
+        )
+        if not still_referenced:
+            normalized = normalize_virtual_path(storage_path)
+            try:
+                mount = _resolve_default_mount(db)
+                driver = _build_driver(mount)
+                driver.delete_path(normalized, is_dir=False, recursive=False)
+            except StoragePathNotFoundError:
+                pass  # 文件已不存在，继续清理索引记录
+            except (StorageDriverError, RuntimeError) as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"产物文件删除失败: {exc}",
+                ) from exc
+
+            entry = db.get(FileIndexEntry, artifact_file_id) if artifact_file_id is not None else None
+            if entry is None or entry.path != normalized:
+                entry = db.scalar(
+                    select(FileIndexEntry).where(
+                        FileIndexEntry.mount_id == mount.id,
+                        FileIndexEntry.path == normalized,
+                    )
+                )
+            if entry is not None:
+                db.delete(entry)
+
+    write_audit_log(db, action="platform_data.job.delete", actor_user_id=actor_user_id, detail=audit_detail)
+    db.commit()
+

@@ -3,9 +3,9 @@
 /**
  * 基础数据包任务列表面板（导出页与导入页共用）。
  *
- * 布局对齐线路管理页：筛选栏（关键字 / 类型 / 状态 / 查询）+ 卡片-列表视图切换 +
- * 共用分页状态。任务详情由外层 ModoTabs 以可关闭 Tab 承载，本组件只负责列表与
- * 下载产物。
+ * 布局对齐线路管理页：筛选栏（关键字 / 状态 / 查询）+ 卡片-列表视图切换 +
+ * 共用分页状态。任务详情由外层 ModoTabs 以可关闭 Tab 承载，本组件只负责列表、
+ * 下载产物与删除任务。
  */
 import {
   forwardRef,
@@ -23,6 +23,7 @@ import {
   Badge,
   Button,
   Card,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -32,15 +33,19 @@ import {
   Spin,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   ClockCircleOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
   ExportOutlined,
+  FileTextOutlined,
   FileZipOutlined,
-  GlobalOutlined,
   ImportOutlined,
+  MoreOutlined,
   SearchOutlined,
   TagsOutlined,
 } from "@ant-design/icons";
@@ -72,24 +77,25 @@ export type PlatformDataJobsPanelHandle = {
 };
 
 type PlatformDataJobsPanelProps = {
-  /** 固定任务类型：导入页只看导入任务；导出页留空展示全部并开放类型筛选。 */
+  /** 固定任务类型：导入页只看导入任务；导出页留空展示全部。 */
   fixedKind?: JobKind;
   defaultView?: "card" | "list";
   onOpenDetail: (job: JobSummary) => void;
+  /** 任务删除成功后回调（外层用于关闭对应详情 Tab）。 */
+  onJobDeleted?: (jobId: string) => void;
 };
 
 export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, PlatformDataJobsPanelProps>(
-  function PlatformDataJobsPanel({ fixedKind, defaultView = "card", onOpenDetail }, ref) {
+  function PlatformDataJobsPanel({ fixedKind, defaultView = "card", onOpenDetail, onJobDeleted }, ref) {
     const { t } = useI18n();
     const { fetchWithAuth } = useAuth();
-    const { message } = App.useApp();
+    const { message, modal } = App.useApp();
 
     const [jobs, setJobs] = useState<JobSummary[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [keywordInput, setKeywordInput] = useState("");
     const [keyword, setKeyword] = useState("");
-    const [kindFilter, setKindFilter] = useState<JobKind | undefined>(undefined);
     const [statusFilter, setStatusFilter] = useState<JobStatus | undefined>(undefined);
     const [viewMode, setViewMode] = useState<"card" | "list">(defaultView);
     const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
@@ -104,8 +110,7 @@ export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, Pla
         const params = new URLSearchParams();
         params.set("limit", "200");
         params.set("offset", "0");
-        const effectiveKind = fixedKind ?? kindFilter;
-        if (effectiveKind) params.set("kind", effectiveKind);
+        if (fixedKind) params.set("kind", fixedKind);
         if (statusFilter) params.set("status", statusFilter);
         const response = await fetchWithAuth(`/api/v1/admin/platform-data/jobs?${params.toString()}`);
         if (!response.ok) throw new Error(await readApiError(response));
@@ -117,7 +122,7 @@ export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, Pla
       } finally {
         setLoading(false);
       }
-    }, [fetchWithAuth, fixedKind, kindFilter, statusFilter]);
+    }, [fetchWithAuth, fixedKind, statusFilter]);
 
     useImperativeHandle(
       ref,
@@ -237,6 +242,28 @@ export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, Pla
       }
     };
 
+    const handleDelete = (job: JobSummary) => {
+      modal.confirm({
+        title: t("删除确认"),
+        content: t("确认删除该任务？删除后不可恢复。"),
+        okText: t("删除"),
+        okButtonProps: { danger: true },
+        cancelText: t("取消"),
+        onOk: async () => {
+          const response = await fetchWithAuth(`/api/v1/admin/platform-data/jobs/${job.id}`, {
+            method: "DELETE",
+          });
+          if (!response.ok) {
+            message.error(await readApiError(response));
+            return;
+          }
+          message.success(t("删除成功"));
+          onJobDeleted?.(job.id);
+          setReloadNonce((nonce) => nonce + 1);
+        },
+      });
+    };
+
     const columns: ColumnsType<JobSummary> = [
       {
         title: t("类型"),
@@ -317,6 +344,13 @@ export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, Pla
                 title: record.artifact_filename ? undefined : t("暂无产物可下载"),
                 onClick: () => void handleDownload(record),
               },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                onClick: () => handleDelete(record),
+              },
             ]}
           />
         ),
@@ -336,24 +370,6 @@ export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, Pla
                 onPressEnter={handleSearch}
               />
             </Form.Item>
-            {fixedKind ? null : (
-              <Form.Item label={t("类型")} style={{ marginBottom: 0 }}>
-                <Select
-                  allowClear
-                  style={{ width: 120 }}
-                  placeholder={t("全部类型")}
-                  value={kindFilter}
-                  onChange={(value) => {
-                    setKindFilter(value ?? undefined);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                  }}
-                  options={[
-                    { value: "export", label: t("导出") },
-                    { value: "import", label: t("导入") },
-                  ]}
-                />
-              </Form.Item>
-            )}
             <Form.Item label={t("状态")} style={{ marginBottom: 0 }}>
               <Select
                 allowClear
@@ -416,6 +432,7 @@ export const PlatformDataJobsPanel = forwardRef<PlatformDataJobsPanelHandle, Pla
                         job={job}
                         onDetail={onOpenDetail}
                         onDownload={(record) => void handleDownload(record)}
+                        onDelete={handleDelete}
                       />
                     ))}
                   </div>
@@ -464,10 +481,12 @@ function PlatformDataJobCard({
   job,
   onDetail,
   onDownload,
+  onDelete,
 }: {
   job: JobSummary;
   onDetail: (job: JobSummary) => void;
   onDownload: (job: JobSummary) => void;
+  onDelete: (job: JobSummary) => void;
 }) {
   const { t } = useI18n();
   const meta = STATUS_META[job.status] ?? STATUS_FALLBACK;
@@ -524,21 +543,9 @@ function PlatformDataJobCard({
             </Text>
           </div>
           <div className="flex items-center gap-2">
-            <GlobalOutlined className="text-xs text-gray-500" />
-            <Text type="secondary" className="text-xs truncate">
-              {t("来源站点")}：{job.source_site ?? "—"}
-            </Text>
-          </div>
-          <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-xs text-gray-500" />
             <Text type="secondary" className="text-xs">
               {t("创建时间")}：{formatDateTime(job.create_date)}
-            </Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <ClockCircleOutlined className="text-xs text-gray-500" />
-            <Text type="secondary" className="text-xs">
-              {t("完成时间")}：{formatDateTime(job.finish_date)}
             </Text>
           </div>
           {job.status === "failed" && job.error_message ? (
@@ -550,28 +557,61 @@ function PlatformDataJobCard({
 
         <div className="admin-platform-data-job-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
           <Space size={4}>
-            <Button
-              type="link"
-              size="small"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDetail(job);
+            <Tooltip title={t("详情")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<FileTextOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDetail(job);
+                }}
+              />
+            </Tooltip>
+            <Tooltip title={job.artifact_filename ? t("下载产物") : t("暂无产物可下载")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<DownloadOutlined />}
+                disabled={!job.artifact_filename}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDownload(job);
+                }}
+              />
+            </Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "delete",
+                    label: (
+                      <Space size={4}>
+                        <DeleteOutlined />
+                        <span>{t("删除")}</span>
+                      </Space>
+                    ),
+                    danger: true,
+                    onClick: (event) => {
+                      event.domEvent.stopPropagation();
+                      onDelete(job);
+                    },
+                  },
+                ],
               }}
+              trigger={["click"]}
             >
-              {t("详情")}
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              disabled={!job.artifact_filename}
-              title={job.artifact_filename ? undefined : t("暂无产物可下载")}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDownload(job);
-              }}
-            >
-              {t("下载产物")}
-            </Button>
+              <Tooltip title={t("更多")}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                />
+              </Tooltip>
+            </Dropdown>
           </Space>
         </div>
       </div>

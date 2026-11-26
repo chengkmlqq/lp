@@ -177,3 +177,17 @@ def download_platform_data_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(iter([content]), media_type=content_type or "application/octet-stream", headers=headers)
+
+
+@router.delete(
+    "/jobs/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_enabled_menu_route)],
+)
+def delete_platform_data_job(
+    job_id: str,
+    current_user: CurrentUser = Depends(require_any_permission("platform_data.manage")),
+    db: Session = Depends(get_db),
+) -> None:
+    """删除已结束的导入 / 导出任务及其产物（排队中 / 执行中拒绝删除）。"""
+    svc.delete_job(db, job_id=job_id, actor_user_id=current_user.user.id)

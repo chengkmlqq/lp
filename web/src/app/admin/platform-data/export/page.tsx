@@ -12,7 +12,6 @@
  *   GET  /admin/platform-data/jobs/{id}     任务详情
  *   GET  /admin/platform-data/jobs/{id}/download  重新下载产物
  */
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -23,8 +22,8 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { Alert, App, Button, Checkbox, Form, Modal, Select, Space, Typography } from "antd";
-import { DownloadOutlined, MonitorOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Checkbox, Form, Modal, Select, Typography } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
@@ -103,6 +102,20 @@ export default function PlatformDataExportPage() {
   );
 
   const jobsPanelRef = useRef<PlatformDataJobsPanelHandle | null>(null);
+
+  // 任务被删除后关闭它的详情 Tab（若正打开）
+  const handleJobDeleted = useCallback(
+    (jobId: string) => {
+      const removedIndex = detailTabs.findIndex((tab) => tab.key === jobId);
+      if (removedIndex < 0) return;
+      const next = detailTabs.filter((tab) => tab.key !== jobId);
+      setDetailTabs(next);
+      if (activeTabKey === jobId) {
+        setActiveTabKey(next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY);
+      }
+    },
+    [detailTabs, activeTabKey],
+  );
 
   // ── 导出弹窗表单 ─────────────────────────────────────────────────
   const [exportOpen, setExportOpen] = useState(false);
@@ -236,23 +249,22 @@ export default function PlatformDataExportPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         tabBarExtraContent={
-          <Space size={8}>
-            <Link href="/admin/task-monitor">
-              <Button icon={<MonitorOutlined />}>{t("任务监控")}</Button>
-            </Link>
-            <Button type="primary" icon={<DownloadOutlined />} onClick={openExportModal}>
-              {t("导出数据包")}
-            </Button>
-          </Space>
+          <Button type="primary" icon={<DownloadOutlined />} onClick={openExportModal}>
+            {t("导出数据包")}
+          </Button>
         }
         items={[
           {
             key: LIST_TAB_KEY,
-            label: t("导出任务列表"),
+            label: t("数据导出"),
             closable: false,
             children: (
               <div className="modo-page-card admin-platform-data-list-pane">
-                <PlatformDataJobsPanel ref={jobsPanelRef} onOpenDetail={openDetail} />
+                <PlatformDataJobsPanel
+                  ref={jobsPanelRef}
+                  onOpenDetail={openDetail}
+                  onJobDeleted={handleJobDeleted}
+                />
               </div>
             ),
           },

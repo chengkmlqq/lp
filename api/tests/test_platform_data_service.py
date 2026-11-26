@@ -16,6 +16,8 @@ import zipfile
 # 必须在导入任何 app 模块前固定 dialect 为 sqlite
 os.environ["DATABASE_URL"] = "sqlite://"
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -24,13 +26,14 @@ from app.core.database import Base
 from app.models.atp_asset import AtpAssetVersion
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
-from app.models.file_storage import FileStorageBackend, FileStorageMount
+from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
 from app.models.param_category import SystemParamCategory
 from app.models.platform_data_job import PlatformDataJob
 from app.models.system_param import SystemParam
 from app.services import platform_data_service as svc
 from app.services.atp_asset_service import _publish_change as _atp_publish_change  # noqa: E402
 from app.services.atp_asset_service import export_assets_zip  # noqa: E402
+from app.services.storage_driver import StoragePathNotFoundError, build_storage_driver  # noqa: E402
 
 
 def _new_session() -> tuple[Session, any]:
@@ -368,6 +371,70 @@ def test_export_job_and_download():
     filename, content, mime = svc.download_job_artifact(db, job.id)
     assert content[:2] == b"PK"  # zip magic
     assert filename.startswith("platform-data-export-")
+    db.close()
+
+
+def test_delete_job_rejects_active_and_removes_artifact():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_business(db)
+    job = _run_export(db, ["dimensions"])
+    assert job.status == "success"
+    mount = db.scalar(select(FileStorageMount).where(FileStorageMount.code == "main"))
+    driver = build_storage_driver(mount.backend, mount)
+    storage_path = job.artifact_storage_path
+    file_id = job.artifact_file_id
+    job_id = job.id
+    assert storage_path and file_id
+
+    # 排队中 / 执行中拒绝删除，记录保留
+    active = PlatformDataJob(kind="export", status="running", request_payload_json={})
+    db.add(active)
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        svc.delete_job(db, job_id=active.id, actor_user_id="tester")
+    assert exc.value.status_code == 409
+    assert db.get(PlatformDataJob, active.id) is not None
+
+    # 终态任务可删除：任务行、索引记录、存储文件一并清理
+    svc.delete_job(db, job_id=job_id, actor_user_id="tester")
+    assert db.get(PlatformDataJob, job_id) is None
+    assert db.get(FileIndexEntry, file_id) is None
+    with pytest.raises(StoragePathNotFoundError):
+        driver.read_file(storage_path)
+    db.close()
+
+
+def test_delete_job_keeps_artifact_shared_by_other_jobs():
+    db = _new_session()
+    _seed_storage(db)
+    _seed_business(db)
+    job = _run_export(db, ["dimensions"])
+    assert job.status == "success"
+    mount = db.scalar(select(FileStorageMount).where(FileStorageMount.code == "main"))
+    job_id = job.id
+    artifact_path = job.artifact_storage_path
+    artifact_file_id = job.artifact_file_id
+    assert artifact_path and artifact_file_id
+
+    # 另一个任务复用同一产物路径与索引记录
+    sharer = PlatformDataJob(
+        kind="import",
+        status="success",
+        request_payload_json={"source_job_id": job_id},
+        artifact_storage_path=artifact_path,
+        artifact_file_id=artifact_file_id,
+    )
+    db.add(sharer)
+    db.commit()
+
+    svc.delete_job(db, job_id=job_id, actor_user_id="tester")
+    assert db.get(PlatformDataJob, job_id) is None
+    # 仍被引用：文件与索引保留，另一任务不受影响
+    assert db.get(PlatformDataJob, sharer.id) is not None
+    assert db.get(FileIndexEntry, artifact_file_id) is not None
+    driver = build_storage_driver(mount.backend, mount)
+    assert driver.read_file(artifact_path).content[:2] == b"PK"
     db.close()
 
 

@@ -89,6 +89,20 @@ export default function PlatformDataImportPage() {
 
   const jobsPanelRef = useRef<PlatformDataJobsPanelHandle | null>(null);
 
+  // 任务被删除后关闭它的详情 Tab（若正打开）
+  const handleJobDeleted = useCallback(
+    (jobId: string) => {
+      const removedIndex = detailTabs.findIndex((tab) => tab.key === jobId);
+      if (removedIndex < 0) return;
+      const next = detailTabs.filter((tab) => tab.key !== jobId);
+      setDetailTabs(next);
+      if (activeTabKey === jobId) {
+        setActiveTabKey(next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY);
+      }
+    },
+    [detailTabs, activeTabKey],
+  );
+
   // ── 导入弹窗 ─────────────────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -198,7 +212,12 @@ export default function PlatformDataImportPage() {
             closable: false,
             children: (
               <div className="modo-page-card admin-platform-data-list-pane">
-                <PlatformDataJobsPanel ref={jobsPanelRef} fixedKind="import" onOpenDetail={openDetail} />
+                <PlatformDataJobsPanel
+                  ref={jobsPanelRef}
+                  fixedKind="import"
+                  onOpenDetail={openDetail}
+                  onJobDeleted={handleJobDeleted}
+                />
               </div>
             ),
           },

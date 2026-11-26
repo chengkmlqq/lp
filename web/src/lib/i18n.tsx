@@ -889,8 +889,8 @@ export const EN_DICT: Record<string, string> = {
   "导出为异步任务，提交后可在任务列表查看进度与包大小。":
     "Export runs asynchronously. Track progress and package size in the task list after submitting.",
   // 基础数据包页（LP-130：线路管理同款布局）
-  "导出任务列表": "Export task list",
   "导入任务列表": "Import task list",
+  "确认删除该任务？删除后不可恢复。": "Delete this task? This action cannot be undone.",
   "导出任务": "Export task",
   "导入任务": "Import task",
   "包大小": "Package size",
