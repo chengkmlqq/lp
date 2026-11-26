@@ -745,8 +745,8 @@ export default function WindDataPrepListPage() {
           <Form.Item label={t("网格步长（度）")} name="grid_step_deg" tooltip={t("固定 0.01°，与核心程序一致")}>
             <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
           </Form.Item>
-          <Form.Item label={t("风险基准 S")} name="risk_base_s" rules={[{ required: true, message: t("请填写风险基准 S") }]} tooltip={t("写入 file_1 头部的风险基准 S，必须大于 0")}>
-            <InputNumber min={0.000001} style={{ width: "100%" }} step={0.1} />
+          <Form.Item label={t("风险基准 S")} tooltip={t("风险基准 S 按默认值 1 生成并写入 file_1 头部，无需手动填写")}>
+            <Input value="1" readOnly />
           </Form.Item>
           <Form.Item label={t("统计年限")} tooltip={t("固定 6 年，与地闪密度模块一致；界面只读，实际时间跨度在预览中提示")}>
             <Input value="6" readOnly />
