@@ -7,7 +7,6 @@ import {
   App,
   Button,
   Card,
-  Descriptions,
   Empty,
   Image,
   Progress,
@@ -15,7 +14,6 @@ import {
   Table,
   Tabs,
   Tooltip,
-  type DescriptionsProps,
   type TableColumnsType,
   type TabsProps,
 } from "antd";
@@ -38,7 +36,6 @@ import type {
   WindLightningDensityBatchDetail,
   WindLightningDensityCellListResponse,
   WindLightningDensityCellRow,
-  WindLightningDensityPrepBatchOptions,
   WindLightningDensityTurbineListResponse,
   WindLightningDensityTurbineRow,
 } from "@/types/wind-lightning-density";
@@ -202,7 +199,7 @@ export function WindLightningDensityDetailView({
   const { user, hasPermission } = useAuth();
   const canRead = hasPermission("wind_lightning_density.read") || hasPermission("wind_lightning_density.manage");
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("image");
   const [cellPage, setCellPage] = useState(1);
   const [cellPageSize, setCellPageSize] = useState(20);
   const [turbinePage, setTurbinePage] = useState(1);
@@ -219,21 +216,6 @@ export function WindLightningDensityDetailView({
   });
 
   const detail = detailQuery.data;
-
-  // 来源批次名称：批次选项接口与列表页共用同一 queryKey，详情页单独打开时也能自行取到。
-  const prepBatchesQuery = useQuery({
-    queryKey: ["wind-lightning-density", "prep-batches"],
-    enabled: Boolean(user) && canRead && Boolean(detail?.prep_batch_id),
-    queryFn: () => getJson<WindLightningDensityPrepBatchOptions>(`${API_BASE}/prep-batches`),
-  });
-
-  const prepBatchId = detail?.prep_batch_id ?? null;
-  const prepBatchName = useMemo(() => {
-    if (!prepBatchId) {
-      return null;
-    }
-    return prepBatchesQuery.data?.items.find((item) => item.id === prepBatchId)?.name || prepBatchId;
-  }, [prepBatchId, prepBatchesQuery.data]);
 
   const cellsQuery = useQuery({
     queryKey: ["wind-lightning-density-cells", batchId, cellPage, cellPageSize],
@@ -387,56 +369,6 @@ export function WindLightningDensityDetailView({
 
   const completed = detail?.status === "completed";
 
-  // LP-117：概览 13 项信息按类别拆成三组带边框 Descriptions（参照防雷计算详情页的分区块表格风格）。
-  // 字段值、格式化与 i18n 与拆分前保持一致；每项只归属一组，不丢不重。
-  const basicInfoItems: DescriptionsProps["items"] = detail
-    ? [
-        { key: "wind_farm", label: t("风电场"), children: detail.wind_farm_name || "-" },
-        {
-          key: "prep_batch",
-          label: t("来源数据准备批次"),
-          children: prepBatchName ?? "—",
-        },
-        { key: "turbine_source", label: t("风机文件"), children: detail.turbine_source_file_name || "-" },
-        { key: "lightning_source", label: t("雷电文件"), children: detail.lightning_source_file_name || "-" },
-      ]
-    : [];
-
-  const gridItems: DescriptionsProps["items"] = detail
-    ? [
-        {
-          key: "bbox",
-          label: t("统计范围"),
-          span: { xs: 1, sm: 2 },
-          children: (
-            <>
-              {formatNumber(detail.bbox_min_lon, 4)} ~ {formatNumber(detail.bbox_max_lon, 4)}（{t("经度")}）
-              {" / "}
-              {formatNumber(detail.bbox_min_lat, 4)} ~ {formatNumber(detail.bbox_max_lat, 4)}（{t("纬度")}）
-            </>
-          ),
-        },
-        { key: "grid_size", label: t("网格数"), children: `${detail.grid_x_count} × ${detail.grid_y_count}` },
-        { key: "grid_step", label: t("网格步长"), children: `${detail.grid_step_deg}°` },
-        { key: "margin", label: t("外扩边距"), children: `${detail.margin_deg}°` },
-        { key: "area_km2", label: t("范围面积 (km²)"), children: formatNumber(detail.area_km2, 2) },
-      ]
-    : [];
-
-  const resultItems: DescriptionsProps["items"] = detail
-    ? [
-        { key: "turbine_count", label: t("风机数"), children: detail.turbine_count ?? 0 },
-        { key: "valid_records", label: t("有效落雷"), children: detail.valid_records ?? 0 },
-        { key: "overall_density", label: t("平均密度 次/(km²·年)"), children: formatNumber(detail.overall_density, 4) },
-        { key: "peak_density", label: t("峰值密度 次/(km²·年)"), children: formatNumber(detail.peak_density, 4) },
-        {
-          key: "data_years",
-          label: t("统计年限"),
-          children: detail.data_years != null ? `${detail.data_years} ${t("年")}` : "-",
-        },
-      ]
-    : [];
-
   // 分页底栏由当前激活 Tab 的表格状态驱动；无表格的 Tab 不渲染底栏。
   const activePagination: WindDetailPaginationConfig | null =
     completed && activeTab === "cells"
@@ -470,30 +402,6 @@ export function WindLightningDensityDetailView({
         : null;
 
   const tabItems: NonNullable<TabsProps["items"]> = [
-    {
-      key: "overview",
-      label: t("概览"),
-      children: (
-        <div className="wind-detail-tab-content">
-          {detail ? (
-            <>
-              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
-                <div className="fl-create-form-block-title">{t("基本信息 / 数据来源")}</div>
-                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={basicInfoItems} />
-              </section>
-              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
-                <div className="fl-create-form-block-title">{t("统计范围与网格")}</div>
-                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={gridItems} />
-              </section>
-              <section className="fl-create-form-block" style={{ marginBottom: 0 }}>
-                <div className="fl-create-form-block-title">{t("统计结果")}</div>
-                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={resultItems} />
-              </section>
-            </>
-          ) : null}
-        </div>
-      ),
-    },
     {
       key: "image",
       label: t("地闪密度图"),
