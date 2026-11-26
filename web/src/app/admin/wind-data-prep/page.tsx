@@ -86,6 +86,10 @@ type WizardValues = {
   terrain_mode?: "zero" | "tif";
 };
 
+// 新建表单不再让用户填写网格数，统一使用核心程序上限 100×100
+const DEFAULT_GRID_NX = 100;
+const DEFAULT_GRID_NY = 100;
+
 type DetailTabData = {
   key: string;
   title: string;
@@ -288,6 +292,8 @@ export default function WindDataPrepListPage() {
     setTerrainFiles([]);
     form.resetFields();
     form.setFieldsValue({
+      grid_nx: DEFAULT_GRID_NX,
+      grid_ny: DEFAULT_GRID_NY,
       grid_step_deg: 0.01,
       risk_base_s: 1,
       terrain_mode: "zero",
@@ -299,9 +305,9 @@ export default function WindDataPrepListPage() {
     async (values: WizardValues, requireFiles: boolean): Promise<FormData | null> => {
       const lon = values.start_lon;
       const lat = values.start_lat;
-      const nx = values.grid_nx;
-      const ny = values.grid_ny;
-      if (lon === undefined || lat === undefined || nx === undefined || ny === undefined) {
+      const nx = values.grid_nx ?? DEFAULT_GRID_NX;
+      const ny = values.grid_ny ?? DEFAULT_GRID_NY;
+      if (lon === undefined || lat === undefined) {
         message.warning(t("请填写完整的区域参数"));
         return null;
       }
@@ -709,7 +715,7 @@ export default function WindDataPrepListPage() {
 
   const wizardContent = (
     <>
-      <Form<WizardValues> form={form} layout="vertical" initialValues={{ grid_step_deg: 0.01, risk_base_s: 1, terrain_mode: "zero" }}>
+      <Form<WizardValues> form={form} layout="vertical" initialValues={{ grid_nx: DEFAULT_GRID_NX, grid_ny: DEFAULT_GRID_NY, grid_step_deg: 0.01, risk_base_s: 1, terrain_mode: "zero" }}>
         <div className="fl-create-form-grid">
           <Form.Item label={t("批次名称")} name="name">
             <Input placeholder={t("留空时默认使用风电场名称或风机文件名")} maxLength={128} />
@@ -733,21 +739,8 @@ export default function WindDataPrepListPage() {
           >
             <InputNumber style={{ width: "100%" }} step={0.01} precision={6} placeholder="25.23" />
           </Form.Item>
-          <Form.Item
-            label={t("经向网格数 nx（≤100）")}
-            name="grid_nx"
-            rules={[{ required: true, message: t("请填写经向网格数") }]}
-            tooltip={t("经向/纬向网格数必须在 1–100 之间（核心程序 NMAX=100）")}
-          >
-            <InputNumber min={1} max={100} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item
-            label={t("纬向网格数 ny（≤100）")}
-            name="grid_ny"
-            rules={[{ required: true, message: t("请填写纬向网格数") }]}
-            tooltip={t("经向/纬向网格数必须在 1–100 之间（核心程序 NMAX=100）")}
-          >
-            <InputNumber min={1} max={100} style={{ width: "100%" }} />
+          <Form.Item label={t("网格数")} tooltip={t("网格数按默认值 100 × 100 生成（核心程序 NMAX=100），无需手动填写")}>
+            <Input value={`${DEFAULT_GRID_NX} × ${DEFAULT_GRID_NY}`} readOnly />
           </Form.Item>
           <Form.Item label={t("网格步长（度）")} name="grid_step_deg" tooltip={t("固定 0.01°，与核心程序一致")}>
             <InputNumber min={0.001} max={1} step={0.001} style={{ width: "100%" }} disabled />
