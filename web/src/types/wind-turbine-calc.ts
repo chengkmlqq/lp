@@ -44,6 +44,9 @@ export type WindTurbineCalcJobSummary = {
   max_failure_rate: number | null;
   create_user: string | null;
   create_date: string | null;
+  // 型号追溯字段为后端可选项，缺失时按数值展示即可。
+  turbine_model_name?: string | null;
+  blade_model_name?: string | null;
 };
 
 export type WindTurbineCalcJobListResponse = {

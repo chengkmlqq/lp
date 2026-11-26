@@ -27,6 +27,7 @@ import {
   Select,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -106,6 +107,57 @@ function parseNumberList(text: string): number[] {
     .map(Number);
 }
 
+const WIND_MODELS_BASE = "/api/v1/wind-models";
+
+/** 机组/叶片型号下拉项：value 用后端主键，hubHeight/bladeLength 为型号映射的数值。 */
+type WindModelOption = {
+  value: string;
+  label: string;
+  hubHeight?: number;
+  bladeLength?: number;
+};
+
+function toFinitePositive(value: unknown): number | undefined {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
+/**
+ * 后端的列表响应可能是数组，也可能是 { items: [...] } 包装；两种都兼容。
+ * 型号缺少可解析的映射数值时无法自动带出参数，直接排除，避免选中后表单为空。
+ */
+function toModelOptions(raw: unknown): WindModelOption[] {
+  const container = raw as { items?: unknown } | null;
+  const items = Array.isArray(raw) ? raw : Array.isArray(container?.items) ? container.items : [];
+  return items.flatMap((item): WindModelOption[] => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const code = typeof record.code === "string" ? record.code : "";
+    const name = typeof record.name === "string" ? record.name : "";
+    const rawId = record.id ?? (code || name);
+    const value = rawId === null || rawId === undefined ? "" : String(rawId);
+    const label = name && code && name !== code ? `${name}（${code}）` : name || code;
+    if (!value || !label) return [];
+    const option: WindModelOption = {
+      value,
+      label,
+      hubHeight: toFinitePositive(record.hub_height_m),
+      bladeLength: toFinitePositive(record.blade_length_m),
+    };
+    return [option];
+  });
+}
+
+async function fetchModelOptions(
+  fetchWithAuth: (path: string, init?: RequestInit) => Promise<Response>,
+  kind: "turbines" | "blades",
+  metric: "hubHeight" | "bladeLength",
+): Promise<WindModelOption[]> {
+  const response = await fetchWithAuth(`${WIND_MODELS_BASE}/${kind}?enabled=true`);
+  if (!response.ok) throw new Error(await readApiError(response));
+  return toModelOptions(await response.json()).filter((option) => option[metric] !== undefined);
+}
+
 const WIND_TABLE_MIN_SCROLL_Y = 180;
 const WIND_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const WIND_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -149,6 +201,41 @@ export default function WindTurbineCalcListPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+
+  // 型号下拉与「手动输入参数」兜底：默认按型号带出 h/R，型号接口不可用时仍可手填提交。
+  const [manualParams, setManualParams] = useState(false);
+  const [turbineOptions, setTurbineOptions] = useState<WindModelOption[]>([]);
+  const [bladeOptions, setBladeOptions] = useState<WindModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsFailed, setModelsFailed] = useState(false);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    let cancelled = false;
+    setModelsLoading(true);
+    void Promise.all([
+      fetchModelOptions(fetchWithAuth, "turbines", "hubHeight"),
+      fetchModelOptions(fetchWithAuth, "blades", "bladeLength"),
+    ])
+      .then(([turbines, blades]) => {
+        if (cancelled) return;
+        setTurbineOptions(turbines);
+        setBladeOptions(blades);
+        setModelsFailed(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTurbineOptions([]);
+        setBladeOptions([]);
+        setModelsFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [createOpen, fetchWithAuth]);
 
   useEffect(() => setPage(1), [keyword, statusFilter]);
 
@@ -271,9 +358,12 @@ export default function WindTurbineCalcListPage() {
 
   const openCreate = useCallback(() => {
     form.resetFields();
+    setManualParams(false);
     form.setFieldsValue({
       name: "",
-      hub_height: 105.5,
+      turbine_model: undefined,
+      blade_model: undefined,
+      hub_height: undefined,
       receptor_radii: DEFAULT_RADII.join(", "),
       blade_length: undefined,
       start_current: 1,
@@ -281,6 +371,41 @@ export default function WindTurbineCalcListPage() {
     });
     setCreateOpen(true);
   }, [form]);
+
+  const handleManualParamsChange = useCallback(
+    (checked: boolean) => {
+      setManualParams(checked);
+      if (checked) {
+        // 手填模式清空型号选择，数值保留为可编辑起点（未带出时给回原默认值）。
+        const currentHubHeight = form.getFieldValue("hub_height");
+        form.setFieldsValue({
+          turbine_model: undefined,
+          blade_model: undefined,
+          hub_height: currentHubHeight ?? 105.5,
+        });
+      } else {
+        // 回到型号模式时清空数值，必须重新选择型号带出。
+        form.setFieldsValue({ hub_height: undefined, blade_length: undefined });
+      }
+    },
+    [form],
+  );
+
+  const handleTurbineModelChange = useCallback(
+    (value: string | undefined) => {
+      const option = turbineOptions.find((item) => item.value === value);
+      form.setFieldsValue({ hub_height: option?.hubHeight });
+    },
+    [form, turbineOptions],
+  );
+
+  const handleBladeModelChange = useCallback(
+    (value: string | undefined) => {
+      const option = bladeOptions.find((item) => item.value === value);
+      form.setFieldsValue({ blade_length: option?.bladeLength });
+    },
+    [bladeOptions, form],
+  );
 
   const handleSubmit = useCallback(async () => {
     const values = await form.validateFields();
@@ -294,13 +419,53 @@ export default function WindTurbineCalcListPage() {
       message.error(t("旋转角数量须在 1~36 之间"));
       return;
     }
+
+    // 二选一校验：型号模式按映射取值，手填模式取输入值；最终 h/R 必须是有限正数。
+    let hubHeight: number | undefined;
+    let bladeLength: number | null = null;
+    if (manualParams) {
+      hubHeight = toFinitePositive(values.hub_height);
+      bladeLength = values.blade_length === undefined || values.blade_length === null
+        ? null
+        : toFinitePositive(values.blade_length) ?? null;
+      if (values.blade_length !== undefined && values.blade_length !== null && bladeLength === null) {
+        message.error(t("R 必须为有限正数"));
+        return;
+      }
+      if (hubHeight === undefined) {
+        message.error(t("h 必须为有限正数"));
+        return;
+      }
+    } else {
+      const turbine = turbineOptions.find((item) => item.value === values.turbine_model);
+      const blade = bladeOptions.find((item) => item.value === values.blade_model);
+      if (!turbine) {
+        message.error(t("请选择机组型号"));
+        return;
+      }
+      if (!blade) {
+        message.error(t("请选择叶片型号"));
+        return;
+      }
+      hubHeight = turbine.hubHeight;
+      bladeLength = blade.bladeLength ?? null;
+      if (hubHeight === undefined) {
+        message.error(t("h 必须为有限正数"));
+        return;
+      }
+      if (bladeLength === null) {
+        message.error(t("R 必须为有限正数"));
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const payload = {
         name: values.name || "",
-        hub_height: Number(values.hub_height),
+        hub_height: hubHeight,
         receptor_radii: radii,
-        blade_length: values.blade_length === undefined || values.blade_length === null ? null : Number(values.blade_length),
+        blade_length: bladeLength,
         start_current: Number(values.start_current),
         angle_list: angles,
       };
@@ -320,7 +485,7 @@ export default function WindTurbineCalcListPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [fetchWithAuth, form, message, openDetail, refreshList, t]);
+  }, [bladeOptions, fetchWithAuth, form, manualParams, message, openDetail, refreshList, t, turbineOptions]);
 
   const handleCancel = useCallback(
     (record: WindTurbineCalcJobSummary) => {
@@ -412,6 +577,11 @@ export default function WindTurbineCalcListPage() {
             <div>
               {t("轮毂高度")} {record.hub_height} · {t("叶片长度")} {record.blade_length} · {t("起始雷电流")} {record.start_current}
             </div>
+            {record.turbine_model_name || record.blade_model_name ? (
+              <Text type="secondary" ellipsis style={{ maxWidth: 260, display: "block" }}>
+                {t("机组型号")} {record.turbine_model_name || "-"} · {t("叶片型号")} {record.blade_model_name || "-"}
+              </Text>
+            ) : null}
             <Text type="secondary" ellipsis style={{ maxWidth: 260, display: "block" }}>
               {t("接闪器径向位置")}：[{record.receptor_radii?.join(", ")}]
             </Text>
@@ -629,6 +799,11 @@ export default function WindTurbineCalcListPage() {
             <Text type="secondary" className="text-xs">
               {t("轮毂高度")} {record.hub_height} · {t("叶片长度")} {record.blade_length} · {t("起始雷电流")} {record.start_current}
             </Text>
+            {record.turbine_model_name || record.blade_model_name ? (
+              <Text type="secondary" className="text-xs">
+                {t("机组型号")} {record.turbine_model_name || "-"} · {t("叶片型号")} {record.blade_model_name || "-"}
+              </Text>
+            ) : null}
             <Text type="secondary" className="text-xs">
               {t("角度数")}：{record.angle_count} · {t("接闪器径向位置")}：[{record.receptor_radii?.join(", ")}]
             </Text>
@@ -809,12 +984,76 @@ export default function WindTurbineCalcListPage() {
             <Input placeholder={t("可选")} />
           </Form.Item>
           <Form.Item
+            label={t("手动输入参数")}
+            tooltip={t("默认按机组型号/叶片型号自动带出轮毂高度与叶片长度；需要自定义数值时开启")}
+          >
+            <Space>
+              <Switch checked={manualParams} onChange={handleManualParamsChange} />
+              <Text type="secondary">
+                {manualParams
+                  ? t("手动填写轮毂高度与叶片长度")
+                  : t("按机组型号与叶片型号自动带出")}
+              </Text>
+            </Space>
+          </Form.Item>
+          {!manualParams && (
+            <>
+              <Form.Item
+                label={t("机组型号")}
+                name="turbine_model"
+                tooltip={t("选择机组型号后自动带出轮毂高度")}
+                rules={[{ required: true, message: t("请选择机组型号") }]}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  loading={modelsLoading}
+                  optionFilterProp="label"
+                  placeholder={t("请选择机组型号")}
+                  options={turbineOptions.map((item) => ({ value: item.value, label: item.label }))}
+                  notFoundContent={modelsLoading ? <Spin size="small" /> : t("暂无可用机组型号")}
+                  onChange={handleTurbineModelChange}
+                />
+              </Form.Item>
+              <Form.Item
+                label={t("叶片型号")}
+                name="blade_model"
+                tooltip={t("选择叶片型号后自动带出叶片长度")}
+                rules={[{ required: true, message: t("请选择叶片型号") }]}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  loading={modelsLoading}
+                  optionFilterProp="label"
+                  placeholder={t("请选择叶片型号")}
+                  options={bladeOptions.map((item) => ({ value: item.value, label: item.label }))}
+                  notFoundContent={modelsLoading ? <Spin size="small" /> : t("暂无可用叶片型号")}
+                  onChange={handleBladeModelChange}
+                />
+              </Form.Item>
+              {modelsFailed ? (
+                <Form.Item style={{ marginBottom: 12 }}>
+                  <Text type="warning">{t("型号数据加载失败，可开启「手动输入参数」继续填写")}</Text>
+                </Form.Item>
+              ) : null}
+            </>
+          )}
+          <Form.Item
             label={t("轮毂高度 h (m)")}
             name="hub_height"
-            tooltip={t("轮毂高度，单位 m，必须大于 0")}
-            rules={[{ required: true, message: t("请输入轮毂高度") }, { type: "number", min: 0.0001, message: t("h 必须大于 0") }]}
+            tooltip={manualParams ? t("轮毂高度，单位 m，必须大于 0") : t("由所选机组型号自动带出")}
+            rules={manualParams
+              ? [{ required: true, message: t("请输入轮毂高度") }, { type: "number", min: 0.0001, message: t("h 必须大于 0") }]
+              : []}
           >
-            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+            <InputNumber
+              style={{ width: "100%" }}
+              min={0.0001}
+              step={0.1}
+              disabled={!manualParams}
+              placeholder={manualParams ? undefined : t("选择机组型号后自动带出")}
+            />
           </Form.Item>
           <Form.Item
             label={t("接闪器径向位置 r_list (m)")}
@@ -827,9 +1066,15 @@ export default function WindTurbineCalcListPage() {
           <Form.Item
             label={t("叶片长度 R (m)")}
             name="blade_length"
-            tooltip={t("留空则取 max(r_list)")}
+            tooltip={manualParams ? t("留空则取 max(r_list)") : t("由所选叶片型号自动带出")}
           >
-            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.1} />
+            <InputNumber
+              style={{ width: "100%" }}
+              min={0.0001}
+              step={0.1}
+              disabled={!manualParams}
+              placeholder={manualParams ? undefined : t("选择叶片型号后自动带出")}
+            />
           </Form.Item>
           <Form.Item
             label={t("起始雷电流 Ic (kA)")}
