@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import zipfile
 from datetime import datetime, timezone
@@ -41,6 +42,11 @@ PLATFORM_DATA_SOURCE_SITE = os.environ.get("LP_PLATFORM_SITE", "lp-platform")
 
 ARTIFACT_MIME = "application/zip"
 ARTIFACT_PREFIX = "/platform-data"
+
+# 任务执行日志：celery worker 内的 TaskLogCapture 会捕获本 logger 的 INFO 输出，
+# 实时写入 Redis Stream（任务监控「日志」抽屉的 SSE 通道）并在任务收尾时持久化到
+# 对象存储，因此这里只需记录关键节点即可让成功任务也有完整执行日志。
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -373,12 +379,22 @@ def init_import(
 def run_export_job(db: Session, job_id: str) -> None:
     job = db.get(PlatformDataJob, job_id)
     if job is None:
+        logger.warning("基础数据包导出任务不存在：job=%s", job_id)
         return
     job.status = "running"
     db.commit()
+    logger.info("基础数据包导出开始：job=%s status=running", job.id)
     try:
         req = job.request_payload_json or {}
-        if req.get("layout") == ATP_TREE_LAYOUT:
+        layout = req.get("layout") or "bundle"
+        logger.info(
+            "基础数据包导出参数：job=%s layout=%s categories=%s filters=%s",
+            job.id,
+            layout,
+            req.get("categories") or [],
+            req.get("filters") or {},
+        )
+        if layout == ATP_TREE_LAYOUT:
             content, manifest = build_atp_tree_bundle(db, filters=req.get("filters", {}))
         else:
             content, manifest = build_export_bundle(
@@ -386,6 +402,12 @@ def run_export_job(db: Session, job_id: str) -> None:
                 categories=req.get("categories", []),
                 filters=req.get("filters", {}),
             )
+        logger.info(
+            "基础数据包导出打包完成：job=%s size=%s bytes counts=%s",
+            job.id,
+            len(content),
+            manifest.get("counts", {}),
+        )
         mount = _resolve_default_mount(db)
         path, file_id = _store_artifact(
             db,
@@ -404,12 +426,14 @@ def run_export_job(db: Session, job_id: str) -> None:
         job.status = "success"
         job.finish_date = _utcnow()
         db.commit()
+        logger.info("基础数据包导出成功：job=%s artifact=%s", job.id, path)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         job.status = "failed"
         job.error_message = str(exc)[:2000]
         job.finish_date = _utcnow()
         db.commit()
+        logger.exception("基础数据包导出失败：job=%s error=%s", job.id, exc)
         raise
 
 
@@ -632,12 +656,26 @@ def _import_atp_models(
 def run_import_job(db: Session, job_id: str) -> None:
     job = db.get(PlatformDataJob, job_id)
     if job is None:
+        logger.warning("基础数据包导入任务不存在：job=%s", job_id)
         return
     job.status = "running"
     db.commit()
+    logger.info("基础数据包导入开始：job=%s status=running", job.id)
     try:
         req = job.request_payload_json or {}
         mount = _resolve_default_mount(db)
+        if req.get("source") == "reuse":
+            logger.info(
+                "基础数据包导入来源：job=%s source=reuse source_job=%s",
+                job.id,
+                req.get("source_job_id"),
+            )
+        else:
+            logger.info(
+                "基础数据包导入来源：job=%s source=upload filename=%s",
+                job.id,
+                req.get("filename") or "upload.zip",
+            )
 
         # 解析源字节
         if req.get("source") == "reuse":
@@ -660,6 +698,8 @@ def run_import_job(db: Session, job_id: str) -> None:
                 raise ValueError("上传包未落库，无法导入")
             content = _read_artifact_bytes(db, storage_path=job.artifact_storage_path)
 
+        logger.info("基础数据包导入包读取完成：job=%s size=%s bytes", job.id, len(content))
+
         # 校验顶层 manifest schema_version
         try:
             with zipfile.ZipFile(io.BytesIO(content)) as bundle:
@@ -670,6 +710,12 @@ def run_import_job(db: Session, job_id: str) -> None:
                         f"不兼容的包版本 bundle_schema_version={sv!r}；"
                         f"当前支持 {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
                     )
+                logger.info(
+                    "基础数据包导入包校验通过：job=%s schema_version=%s categories=%s",
+                    job.id,
+                    sv,
+                    manifest.get("categories") or [],
+                )
 
                 summary: dict[str, Any] = {
                     "dimensions": {"created": 0, "updated": 0, "skipped": 0, "failed": 0},
@@ -686,17 +732,21 @@ def run_import_job(db: Session, job_id: str) -> None:
         except zipfile.BadZipFile as exc:
             raise ValueError(f"上传的包不是合法的 ZIP 文件: {exc}") from exc
 
+        logger.info("基础数据包导入分项结果：job=%s counts=%s", job.id, summary)
+
         job.manifest_json = manifest
         job.result_summary_json = summary
         job.status = "success"
         job.finish_date = _utcnow()
         db.commit()
+        logger.info("基础数据包导入成功：job=%s", job.id)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         job.status = "failed"
         job.error_message = str(exc)[:2000]
         job.finish_date = _utcnow()
         db.commit()
+        logger.exception("基础数据包导入失败：job=%s error=%s", job.id, exc)
         raise
 
 

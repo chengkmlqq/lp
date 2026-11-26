@@ -23,7 +23,11 @@ router = APIRouter(prefix="/admin/platform-data", tags=["platform-data"])
 
 def _to_summary(job) -> PlatformDataJobSummary:
     manifest = job.manifest_json or {}
+    result_summary = job.result_summary_json or {}
     artifact_filename = f"platform-data-{job.kind}-{job.id}.zip" if job.artifact_storage_path else None
+    # 包大小仅在导出成功时写入 result_summary_json；历史/导入任务无该字段，显式给 None
+    raw_size = result_summary.get("file_size") if isinstance(result_summary, dict) else None
+    file_size_bytes = raw_size if isinstance(raw_size, int) and raw_size > 0 else None
     return PlatformDataJobSummary(
         id=job.id,
         kind=job.kind,
@@ -31,6 +35,7 @@ def _to_summary(job) -> PlatformDataJobSummary:
         categories=manifest.get("categories"),
         schema_version=manifest.get("bundle_schema_version"),
         artifact_filename=artifact_filename,
+        file_size_bytes=file_size_bytes,
         source_site=manifest.get("source_site"),
         create_date=job.create_date,
         finish_date=job.finish_date,

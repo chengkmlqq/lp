@@ -6735,3 +6735,97 @@ h5.ant-typography,
 .admin-wind-table-view .ant-table {
   flex: 0 0 auto;
 }
+
+/* ======================================
+   基础数据包导出/导入页（LP-130：对齐线路管理布局）
+   列表面板 + 卡片/列表双视图 + 任务详情 Tab
+   ====================================== */
+.admin-platform-data-list-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.admin-platform-data-card-scroll {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 12px;
+}
+
+/* 卡片网格上下留 12px，避免 hoverable 阴影被滚动容器裁切 */
+.admin-platform-data-card-scroll > .grid {
+  flex: 0 0 auto;
+  padding: 12px 0;
+}
+
+.admin-platform-data-job-card {
+  height: 100%;
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%,
+      var(--fquiz-theme-bg-container) 100%
+    );
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
+}
+
+.admin-platform-data-job-card.ant-card-hoverable:hover {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary)) !important;
+}
+
+.admin-platform-data-job-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-platform-data-job-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
+.admin-platform-data-job-card > .ant-card-body {
+  padding: 0;
+}
+
+.admin-platform-data-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-platform-data-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-platform-data-table-view .ant-table-body {
+  min-height: var(--admin-platform-data-table-body-min-height, 180px);
+}
+
+.admin-platform-data-detail-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.admin-platform-data-detail-loading {
+  align-items: center;
+  justify-content: center;
+}

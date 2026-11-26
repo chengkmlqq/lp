@@ -884,6 +884,21 @@ export const EN_DICT: Record<string, string> = {
   "系统参数": "System parameters",
   "已创建导入任务，正在写入…可在「任务监控」页查看结果": "Import job created. Check the Task Monitoring page for the result.",
   "导入为异步任务，提交后请到「任务监控」页查看执行结果。": "Import runs asynchronously. Check the Task Monitoring page for the result after submitting.",
+  "导入为异步任务，提交后请到「任务监控」页查看执行结果与各分类计数。":
+    "Import runs asynchronously. Check the Task Monitoring page for the execution result and per-category counts.",
+  "导出为异步任务，提交后可在任务列表查看进度与包大小。":
+    "Export runs asynchronously. Track progress and package size in the task list after submitting.",
+  // 基础数据包页（LP-130：线路管理同款布局）
+  "导出任务列表": "Export task list",
+  "导入任务列表": "Import task list",
+  "导出任务": "Export task",
+  "导入任务": "Import task",
+  "包大小": "Package size",
+  "包版本": "Bundle version",
+  "ATP 格式": "ATP format",
+  "平台数据包": "Platform data package",
+  "ATP 目录树（C#）": "ATP directory tree (C#)",
+  "按任务 ID/类别/来源站点筛选": "Filter by task ID / category / source site",
   "基础数据文件": "Base Data File",
   "基线计算任务": "Baseline Calculation Task",
   "塔号": "Tower Number",

@@ -44,6 +44,8 @@ class PlatformDataJobSummary(BaseModel):
     categories: list[str] | None = None
     schema_version: str | None = None
     artifact_filename: str | None = None
+    # 导出包大小（字节）：取自 result_summary_json.file_size，历史任务无该字段时为 None
+    file_size_bytes: int | None = None
     source_site: str | None = None
     create_date: datetime | None = None
     finish_date: datetime | None = None

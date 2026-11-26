@@ -1,5 +1,5 @@
 /**
- * 基础数据包导出/导入两页共享的类型、常量、工具函数与详情抽屉。
+ * 基础数据包导出/导入两页共享的类型、常量、工具函数与任务详情面板。
  *
  * 后端端点（LP-14 既有，零接口改动）：
  *   POST /admin/platform-data/export        异步导出（类别 + 筛选）
@@ -10,11 +10,13 @@
  */
 "use client";
 
-import { Drawer, Space, type ReactNode } from "antd";
+import { useEffect, useState } from "react";
+import { Alert, Descriptions, Space, Spin, Tag } from "antd";
 
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/components/auth-provider";
+import { readApiError } from "@/lib/api";
 import type { DimensionTypeTreeItem } from "@/types/auth";
-import type { DimensionItemListResponse } from "@/types/dimension";
 
 export const TABLE_MIN_SCROLL_Y = 180;
 export const POLL_INTERVAL_MS = 3000;
@@ -30,6 +32,8 @@ export type JobSummary = {
   categories?: string[] | null;
   schema_version?: string | null;
   artifact_filename?: string | null;
+  /** 导出包大小（字节）。新后端显式返回；旧数据缺失时用 jobFileSize 兜底读 result_summary。 */
+  file_size_bytes?: number | null;
   source_site?: string | null;
   create_date?: string | null;
   finish_date?: string | null;
@@ -94,6 +98,28 @@ export function formatDateTime(value?: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** 字节数转可读大小：12345 → 12.1 KB，24600000 → 23.5 MB；null/0/非法值显示 —。 */
+export function formatBytes(bytes?: number | null): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  // 字节整数展示，其余保留 1 位小数（整数值去掉 .0）
+  const text = value.toFixed(unitIndex === 0 ? 0 : 1).replace(/\.0$/, "");
+  return `${text} ${units[unitIndex]}`;
+}
+
+/** 包大小（字节）：优先使用后端显式字段，旧数据 / 旧后端回落到 result_summary.file_size。 */
+export function jobFileSize(job: Pick<JobSummary, "file_size_bytes" | "result_summary">): number | null {
+  if (typeof job.file_size_bytes === "number" && job.file_size_bytes > 0) return job.file_size_bytes;
+  const legacy = job.result_summary?.file_size;
+  return typeof legacy === "number" && legacy > 0 ? legacy : null;
+}
+
 export function summarizeResult(summary?: Record<string, unknown> | null): string {
   if (!summary) return "—";
   const parts: string[] = [];
@@ -110,42 +136,104 @@ export function summarizeResult(summary?: Record<string, unknown> | null): strin
   return parts.length ? parts.join("，") : "—";
 }
 
-export function PlatformDataDetailDrawer({
-  open,
-  loading,
-  data,
-  onClose,
-}: {
-  open: boolean;
-  loading: boolean;
-  data: JobDetail | null;
-  onClose: () => void;
-}) {
+/**
+ * 任务详情面板（Tab 内容）：与线路管理的详情 Tab 一致，打开即按需拉取任务详情。
+ * 抽屉形态已由列表 Tab + 可关闭详情 Tab 取代（LP-130）。
+ */
+export function PlatformDataJobDetailPane({ jobId }: { jobId: string }) {
   const { t } = useI18n();
+  const { fetchWithAuth } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<JobDetail | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    setData(null);
+    void (async () => {
+      try {
+        const response = await fetchWithAuth(`/api/v1/admin/platform-data/jobs/${jobId}`);
+        if (!response.ok) throw new Error(await readApiError(response));
+        const detail = (await response.json()) as JobDetail;
+        if (active) setData(detail);
+      } catch (caught) {
+        if (active) setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [fetchWithAuth, jobId]);
+
+  if (loading) {
+    return (
+      <div className="admin-platform-data-detail-pane admin-platform-data-detail-loading">
+        <Spin />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="admin-platform-data-detail-pane">
+        <Alert type="error" showIcon message={t("加载失败")} description={error} />
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const statusMeta = STATUS_META[data.status] ?? STATUS_FALLBACK;
   return (
-    <DrawerWrap open={open} loading={loading} title={t("任务详情")} onClose={onClose}>
-      {data ? (
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-          <DetailBlock title={t("请求参数 (request_payload)")} value={data.request_payload} />
-          <DetailBlock title={t("清单 (manifest)")} value={data.manifest} />
-          <DetailBlock title={t("结果摘要 (result_summary)")} value={data.result_summary} />
-          {data.error_message ? (
-            <DetailBlock title={t("错误信息 (error_message)")} value={data.error_message} error />
-          ) : null}
-        </Space>
+    <div className="admin-platform-data-detail-pane">
+      <Descriptions
+        size="small"
+        column={2}
+        bordered
+        items={[
+          { key: "id", label: t("任务 ID"), children: <span style={{ wordBreak: "break-all" }}>{data.id}</span> },
+          { key: "kind", label: t("类型"), children: data.kind === "export" ? t("导出") : t("导入") },
+          {
+            key: "status",
+            label: t("状态"),
+            children: <Tag color={statusMeta.color}>{t(statusMeta.label)}</Tag>,
+          },
+          { key: "size", label: t("包大小"), children: formatBytes(jobFileSize(data)) },
+          {
+            key: "categories",
+            label: t("类别"),
+            children:
+              data.categories && data.categories.length
+                ? data.categories.map((c) => t(CATEGORY_LABEL[c] ?? c)).join(" / ")
+                : "—",
+          },
+          { key: "artifact", label: t("产物文件"), children: data.artifact_filename ?? "—" },
+          { key: "site", label: t("来源站点"), children: data.source_site ?? "—" },
+          { key: "schema", label: t("包版本"), children: data.schema_version ?? "—" },
+          { key: "created", label: t("创建时间"), children: formatDateTime(data.create_date) },
+          { key: "finished", label: t("完成时间"), children: formatDateTime(data.finish_date) },
+        ]}
+      />
+      {data.error_message ? (
+        <Alert type="error" showIcon message={t("执行失败")} description={data.error_message} />
       ) : null}
-    </DrawerWrap>
+      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <DetailBlock title={t("请求参数 (request_payload)")} value={data.request_payload} />
+        <DetailBlock title={t("清单 (manifest)")} value={data.manifest} />
+        <DetailBlock title={t("结果摘要 (result_summary)")} value={data.result_summary} />
+      </Space>
+    </div>
   );
 }
 
 function DetailBlock({
   title,
   value,
-  error,
 }: {
   title: string;
   value: unknown;
-  error?: boolean;
 }) {
   const text =
     value == null
@@ -163,7 +251,7 @@ function DetailBlock({
           padding: 12,
           borderRadius: 6,
           background: "var(--gray-a2)",
-          color: error ? "#cf1322" : "var(--gray-12)",
+          color: "var(--gray-12)",
           fontSize: 12,
           whiteSpace: "pre-wrap",
           wordBreak: "break-all",
@@ -173,26 +261,5 @@ function DetailBlock({
         {text}
       </pre>
     </div>
-  );
-}
-
-// 轻量抽屉封装
-function DrawerWrap({
-  open,
-  loading,
-  title,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  loading: boolean;
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Drawer title={title} width={520} open={open} onClose={onClose} loading={loading}>
-      {children}
-    </Drawer>
   );
 }

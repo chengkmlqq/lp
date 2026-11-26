@@ -3,8 +3,8 @@
 /**
  * 基础数据包「导出」页（交付人员用）。
  *
- * 保留：导出表单（类别 + ATP 模型维度筛选）+ 任务列表（状态轮询 + 下载产物 + 详情）。
- * 导入组件已拆到 /admin/platform-data/import。
+ * LP-130：布局对齐线路管理页 —— ModoTabs（任务列表 Tab + 可关闭详情 Tab）+
+ * 筛选栏 + 卡片/列表视图切换，导出表单收进右上角「导出数据包」弹窗。
  *
  * 端点（LP-14 既有）：
  *   POST /admin/platform-data/export        异步导出
@@ -12,54 +12,49 @@
  *   GET  /admin/platform-data/jobs/{id}     任务详情
  *   GET  /admin/platform-data/jobs/{id}/download  重新下载产物
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
 import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Checkbox,
-  Empty,
-  Form,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
-import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
+import { Alert, App, Button, Checkbox, Form, Modal, Select, Space, Typography } from "antd";
+import { DownloadOutlined, MonitorOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
-import { ModoActionGroup } from "@/components/biz/modo-action-group";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { readApiError } from "@/lib/api";
-import { measureTableScrollY } from "@/lib/table-scroll-y";
 import type { DimensionItemListResponse } from "@/types/dimension";
 import {
-  CATEGORY_LABEL,
   CATEGORY_OPTIONS,
   EMPTY_EXPORT_DIMENSION_OPTIONS,
   EXPORT_DIMENSION_TYPE_CODES,
-  POLL_INTERVAL_MS,
-  STATUS_FALLBACK,
-  STATUS_META,
-  TABLE_MIN_SCROLL_Y,
-  PlatformDataDetailDrawer,
+  PlatformDataJobDetailPane,
   flattenDimensionTypes,
-  formatDateTime,
-  summarizeResult,
+  type DimensionOption,
   type ExportDimensionField,
   type ExportDimensionOptions,
-  type JobDetail,
-  type JobKind,
-  type JobStatus,
   type JobSummary,
-  type DimensionOption,
 } from "../shared";
+import { PlatformDataJobsPanel, type PlatformDataJobsPanelHandle } from "../jobs-panel";
 
 const { Text } = Typography;
+
+const LIST_TAB_KEY = "list";
+
+type DetailTabItem = {
+  key: string;
+  label: string;
+  closable: boolean;
+  jobId: string;
+  children: ReactNode;
+};
 
 export default function PlatformDataExportPage() {
   const { t, lang } = useI18n();
@@ -68,18 +63,49 @@ export default function PlatformDataExportPage() {
 
   const canManage = hasPermission("platform_data.manage");
 
-  // ── 任务列表 ──────────────────────────────────────────────────────
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [jobsError, setJobsError] = useState<string | null>(null);
-  const [kindFilter, setKindFilter] = useState<JobKind | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<JobStatus | undefined>(undefined);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  // ── Tab 状态：列表 Tab + 可关闭的任务详情 Tab ────────────────────
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
 
-  const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
-  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const handleTabsEdit = useCallback(
+    (targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+      if (action !== "remove") return;
+      const key = String(targetKey);
+      const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+      const next = detailTabs.filter((tab) => tab.key !== key);
+      setDetailTabs(next);
+      if (activeTabKey === key) {
+        setActiveTabKey(next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY);
+      }
+    },
+    [detailTabs, activeTabKey],
+  );
 
-  // ── 导出区 ────────────────────────────────────────────────────────
+  const openDetail = useCallback(
+    (job: JobSummary) => {
+      const key = job.id;
+      setDetailTabs((previous) => {
+        if (previous.some((tab) => tab.key === key)) return previous;
+        return [
+          ...previous,
+          {
+            key,
+            label: `${t("任务详情")} - ${job.id.slice(0, 8)}`,
+            closable: true,
+            jobId: job.id,
+            children: <PlatformDataJobDetailPane jobId={job.id} />,
+          },
+        ];
+      });
+      setActiveTabKey(key);
+    },
+    [t],
+  );
+
+  const jobsPanelRef = useRef<PlatformDataJobsPanelHandle | null>(null);
+
+  // ── 导出弹窗表单 ─────────────────────────────────────────────────
+  const [exportOpen, setExportOpen] = useState(false);
   const [exportCategories, setExportCategories] = useState<string[]>([]);
   const [exportLayout, setExportLayout] = useState<"bundle" | "atp_tree">("bundle");
   const [filterVoltage, setFilterVoltage] = useState<string[]>([]);
@@ -113,7 +139,7 @@ export default function PlatformDataExportPage() {
         const fields = Object.keys(EXPORT_DIMENSION_TYPE_CODES) as ExportDimensionField[];
         const loaded = await Promise.all(
           fields.map(async (field): Promise<[ExportDimensionField, DimensionOption[]]> => {
-            const typeId = flatTypes.find((t) => t.code === EXPORT_DIMENSION_TYPE_CODES[field])?.id;
+            const typeId = flatTypes.find((item) => item.code === EXPORT_DIMENSION_TYPE_CODES[field])?.id;
             if (!typeId) return [field, []];
             const params = new URLSearchParams();
             params.set("type_id", typeId);
@@ -124,9 +150,7 @@ export default function PlatformDataExportPage() {
             const data = (await response.json()) as DimensionItemListResponse;
             const options = (data.items ?? [])
               .map((item) => ({ label: item.name, value: item.code }))
-              .sort((a, b) =>
-                t(a.label).localeCompare(t(b.label), lang === "en" ? "en" : "zh-CN"),
-              );
+              .sort((a, b) => t(a.label).localeCompare(t(b.label), lang === "en" ? "en" : "zh-CN"));
             return [field, options];
           }),
         );
@@ -137,84 +161,20 @@ export default function PlatformDataExportPage() {
     })();
   }, [atpModelsSelected, canManage, fetchWithAuth, t, lang]);
 
-  // ── 详情抽屉 ──────────────────────────────────────────────────────
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailData, setDetailData] = useState<JobDetail | null>(null);
+  const resetExportForm = () => {
+    setExportCategories([]);
+    setExportLayout("bundle");
+    setFilterVoltage([]);
+    setFilterTower([]);
+    setFilterScene([]);
+  };
 
-  const hasActive = useMemo(
-    () => jobs.some((j) => j.status === "pending" || j.status === "running"),
-    [jobs],
-  );
+  const openExportModal = () => {
+    resetExportForm();
+    setExportOpen(true);
+  };
 
-  const exportBusy = useMemo(
-    () => exportLoading || jobs.some((j) => j.kind === "export" && (j.status === "pending" || j.status === "running")),
-    [exportLoading, jobs],
-  );
-
-  // 表格高度自适应（与全站管理页一致：锚点测量）
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const measure = () => {
-      const anchor = tableScrollAnchorRef.current;
-      if (!anchor) return;
-      const next = measureTableScrollY(anchor);
-      if (next != null) setTableScrollY(Math.max(TABLE_MIN_SCROLL_Y, next));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [jobs.length]);
-
-  const loadJobs = useCallback(async () => {
-    setJobsLoading(true);
-    setJobsError(null);
-    try {
-      const params = new URLSearchParams();
-      params.set("limit", "100");
-      params.set("offset", "0");
-      if (kindFilter) params.set("kind", kindFilter);
-      if (statusFilter) params.set("status", statusFilter);
-      const response = await fetchWithAuth(`/api/v1/admin/platform-data/jobs?${params.toString()}`);
-      if (!response.ok) throw new Error(await readApiError(response));
-      const data = (await response.json()) as { items: JobSummary[]; total: number };
-      setJobs(data.items ?? []);
-    } catch (error) {
-      setJobsError(error instanceof Error ? error.message : String(error));
-      setJobs([]);
-    } finally {
-      setJobsLoading(false);
-    }
-  }, [fetchWithAuth, kindFilter, statusFilter]);
-
-  // 初始加载
-  useEffect(() => {
-    if (!canManage) return;
-    void loadJobs();
-  }, [canManage, loadJobs]);
-
-  // 状态轮询：存在非终态任务时每 3s 拉取一次，全部终态或卸载时清除
-  const pollingRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (hasActive) {
-      if (pollingRef.current == null) {
-        pollingRef.current = window.setInterval(() => {
-          void loadJobs();
-        }, POLL_INTERVAL_MS);
-      }
-    } else if (pollingRef.current != null) {
-      window.clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    return () => {
-      if (pollingRef.current != null) {
-        window.clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [hasActive, loadJobs]);
-
-  // ── 导出 ──────────────────────────────────────────────────────────
+  // ── 提交导出 ─────────────────────────────────────────────────────
   const handleExport = async () => {
     if (exportCategories.length === 0) {
       message.warning(t("请至少勾选一个导出类别"));
@@ -236,146 +196,16 @@ export default function PlatformDataExportPage() {
       });
       if (!response.ok) throw new Error(await readApiError(response));
       message.success(t("已创建导出任务，正在打包…"));
-      void loadJobs();
-      setPagination((prev) => ({ ...prev, current: 1 }));
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error));
+      setExportOpen(false);
+      resetExportForm();
+      jobsPanelRef.current?.reload({ resetPage: true });
+    } catch (caught) {
+      // 失败留在弹窗内提示，不关闭弹窗
+      message.error(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setExportLoading(false);
     }
   };
-
-  // ── 下载产物 ──────────────────────────────────────────────────────
-  const handleDownload = async (job: JobSummary) => {
-    if (!job.artifact_filename) return;
-    try {
-      const response = await fetchWithAuth(`/api/v1/admin/platform-data/jobs/${job.id}/download`);
-      if (!response.ok) throw new Error(await readApiError(response));
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = job.artifact_filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(objectUrl);
-      message.success(`${t("下载已开始：")}${job.artifact_filename}`);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  // ── 查看详情 ──────────────────────────────────────────────────────
-  const handleOpenDetail = async (job: JobSummary) => {
-    setDetailOpen(true);
-    setDetailLoading(true);
-    setDetailData(null);
-    try {
-      const response = await fetchWithAuth(`/api/v1/admin/platform-data/jobs/${job.id}`);
-      if (!response.ok) throw new Error(await readApiError(response));
-      setDetailData((await response.json()) as JobDetail);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  const columns: ColumnsType<JobSummary> = [
-    {
-      title: t("类型"),
-      dataIndex: "kind",
-      width: 90,
-      render: (kind: JobKind) => (kind === "export" ? t("导出") : t("导入")),
-    },
-    {
-      title: t("状态"),
-      dataIndex: "status",
-      width: 150,
-      render: (status: JobStatus, record) => {
-        const meta = STATUS_META[status] ?? STATUS_FALLBACK;
-        return (
-          <div>
-            <Tag color={meta.color}>{t(meta.label)}</Tag>
-            {status === "failed" && record.error_message ? (
-              <div style={{ color: "#cf1322", fontSize: 12, marginTop: 2, maxWidth: 280, wordBreak: "break-all" }}>
-                {record.error_message}
-              </div>
-            ) : null}
-          </div>
-        );
-      },
-    },
-    {
-      title: t("类别"),
-      dataIndex: "categories",
-      width: 180,
-      render: (categories?: string[] | null) =>
-        categories && categories.length
-          ? categories.map((c) => t(CATEGORY_LABEL[c] ?? c)).join(" / ")
-          : "—",
-    },
-    {
-      title: t("产物文件"),
-      dataIndex: "artifact_filename",
-      width: 200,
-      render: (filename?: string | null) => filename ?? "—",
-    },
-    {
-      title: t("来源站点"),
-      dataIndex: "source_site",
-      width: 120,
-      render: (site?: string | null) => site ?? "—",
-    },
-    {
-      title: t("结果摘要"),
-      dataIndex: "result_summary",
-      width: 260,
-      render: (summary: Record<string, unknown> | null | undefined, record) =>
-        record.status === "failed" ? (
-          <Text type="danger">{record.error_message ?? t("失败")}</Text>
-        ) : (
-          <span style={{ color: "var(--gray-11)", fontSize: 12 }}>{summarizeResult(summary)}</span>
-        ),
-    },
-    {
-      title: t("创建时间"),
-      dataIndex: "create_date",
-      width: 160,
-      render: (v?: string | null) => formatDateTime(v),
-    },
-    {
-      title: t("完成时间"),
-      dataIndex: "finish_date",
-      width: 160,
-      render: (v?: string | null) => formatDateTime(v),
-    },
-    {
-      title: t("操作"),
-      key: "action",
-      fixed: "right",
-      width: 160,
-      render: (_value, record) => (
-        <ModoActionGroup
-          actions={[
-            {
-              key: "detail",
-              label: t("详情"),
-              onClick: () => void handleOpenDetail(record),
-            },
-            {
-              key: "download",
-              label: t("下载产物"),
-              disabled: !record.artifact_filename,
-              title: record.artifact_filename ? undefined : t("暂无产物可下载"),
-              onClick: () => void handleDownload(record),
-            },
-          ]}
-        />
-      ),
-    },
-  ];
 
   if (!initializing && !canManage) {
     return (
@@ -397,164 +227,118 @@ export default function PlatformDataExportPage() {
   }
 
   return (
-    <div className="modo-page-card">
-      {/* 导出区 */}
-      <Card size="small" title={t("导出数据包")} style={{ marginBottom: 16 }}>
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label={t("类别")} style={{ marginBottom: 0 }}>
-              <Checkbox.Group
-                options={categoryOptions}
-                value={exportCategories}
-                onChange={(values) => setExportCategories(values as string[])}
-              />
-            </Form.Item>
-            {atpModelsSelected ? (
-              <>
-                <Form.Item label={t("ATP 格式")} style={{ marginBottom: 0 }}>
-                  <Select
-                    style={{ width: 210 }}
-                    value={exportLayout}
-                    onChange={(value) => setExportLayout(value as "bundle" | "atp_tree")}
-                    options={[
-                      { value: "bundle", label: t("平台数据包") },
-                      { value: "atp_tree", label: t("ATP 目录树（C#）") },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item label={t("电压")} style={{ marginBottom: 0 }}>
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    style={{ width: 200 }}
-                    placeholder={t("请选择电压等级")}
-                    value={filterVoltage}
-                    onChange={(values) => setFilterVoltage(values ?? [])}
-                    options={dimensionOptions.voltage_level}
-                    maxTagCount="responsive"
-                  />
-                </Form.Item>
-                <Form.Item label={t("塔型")} style={{ marginBottom: 0 }}>
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    style={{ width: 200 }}
-                    placeholder={t("请选择塔型")}
-                    value={filterTower}
-                    onChange={(values) => setFilterTower(values ?? [])}
-                    options={dimensionOptions.tower_type}
-                    maxTagCount="responsive"
-                  />
-                </Form.Item>
-                <Form.Item label={t("场景")} style={{ marginBottom: 0 }}>
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    style={{ width: 200 }}
-                    placeholder={t("请选择场景")}
-                    value={filterScene}
-                    onChange={(values) => setFilterScene(values ?? [])}
-                    options={dimensionOptions.scene}
-                    maxTagCount="responsive"
-                  />
-                </Form.Item>
-              </>
-            ) : null}
-            <Form.Item style={{ marginBottom: 0, marginInlineStart: "auto" }}>
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                loading={exportLoading}
-                disabled={exportBusy}
-                onClick={() => void handleExport()}
-              >
-                {t("导出数据包")}
-              </Button>
-            </Form.Item>
-          </Form>
-          {atpModelsSelected && exportLayout === "atp_tree" ? (
-            <div style={{ color: "var(--gray-9)", fontSize: 12, marginTop: 8 }}>
-              {t("ATP 目录树按 电压/塔型/场景/措施 导出激活版本，包内 $INCLUDE 已重写为 D:\\ATP 下的绝对路径；解压到 D:\\ATP 后可直接供 C# 程序使用。")}
-            </div>
-          ) : null}
-        </div>
-      </Card>
-
-      {/* 任务列表区 */}
-      <Card
-        size="small"
-        title={t("任务列表")}
-        extra={
-          <Space>
-            <Select
-              allowClear
-              style={{ width: 120 }}
-              placeholder={t("全部类型")}
-              value={kindFilter}
-              onChange={(value) => {
-                setKindFilter(value ?? undefined);
-                setPagination((prev) => ({ ...prev, current: 1 }));
-              }}
-              options={[
-                { value: "export", label: t("导出") },
-                { value: "import", label: t("导入") },
-              ]}
-            />
-            <Select
-              allowClear
-              style={{ width: 120 }}
-              placeholder={t("全部状态")}
-              value={statusFilter}
-              onChange={(value) => {
-                setStatusFilter(value ?? undefined);
-                setPagination((prev) => ({ ...prev, current: 1 }));
-              }}
-              options={(Object.keys(STATUS_META) as JobStatus[]).map((key) => ({
-                value: key,
-                label: t(STATUS_META[key].label),
-              }))}
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadJobs()}>
-              {t("刷新")}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ModoTabs
+        type="editable-card"
+        hideAdd
+        className="modo-page-tabs"
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
+        tabBarExtraContent={
+          <Space size={8}>
+            <Link href="/admin/task-monitor">
+              <Button icon={<MonitorOutlined />}>{t("任务监控")}</Button>
+            </Link>
+            <Button type="primary" icon={<DownloadOutlined />} onClick={openExportModal}>
+              {t("导出数据包")}
             </Button>
           </Space>
         }
-      >
-        {jobsError ? (
-          <Alert type="error" showIcon style={{ marginBottom: 12 }} message={t("加载失败")} description={jobsError} />
-        ) : null}
-        <div
-          ref={tableScrollAnchorRef}
-          className="admin-platform-data-table-anchor"
-          style={{ "--admin-platform-data-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-        >
-          <Table<JobSummary>
-            rowKey="id"
-            size="small"
-            loading={jobsLoading}
-            columns={columns}
-            dataSource={jobs}
-            scroll={{ x: 1150, y: tableScrollY }}
-            pagination={modoTablePagination({
-              current: pagination.current,
-              pageSize: pagination.pageSize,
-              total: jobs.length,
-              onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-            })}
-            locale={{
-              emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无任务记录")} />,
-            }}
-          />
-        </div>
-      </Card>
-
-      {/* 详情抽屉 */}
-      <PlatformDataDetailDrawer
-        open={detailOpen}
-        loading={detailLoading}
-        data={detailData}
-        onClose={() => setDetailOpen(false)}
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: t("导出任务列表"),
+            closable: false,
+            children: (
+              <div className="modo-page-card admin-platform-data-list-pane">
+                <PlatformDataJobsPanel ref={jobsPanelRef} onOpenDetail={openDetail} />
+              </div>
+            ),
+          },
+          ...detailTabs,
+        ]}
       />
+
+      <Modal
+        title={t("导出数据包")}
+        open={exportOpen}
+        forceRender
+        width={640}
+        okText={t("导出")}
+        cancelText={t("取消")}
+        confirmLoading={exportLoading}
+        onCancel={() => {
+          if (exportLoading) return;
+          setExportOpen(false);
+        }}
+        onOk={() => void handleExport()}
+      >
+        <Form layout="vertical">
+          <Form.Item label={t("类别")} required>
+            <Checkbox.Group
+              options={categoryOptions}
+              value={exportCategories}
+              onChange={(values) => setExportCategories(values as string[])}
+            />
+          </Form.Item>
+          {atpModelsSelected ? (
+            <>
+              <Form.Item label={t("ATP 格式")}>
+                <Select
+                  value={exportLayout}
+                  onChange={(value) => setExportLayout(value as "bundle" | "atp_tree")}
+                  options={[
+                    { value: "bundle", label: t("平台数据包") },
+                    { value: "atp_tree", label: t("ATP 目录树（C#）") },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label={t("电压")}>
+                <Select
+                  mode="multiple"
+                  allowClear
+                  placeholder={t("请选择电压等级")}
+                  value={filterVoltage}
+                  onChange={(values) => setFilterVoltage(values ?? [])}
+                  options={dimensionOptions.voltage_level}
+                  maxTagCount="responsive"
+                />
+              </Form.Item>
+              <Form.Item label={t("塔型")}>
+                <Select
+                  mode="multiple"
+                  allowClear
+                  placeholder={t("请选择塔型")}
+                  value={filterTower}
+                  onChange={(values) => setFilterTower(values ?? [])}
+                  options={dimensionOptions.tower_type}
+                  maxTagCount="responsive"
+                />
+              </Form.Item>
+              <Form.Item label={t("场景")}>
+                <Select
+                  mode="multiple"
+                  allowClear
+                  placeholder={t("请选择场景")}
+                  value={filterScene}
+                  onChange={(values) => setFilterScene(values ?? [])}
+                  options={dimensionOptions.scene}
+                  maxTagCount="responsive"
+                />
+              </Form.Item>
+              {exportLayout === "atp_tree" ? (
+                <div style={{ color: "var(--gray-9)", fontSize: 12 }}>
+                  {t("ATP 目录树按 电压/塔型/场景/措施 导出激活版本，包内 $INCLUDE 已重写为 D:\\ATP 下的绝对路径；解压到 D:\\ATP 后可直接供 C# 程序使用。")}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+          <div style={{ marginTop: 12, color: "var(--gray-9)", fontSize: 12 }}>
+            {t("导出为异步任务，提交后可在任务列表查看进度与包大小。")}
+          </div>
+        </Form>
+      </Modal>
     </div>
   );
 }
