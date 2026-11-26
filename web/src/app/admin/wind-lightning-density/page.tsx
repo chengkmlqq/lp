@@ -16,7 +16,6 @@ import {
   App,
   Button,
   Card,
-  Descriptions,
   Dropdown,
   Empty,
   Form,
@@ -32,17 +31,14 @@ import {
   Tag,
   Tooltip,
   Typography,
-  Upload,
   type TabsProps,
   type TableColumnsType,
-  type UploadFile,
 } from "antd";
 import {
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
   FileTextOutlined,
-  InboxOutlined,
   MoreOutlined,
   PlusOutlined,
   SearchOutlined,
@@ -57,11 +53,10 @@ import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { downloadFileWithAuth, getJson, readApiError } from "@/lib/api";
-import { generateWindLightningTemplate, generateWindTurbineTemplate } from "@/lib/excel-import-utils";
 import type {
   WindLightningDensityBatchListResponse,
   WindLightningDensityBatchSummary,
-  WindLightningDensityPreviewResponse,
+  WindLightningDensityPrepBatchOptions,
 } from "@/types/wind-lightning-density";
 
 const { Text } = Typography;
@@ -77,6 +72,7 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
 };
 
 type CreateFormValues = {
+  prep_batch_id?: string;
   batch_name?: string;
   wind_farm_name?: string;
   notes?: string;
@@ -122,14 +118,13 @@ function formatDegDraft(value: number | undefined, fallback: number): string {
 /** 与后端 build_batch_name 同口径的草稿名（真正批次名以后端返回为准）。 */
 function buildBatchNameDraft(
   values: Pick<CreateFormValues, "wind_farm_name" | "grid_step_deg" | "margin_deg" | "years_source">,
-  turbineFileName: string,
+  fallbackFarmName: string,
   dataYears: number | null | undefined,
   now: Date = new Date(),
 ): string {
   let farm = (values.wind_farm_name || "").trim();
   if (!farm) {
-    const stem = turbineFileName.split(/[\\/]/).pop() || "";
-    farm = stem.replace(/\.[^.]*$/, "").trim();
+    farm = fallbackFarmName.trim();
   }
   const safeFarm =
     farm
@@ -195,11 +190,22 @@ export default function WindLightningDensityListPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
-  const [turbineFiles, setTurbineFiles] = useState<UploadFile[]>([]);
-  const [lightningFiles, setLightningFiles] = useState<UploadFile[]>([]);
-  const [preview, setPreview] = useState<WindLightningDensityPreviewResponse | null>(null);
-  const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const prepBatchesQuery = useQuery({
+    queryKey: ["wind-lightning-density", "prep-batches"],
+    enabled: Boolean(user) && canRead,
+    queryFn: () => getJson<WindLightningDensityPrepBatchOptions>(`${API_BASE}/prep-batches`),
+  });
+
+  // prep_batch_id → 批次名称，口径与新建表单 Select 的 label 一致；批次已删除时回退为原 ID。
+  const prepBatchNameById = useMemo(() => {
+    const nameById = new Map<string, string>();
+    for (const item of prepBatchesQuery.data?.items ?? []) {
+      nameById.set(item.id, item.name || item.id);
+    }
+    return nameById;
+  }, [prepBatchesQuery.data]);
 
   useEffect(() => {
     setPage(1);
@@ -330,19 +336,13 @@ export default function WindLightningDensityListPage() {
 
   const buildCreateFormData = useCallback(
     (values: CreateFormValues): FormData | null => {
-      const turbineFile = turbineFiles[0]?.originFileObj as File | undefined;
-      const lightningFile = lightningFiles[0]?.originFileObj as File | undefined;
-      if (!turbineFile) {
-        message.warning(t("请选择风机点位文件"));
-        return null;
-      }
-      if (!lightningFile) {
-        message.warning(t("请选择雷电定位 CSV 文件"));
+      const prepBatchId = (values.prep_batch_id || "").trim();
+      if (!prepBatchId) {
+        message.warning(t("请选择数据准备批次"));
         return null;
       }
       const formData = new FormData();
-      formData.append("turbine_file", turbineFile);
-      formData.append("lightning_file", lightningFile);
+      formData.append("prep_batch_id", prepBatchId);
       formData.append("batch_name", (values.batch_name || "").trim());
       formData.append("wind_farm_name", (values.wind_farm_name || "").trim());
       formData.append("notes", (values.notes || "").trim());
@@ -351,20 +351,21 @@ export default function WindLightningDensityListPage() {
       formData.append("years_source", values.years_source ?? "auto");
       return formData;
     },
-    [lightningFiles, message, t, turbineFiles],
+    [message, t],
   );
 
-  // 草稿名：字段/文件/预览结果变化时联动刷新；最终名称由后端生成并覆盖。
-  const syncDraftName = useCallback(
-    (incomingPreview?: WindLightningDensityPreviewResponse | null) => {
-      const values = form.getFieldsValue(true) as CreateFormValues;
-      const source = incomingPreview === undefined ? preview : incomingPreview;
-      const draft = buildBatchNameDraft(values, turbineFiles[0]?.name || "", source?.data_years);
-      form.setFieldsValue({ batch_name: draft });
-      return draft;
-    },
-    [form, preview, turbineFiles],
-  );
+  // 草稿名：字段/批次变化时联动刷新；最终名称由后端生成并覆盖。
+  const syncDraftName = useCallback(() => {
+    const values = form.getFieldsValue(true) as CreateFormValues;
+    const batch = prepBatchesQuery.data?.items.find((item) => item.id === values.prep_batch_id);
+    const draft = buildBatchNameDraft(
+      values,
+      batch?.wind_farm_name || batch?.name || "",
+      null,
+    );
+    form.setFieldsValue({ batch_name: draft });
+    return draft;
+  }, [form, prepBatchesQuery.data]);
 
   useEffect(() => {
     if (createOpen) {
@@ -372,47 +373,13 @@ export default function WindLightningDensityListPage() {
     }
   }, [createOpen, syncDraftName]);
 
-  const handlePreview = useCallback(async () => {
-    const values = await form.validateFields();
-    const formData = buildCreateFormData(values);
-    if (!formData) {
-      return;
-    }
-    setPreviewing(true);
-    try {
-      const response = await fetchWithAuth(`${API_BASE}/preview`, { method: "POST", body: formData });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const data = (await response.json()) as WindLightningDensityPreviewResponse;
-      setPreview(data);
-      syncDraftName(data); // 预览成功后用真实统计年限刷新草稿名
-    } catch (error) {
-      message.error((error as Error).message);
-    } finally {
-      setPreviewing(false);
-    }
-  }, [buildCreateFormData, fetchWithAuth, form, message, syncDraftName]);
-
-  const handleDownloadTurbineTemplate = useCallback(() => {
-    try {
-      generateWindTurbineTemplate();
-      message.success(t("风机点位模板下载成功"));
-    } catch {
-      message.error(t("风机点位模板下载失败"));
-    }
-  }, [message, t]);
-
-  const handleDownloadLightningTemplate = useCallback(() => {
-    try {
-      generateWindLightningTemplate();
-      message.success(t("雷电定位数据模板下载成功"));
-    } catch {
-      message.error(t("雷电定位数据模板下载失败"));
-    }
-  }, [message, t]);
+  const prepBatchesLoadFailed = prepBatchesQuery.isError;
 
   const handleSubmit = useCallback(async () => {
+    if (prepBatchesLoadFailed) {
+      message.warning(t("数据准备批次加载失败，无法提交"));
+      return;
+    }
     const values = await form.validateFields();
     values.batch_name = syncDraftName(); // 提交前再同步一次表单值
     const formData = buildCreateFormData(values);
@@ -427,9 +394,6 @@ export default function WindLightningDensityListPage() {
       }
       message.success(t("已提交统计任务，正在后台计算"));
       setCreateOpen(false);
-      setPreview(null);
-      setTurbineFiles([]);
-      setLightningFiles([]);
       form.resetFields();
       // 提交后停留在列表页：回到第 1 页并清空状态筛选，确保新批次可见；
       // 列表已有 4 秒轮询，进度会自动推进，无需跳转详情。
@@ -442,7 +406,16 @@ export default function WindLightningDensityListPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [buildCreateFormData, fetchWithAuth, form, message, refreshList, syncDraftName, t]);
+  }, [
+    buildCreateFormData,
+    fetchWithAuth,
+    form,
+    message,
+    prepBatchesLoadFailed,
+    refreshList,
+    syncDraftName,
+    t,
+  ]);
 
   const handleDelete = useCallback(
     (record: WindLightningDensityBatchSummary) => {
@@ -685,6 +658,12 @@ export default function WindLightningDensityListPage() {
             <Text type="secondary" className="text-xs truncate">
               {t("风电场")}：{record.wind_farm_name || "-"}
             </Text>
+            <Text type="secondary" className="text-xs truncate">
+              {t("来源数据准备批次")}：
+              {record.prep_batch_id
+                ? prepBatchNameById.get(record.prep_batch_id) ?? record.prep_batch_id
+                : "—"}
+            </Text>
             <Text type="secondary" className="text-xs">
               {t("风机数")}：{record.turbine_count} · {t("有效落雷")}：{record.valid_records}
             </Text>
@@ -807,7 +786,6 @@ export default function WindLightningDensityListPage() {
             icon={<PlusOutlined />}
             type="primary"
             onClick={() => {
-              setPreview(null);
               setCreateOpen(true);
             }}
           >
@@ -875,7 +853,7 @@ export default function WindLightningDensityListPage() {
                         <div className="admin-lightning-distribution-card-view-state">
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={t("暂无统计批次，点击「新建统计」上传风机点位与雷电定位数据")}
+                            description={t("暂无统计批次，点击「新建统计」选择数据准备批次")}
                           />
                         </div>
                       ) : (
@@ -901,7 +879,7 @@ export default function WindLightningDensityListPage() {
                       emptyText: (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description={t("暂无统计批次，点击「新建统计」上传风机点位与雷电定位数据")}
+                          description={t("暂无统计批次，点击「新建统计」选择数据准备批次")}
                         />
                       ),
                     }}
@@ -922,15 +900,17 @@ export default function WindLightningDensityListPage() {
         width={760}
         open={createOpen}
         destroyOnHidden
-        onCancel={() => {
-          setCreateOpen(false);
-          setPreview(null);
-        }}
+        onCancel={() => setCreateOpen(false)}
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
         footer={
           <Space style={{ display: "flex", justifyContent: "flex-end" }}>
             <Button onClick={() => setCreateOpen(false)}>{t("取消")}</Button>
-            <Button type="primary" onClick={handleSubmit} loading={submitting}>
+            <Button
+              type="primary"
+              onClick={handleSubmit}
+              loading={submitting}
+              disabled={prepBatchesLoadFailed}
+            >
               {t("提交统计")}
             </Button>
           </Space>
@@ -941,16 +921,55 @@ export default function WindLightningDensityListPage() {
           layout="vertical"
           initialValues={{ grid_step_deg: 0.01, margin_deg: 0.01, years_source: "auto" }}
           onValuesChange={(_changed, allValues) => {
+            const batch = prepBatchesQuery.data?.items.find(
+              (item) => item.id === allValues.prep_batch_id,
+            );
             form.setFieldsValue({
               batch_name: buildBatchNameDraft(
                 allValues,
-                turbineFiles[0]?.name || "",
-                preview?.data_years,
+                batch?.wind_farm_name || batch?.name || "",
+                null,
               ),
             });
           }}
         >
           <div className="fl-create-form-grid">
+            <Form.Item
+              className="fl-span-2"
+              label={t("数据准备批次")}
+              name="prep_batch_id"
+              tooltip={t("输入来自已完成的「风电场数据准备」批次，风机点位与雷电定位文件由批次带入")}
+              rules={[{ required: true, message: t("请选择数据准备批次") }]}
+            >
+              <Select
+                showSearch
+                loading={prepBatchesQuery.isLoading}
+                placeholder={t("请选择已完成的批次")}
+                disabled={prepBatchesLoadFailed}
+                optionFilterProp="label"
+                notFoundContent={
+                  prepBatchesQuery.isLoading ? <Spin size="small" /> : t("暂无可用的数据准备批次")
+                }
+                options={(prepBatchesQuery.data?.items ?? []).map((item) => ({
+                  value: item.id,
+                  label: `${item.name || item.id}（${item.turbine_count} 台 · ${item.grid_nx}×${item.grid_ny}）`,
+                }))}
+              />
+            </Form.Item>
+            {prepBatchesLoadFailed ? (
+              <div className="fl-span-2">
+                <Alert
+                  type="error"
+                  showIcon
+                  message={t("数据准备批次加载失败，无法提交")}
+                  action={
+                    <Button size="small" onClick={() => void prepBatchesQuery.refetch()}>
+                      {t("重试")}
+                    </Button>
+                  }
+                />
+              </div>
+            ) : null}
             <Form.Item
               className="fl-span-2"
               label={t("批次名称")}
@@ -993,114 +1012,8 @@ export default function WindLightningDensityListPage() {
             <Form.Item className="fl-span-2" label={t("备注")} name="notes">
               <Input.TextArea rows={2} maxLength={500} />
             </Form.Item>
-
-            <Form.Item
-              className="fl-span-2"
-              required
-              label={t("风机点位文件（txt 11 列 / Excel）")}
-            >
-              <Upload.Dragger
-                accept=".txt,.csv,.xlsx,.xlsm"
-                maxCount={1}
-                fileList={turbineFiles}
-                beforeUpload={() => false}
-                onChange={({ fileList }) => setTurbineFiles(fileList.slice(-1))}
-              >
-                <p className="ant-upload-drag-icon">
-                  <InboxOutlined />
-                </p>
-                <p className="ant-upload-text">{t("点击或拖拽 file_2.txt / 风机点位表到此区域")}</p>
-                <p className="ant-upload-hint">
-                  {t("txt 按 11 列空白分隔（前 6 列为经纬度度分秒）；Excel 支持「经度/纬度」或「经度度/分/秒」列名")}
-                </p>
-                <div className="flex items-center justify-center gap-2">
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      handleDownloadTurbineTemplate();
-                    }}
-                  >
-                    {t("下载模板")}
-                  </Button>
-                </div>
-              </Upload.Dragger>
-            </Form.Item>
-
-            <Form.Item
-              className="fl-span-2"
-              required
-              label={t("雷电定位 CSV（LONGITUDE / LATITUDE）")}
-            >
-              <Upload.Dragger
-                accept=".csv,.txt"
-                maxCount={1}
-                fileList={lightningFiles}
-                beforeUpload={() => false}
-                onChange={({ fileList }) => setLightningFiles(fileList.slice(-1))}
-              >
-                <p className="ant-upload-drag-icon">
-                  <InboxOutlined />
-                </p>
-                <p className="ant-upload-text">{t("点击或拖拽雷电定位 CSV 到此区域")}</p>
-                <p className="ant-upload-hint">{t("支持 UTF-8 / GBK 编码，含 DATETIME 列时可自动推断统计年限")}</p>
-                <div className="flex items-center justify-center gap-2">
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      handleDownloadLightningTemplate();
-                    }}
-                  >
-                    {t("下载模板")}
-                  </Button>
-                </div>
-              </Upload.Dragger>
-            </Form.Item>
           </div>
         </Form>
-
-        {preview ? (
-          <Card size="small" title={t("提交前预览")} style={{ marginTop: 8 }}>
-            <Descriptions column={2} size="small" bordered>
-              <Descriptions.Item label={t("风机数")}>{preview.turbine_count}</Descriptions.Item>
-              <Descriptions.Item label={t("跳过风机")}>{preview.turbine_skipped}</Descriptions.Item>
-              <Descriptions.Item label={t("雷电记录")}>{preview.total_records}</Descriptions.Item>
-              <Descriptions.Item label={t("范围内落雷")}>{preview.in_range_records}</Descriptions.Item>
-              <Descriptions.Item label={t("网格数")} span={2}>
-                {preview.grid_x_count} × {preview.grid_y_count}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("统计范围")} span={2}>
-                {preview.bbox_min_lon?.toFixed(4)} ~ {preview.bbox_max_lon?.toFixed(4)}（{t("经度")}）
-                <br />
-                {preview.bbox_min_lat?.toFixed(4)} ~ {preview.bbox_max_lat?.toFixed(4)}（{t("纬度")}）
-              </Descriptions.Item>
-              <Descriptions.Item label={t("统计年限")}>{preview.data_years} {t("年")}</Descriptions.Item>
-              <Descriptions.Item label={t("面积（km²）")}>{formatNumber(preview.area_km2, 3)}</Descriptions.Item>
-            </Descriptions>
-            {preview.warnings.length ? (
-              <Alert
-                style={{ marginTop: 12 }}
-                type="warning"
-                showIcon
-                message={t("提示")}
-                description={
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {preview.warnings.map((warning) => (
-                      <li key={warning}>{t(warning)}</li>
-                    ))}
-                  </ul>
-                }
-              />
-            ) : null}
-          </Card>
-        ) : null}
       </Modal>
 
       <TaskLogViewerDrawer

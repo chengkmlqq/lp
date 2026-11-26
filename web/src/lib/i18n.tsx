@@ -3770,6 +3770,12 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "范围内落雷": "In-range strikes",
   "统计范围": "Study area",
   "面积（km²）": "Area (km²)",
+  // ── LP-137：地闪密度新建改为选择数据准备批次 ──
+  "来源数据准备批次": "Source data preparation batch",
+  "数据准备批次加载失败，无法提交": "Failed to load data preparation batches; submission is blocked",
+  "暂无可用的数据准备批次": "No data preparation batches available",
+  "暂无统计批次，点击「新建统计」选择数据准备批次": "No statistics batches yet. Click \"New statistics\" and choose a data preparation batch.",
+  "输入来自已完成的「风电场数据准备」批次，风机点位与雷电定位文件由批次带入": "Input comes from a completed \"Wind farm data preparation\" batch; the turbine point and lightning files are taken from it",
   // ── LP-117：地闪密度概览分区块标题 ──
   "基本信息 / 数据来源": "Basic Information / Data Source",
   "统计范围与网格": "Study Area & Grid",

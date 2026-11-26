@@ -38,6 +38,7 @@ import type {
   WindLightningDensityBatchDetail,
   WindLightningDensityCellListResponse,
   WindLightningDensityCellRow,
+  WindLightningDensityPrepBatchOptions,
   WindLightningDensityTurbineListResponse,
   WindLightningDensityTurbineRow,
 } from "@/types/wind-lightning-density";
@@ -219,6 +220,21 @@ export function WindLightningDensityDetailView({
 
   const detail = detailQuery.data;
 
+  // 来源批次名称：批次选项接口与列表页共用同一 queryKey，详情页单独打开时也能自行取到。
+  const prepBatchesQuery = useQuery({
+    queryKey: ["wind-lightning-density", "prep-batches"],
+    enabled: Boolean(user) && canRead && Boolean(detail?.prep_batch_id),
+    queryFn: () => getJson<WindLightningDensityPrepBatchOptions>(`${API_BASE}/prep-batches`),
+  });
+
+  const prepBatchId = detail?.prep_batch_id ?? null;
+  const prepBatchName = useMemo(() => {
+    if (!prepBatchId) {
+      return null;
+    }
+    return prepBatchesQuery.data?.items.find((item) => item.id === prepBatchId)?.name || prepBatchId;
+  }, [prepBatchId, prepBatchesQuery.data]);
+
   const cellsQuery = useQuery({
     queryKey: ["wind-lightning-density-cells", batchId, cellPage, cellPageSize],
     enabled: Boolean(user) && canRead && detail?.status === "completed",
@@ -376,6 +392,11 @@ export function WindLightningDensityDetailView({
   const basicInfoItems: DescriptionsProps["items"] = detail
     ? [
         { key: "wind_farm", label: t("风电场"), children: detail.wind_farm_name || "-" },
+        {
+          key: "prep_batch",
+          label: t("来源数据准备批次"),
+          children: prepBatchName ?? "—",
+        },
         { key: "turbine_source", label: t("风机文件"), children: detail.turbine_source_file_name || "-" },
         { key: "lightning_source", label: t("雷电文件"), children: detail.lightning_source_file_name || "-" },
       ]

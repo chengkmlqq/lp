@@ -4,11 +4,28 @@ export type WindLightningDensityStatus = "pending" | "processing" | "completed" 
 
 export type WindLightningDensityYearsSource = "auto" | "fixed";
 
+/** 新建时可选的「风电场数据准备」批次（后端代理查询，无需数据准备权限）。 */
+export type WindLightningDensityPrepBatchOption = {
+  id: string;
+  name: string;
+  wind_farm_name: string | null;
+  turbine_count: number;
+  grid_nx: number;
+  grid_ny: number;
+  create_date: string | null;
+};
+
+export type WindLightningDensityPrepBatchOptions = {
+  items: WindLightningDensityPrepBatchOption[];
+};
+
 export type WindLightningDensityBatchSummary = {
   id: string;
   batch_name: string;
   wind_farm_name: string | null;
   notes: string | null;
+  /** 来源「风电场数据准备」批次；手工上传的历史批次为 null */
+  prep_batch_id: string | null;
   status: WindLightningDensityStatus | string;
   stage: string;
   progress: number;
