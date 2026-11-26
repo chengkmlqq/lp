@@ -120,6 +120,11 @@ class LineTowerSummary(BaseModel):
     current_a: float | None = None
     current_b: float | None = None
     lightning_current_preparation: TowerProfileLightningCurrentSummary | None = None
+    # ZV 改造四变量（逐塔注入；None = 未注入，按默认 150/200/1350/2.5E8 参与计算）
+    wave_speed_m_s: float | None = None
+    tower_z_1: float | None = None
+    tower_z_2: float | None = None
+    tower_z_3: float | None = None
     create_date: datetime
     create_user: str | None = None
     update_date: datetime
@@ -159,6 +164,10 @@ class TowerBasicDetail(BaseModel):
     shield_wire_height_m: float | None = None
     lightning_wire_left_mid_distance_m: float | None = None
     lightning_wire_right_mid_distance_m: float | None = None
+    wave_speed_m_s: float | None = None
+    tower_z_1: float | None = None
+    tower_z_2: float | None = None
+    tower_z_3: float | None = None
 
 
 class TowerDetailResponse(BaseModel):
@@ -214,6 +223,11 @@ class LineTowerUpdateRequest(BaseModel):
     slope_1: float | None = None
     slope_2: float | None = None
     risk_level: str | None = Field(default=None, max_length=32)
+    # ZV 改造四变量（None 表示清空该塔注入值，回到默认 150/200/1350/2.5E8）
+    wave_speed_m_s: float | None = None
+    tower_z_1: float | None = None
+    tower_z_2: float | None = None
+    tower_z_3: float | None = None
     circuits: list[TowerCircuitSummary] | None = None
     lightning_result: TowerLightningResultSummary | None = None
     analysis: TowerAnalysisSummary | None = None

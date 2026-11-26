@@ -104,6 +104,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     span_large_m?: number | null;
     slope_1?: number | null;
     slope_2?: number | null;
+    // ZV 改造四变量（逐塔注入；空 = 未注入，计算时按默认 150/200/1350/2.5E8）
+    wave_speed_m_s?: number | null;
+    tower_z_1?: number | null;
+    tower_z_2?: number | null;
+    tower_z_3?: number | null;
   }>({});
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const towerDetailScrollRef = useRef<HTMLDivElement | null>(null);
@@ -315,6 +320,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       span_large_m: item.span_large_m,
       slope_1: item.slope_1,
       slope_2: item.slope_2,
+      wave_speed_m_s: item.wave_speed_m_s,
+      tower_z_1: item.tower_z_1,
+      tower_z_2: item.tower_z_2,
+      tower_z_3: item.tower_z_3,
     });
     setEditModalOpen(true);
   }, []);
@@ -345,6 +354,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       if (towerForm.span_large_m !== undefined) payload.span_large_m = towerForm.span_large_m;
       if (towerForm.slope_1 !== undefined) payload.slope_1 = towerForm.slope_1;
       if (towerForm.slope_2 !== undefined) payload.slope_2 = towerForm.slope_2;
+      // ZV 四变量：空 → null（清空注入，回到默认值）
+      if (towerForm.wave_speed_m_s !== undefined) payload.wave_speed_m_s = towerForm.wave_speed_m_s;
+      if (towerForm.tower_z_1 !== undefined) payload.tower_z_1 = towerForm.tower_z_1;
+      if (towerForm.tower_z_2 !== undefined) payload.tower_z_2 = towerForm.tower_z_2;
+      if (towerForm.tower_z_3 !== undefined) payload.tower_z_3 = towerForm.tower_z_3;
 
       const response = await fetchWithAuth(`/api/v1/lines/towers/${editingTower.id}`, {
         method: "PATCH",
@@ -924,6 +938,61 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                 />
               </Form.Item>
             </Col>
+            <Col span={24}>
+              <Typography.Text type="secondary">{t("ZV 改造参数（逐塔注入，留空按默认值参与计算）")}</Typography.Text>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t("波速(m/s)")} tooltip={t("默认 250000000；guxing 个别模型为 255000000")}>
+                <Input
+                  type="number"
+                  placeholder="250000000"
+                  value={towerForm.wave_speed_m_s ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("wave_speed_m_s", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t("塔材波阻抗1(Ω)")} tooltip={t("默认 150")}>
+                <Input
+                  type="number"
+                  placeholder="150"
+                  value={towerForm.tower_z_1 ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("tower_z_1", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t("塔材波阻抗2(Ω)")} tooltip={t("默认 200")}>
+                <Input
+                  type="number"
+                  placeholder="200"
+                  value={towerForm.tower_z_2 ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("tower_z_2", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t("塔材波阻抗3(Ω)")} tooltip={t("默认 1350")}>
+                <Input
+                  type="number"
+                  placeholder="1350"
+                  value={towerForm.tower_z_3 ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("tower_z_3", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
           </Row>
         </Form>
         <div style={{ textAlign: "right", borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 16 }}>
@@ -999,6 +1068,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                         <Descriptions.Item label={t("避雷线高度(m)")}>{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("左避雷线中距(m)")}>{tower.lightning_wire_left_mid_distance_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("右避雷线中距(m)")}>{tower.lightning_wire_right_mid_distance_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label={t("波速(m/s)")}>{tower.wave_speed_m_s != null ? tower.wave_speed_m_s : t("默认 250000000")}</Descriptions.Item>
+                        <Descriptions.Item label={t("塔材波阻抗1(Ω)")}>{tower.tower_z_1 != null ? tower.tower_z_1 : t("默认 150")}</Descriptions.Item>
+                        <Descriptions.Item label={t("塔材波阻抗2(Ω)")}>{tower.tower_z_2 != null ? tower.tower_z_2 : t("默认 200")}</Descriptions.Item>
+                        <Descriptions.Item label={t("塔材波阻抗3(Ω)")}>{tower.tower_z_3 != null ? tower.tower_z_3 : t("默认 1350")}</Descriptions.Item>
                       </Descriptions>
                     ),
                   },

@@ -83,6 +83,26 @@
       "value": "1.",
       "when": "wave_type == 3",
       "else": "0."
+    },
+    "ZRE01_": {
+      "expr": "tower_z_1",
+      "fmt": 2,
+      "default": "150."
+    },
+    "ZRE02_": {
+      "expr": "tower_z_2",
+      "fmt": 2,
+      "default": "200."
+    },
+    "ZRE03_": {
+      "expr": "tower_z_3",
+      "fmt": 2,
+      "default": "1350."
+    },
+    "VRE___": {
+      "expr": "wave_speed_m_s",
+      "fmt": 0,
+      "default": "250000000."
     }
   },
   "defaults_source": "仓库样例几何（atp_param_template_service._synthetic_case）；仅「无杆塔测试」使用",
@@ -128,6 +148,10 @@
     "c4_l": 39.0,
     "c4_sp_u": 15.0,
     "c4_sp_m": 15.0,
-    "c4_sp_l": 9.0
+    "c4_sp_l": 9.0,
+    "wave_speed_m_s": 250000000.0,
+    "tower_z_1": 150.0,
+    "tower_z_2": 200.0,
+    "tower_z_3": 1350.0
   }
 }

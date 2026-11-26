@@ -210,7 +210,7 @@ def translate_csv_cell(value: Any, lang: str) -> str:
     return ENUM_VALUE_EN.get(text.strip(), text)
 
 
-# ───────────────────────── CSV 英文表头（65 列，与中文表头严格对齐） ─────────────────────────
+# ───────────────────────── CSV 英文表头（69 列，与中文表头严格对齐） ─────────────────────────
 
 LINE_TOWER_CSV_HEADERS_EN: tuple[str, ...] = (
     "Line code",
@@ -278,4 +278,8 @@ LINE_TOWER_CSV_HEADERS_EN: tuple[str, ...] = (
     "Lightning risk level",
     "Cause analysis",
     "Mitigation recommendation",
+    "Wave speed (m/s)",
+    "Tower material surge impedance 1 (ohm)",
+    "Tower material surge impedance 2 (ohm)",
+    "Tower material surge impedance 3 (ohm)",
 )

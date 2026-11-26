@@ -1,4 +1,4 @@
-"""ATP 参数注册表种子生成器（49 个参数，全部常规化来源）。
+"""ATP 参数注册表种子生成器（53 个参数，全部常规化来源）。
 
 改造目标（2026-09-27，用户指令「不想要'现状计算链路'特殊来源」）：
 - 不再使用 runtime_key 现状镜像；每个参数用常规三类来源显式表达：
@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.models.atp_param_definition import AtpParamDefinition
 
 # --------------------------------------------------------------------------------------
-# 定义清单（49 个）：每项 = {code, name, unit, source_type, binding_json,
+# 定义清单（53 个）：每项 = {code, name, unit, source_type, binding_json,
 #                        script_code?, deps?, description}
 # --------------------------------------------------------------------------------------
 
@@ -78,6 +78,28 @@ _A_LINE_BINDINGS: list[dict[str, Any]] = [
         "angle_deg", "电角度", "°", "line_binding",
         _lb("profile", "angle_deg"),
         "来源：profile.angle_deg（档距剖面-电角度）。口径：原值直取；供 electric_angle 计算（电角度−90）。",
+    ),
+    # ZV 改造四变量（逐塔注入）：线路管理 CSV / 编辑表单写入
+    # profile.extra_profile_json.zv_params；未注入时槽位 default 兜底 150/200/1350/2.5E8。
+    _def(
+        "wave_speed_m_s", "波速", "m/s", "line_binding",
+        _lb("profile", "extra_profile_json.zv_params.wave_speed_m_s"),
+        "来源：profile.extra_profile_json.zv_params.wave_speed_m_s（线路管理-波速，逐塔注入）。口径：正数直取；未注入回退 250000000. m/s（guxing 个别模型自带 255000000.）。→ VRE___",
+    ),
+    _def(
+        "tower_z_1", "塔材波阻抗1", "Ω", "line_binding",
+        _lb("profile", "extra_profile_json.zv_params.z_1"),
+        "来源：profile.extra_profile_json.zv_params.z_1（线路管理-塔材波阻抗1，逐塔注入）。口径：正数直取；未注入回退 150. Ω。→ ZRE01_",
+    ),
+    _def(
+        "tower_z_2", "塔材波阻抗2", "Ω", "line_binding",
+        _lb("profile", "extra_profile_json.zv_params.z_2"),
+        "来源：profile.extra_profile_json.zv_params.z_2（线路管理-塔材波阻抗2，逐塔注入）。口径：正数直取；未注入回退 200. Ω。→ ZRE02_",
+    ),
+    _def(
+        "tower_z_3", "塔材波阻抗3", "Ω", "line_binding",
+        _lb("profile", "extra_profile_json.zv_params.z_3"),
+        "来源：profile.extra_profile_json.zv_params.z_3（线路管理-塔材波阻抗3，逐塔注入）。口径：正数直取；未注入回退 1350. Ω。→ ZRE03_",
     ),
 ]
 
@@ -280,7 +302,7 @@ def _all_definitions() -> list[dict[str, Any]]:
 
 
 def build_seed_definitions() -> list[dict[str, Any]]:
-    """生成全部种子定义（49 个，全部常规来源，无 runtime_key/现状镜像）。"""
+    """生成全部种子定义（53 个，全部常规来源，无 runtime_key/现状镜像）。"""
     return _all_definitions()
 
 

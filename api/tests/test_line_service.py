@@ -237,7 +237,7 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
 
         assert filename.startswith("PL-LEGACY-001_towers_")
 
-        # 导出对齐 C#：UTF-8 无 BOM、固定 65 列（1-63 + 原因分析 + 措施推荐），不含 JSON 列
+        # 导出对齐 C#：UTF-8 无 BOM、固定 69 列（1-63 + 原因分析 + 措施推荐 + ZV 四变量），不含 JSON 列
         rows = list(csv.DictReader(io.StringIO(content.decode("utf-8"))))
         assert len(rows) == 1
 
@@ -265,8 +265,58 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
         assert row["原因分析"] == ""
         assert row["措施推荐"] == ""
         header = next(csv.reader(io.StringIO(content.decode("utf-8"))))
-        assert len(header) == 65
+        assert len(header) == 69
+        assert header[-4:] == ["波速(m/s)", "塔材波阻抗1(Ω)", "塔材波阻抗2(Ω)", "塔材波阻抗3(Ω)"]
         assert not any("JSON" in name for name in header)
+    finally:
+        session.close()
+
+
+def test_export_line_towers_csv_round_trips_zv_params(monkeypatch) -> None:
+    """LP-140：ZV 四变量导出为末尾 4 列，重新导入后值不变。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+        line = Line(code="PL-ZV-RT", name="ZV 往返线路", voltage_kv=66, status="enabled")
+        session.add(line)
+        session.flush()
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="shangzi")
+        session.add(tower)
+        session.flush()
+        session.add(
+            TowerProfile(
+                tower_id=tower.id,
+                extra_profile_json={
+                    "zv_params": {"wave_speed_m_s": 2.4e8, "z_1": 151.5, "z_2": 205.0, "z_3": 1360.0}
+                },
+            )
+        )
+        session.commit()
+
+        _filename, content = line_service.export_line_towers_to_csv(session, line=line)
+        rows = list(csv.DictReader(io.StringIO(content.decode("utf-8"))))
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["波速(m/s)"] == "240000000"
+        assert row["塔材波阻抗1(Ω)"] == "151.5"
+        assert row["塔材波阻抗2(Ω)"] == "205"
+        assert row["塔材波阻抗3(Ω)"] == "1360"
+
+        # 清空后按导出内容重新导入，注入值原样带回
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        profile.extra_profile_json = {}
+        session.commit()
+        line_service._upsert_tower_profile_from_legacy_row(
+            session, tower=tower, row=row, actor_user_id="tester"
+        )
+        session.commit()
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        assert (profile.extra_profile_json or {}).get("zv_params") == {
+            "wave_speed_m_s": 240000000.0,
+            "z_1": 151.5,
+            "z_2": 205.0,
+            "z_3": 1360.0,
+        }
     finally:
         session.close()
 
@@ -422,6 +472,88 @@ def test_import_legacy_row_writes_real_mid_distance_to_lightning_wire() -> None:
     finally:
         session.close()
 
+
+
+def test_import_legacy_row_writes_zv_params_from_new_columns() -> None:
+    """LP-140：CSV 新增 4 列（波速/三段塔材波阻抗）落到 extra_profile_json.zv_params。"""
+    session = _build_session()
+    try:
+        line = Line(code="PL-FIX-ZV", name="ZV 注入线路", voltage_kv=66, status="enabled")
+        session.add(line)
+        session.flush()
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="shangzi")
+        session.add(tower)
+        session.flush()
+        session.commit()
+
+        line_service._upsert_tower_profile_from_legacy_row(
+            session,
+            tower=tower,
+            row={
+                "波速(m/s)": "255000000",
+                "塔材波阻抗1(Ω)": "160.5",
+                "塔材波阻抗2(Ω)": "",
+                "塔材波阻抗3(Ω)": "1400",
+            },
+            actor_user_id="tester",
+        )
+        session.commit()
+
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        zv = (profile.extra_profile_json or {}).get("zv_params") or {}
+        assert zv == {"wave_speed_m_s": 255000000.0, "z_1": 160.5, "z_3": 1400.0}
+
+        # 旧版 65 列文件（无 ZV 列）重导：不清掉已有注入值
+        line_service._upsert_tower_profile_from_legacy_row(
+            session,
+            tower=tower,
+            row={"绝缘子串长度mm": "5945"},
+            actor_user_id="tester",
+        )
+        session.commit()
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        assert (profile.extra_profile_json or {}).get("zv_params") == zv
+    finally:
+        session.close()
+
+
+def test_update_line_tower_sets_and_clears_zv_params() -> None:
+    """LP-140：杆塔编辑 PATCH 可写入/清空 ZV 四变量（None → 回默认值）。"""
+    session = _build_session()
+    try:
+        line = Line(code="PL-FIX-ZV2", name="ZV 编辑线路", voltage_kv=66, status="enabled")
+        session.add(line)
+        session.flush()
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="shangzi")
+        session.add(tower)
+        session.flush()
+        session.commit()
+
+        from app.schemas.line import LineTowerUpdateRequest
+
+        updated = line_service.update_line_tower(
+            session,
+            tower.id,
+            LineTowerUpdateRequest(wave_speed_m_s=2.4e8, tower_z_1=151.0, tower_z_2=201.0, tower_z_3=1355.0),
+            actor_user_id="tester",
+        )
+        assert updated is not None
+        assert updated.wave_speed_m_s == 2.4e8
+        assert updated.tower_z_1 == 151.0
+        assert updated.tower_z_3 == 1355.0
+
+        cleared = line_service.update_line_tower(
+            session,
+            tower.id,
+            LineTowerUpdateRequest(wave_speed_m_s=None, tower_z_1=None, tower_z_2=None, tower_z_3=None),
+            actor_user_id="tester",
+        )
+        assert cleared is not None
+        assert cleared.wave_speed_m_s is None
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        assert (profile.extra_profile_json or {}).get("zv_params") is None
+    finally:
+        session.close()
 
 
 def test_list_lines_returns_estimated_length_from_tower_coordinates(monkeypatch) -> None:

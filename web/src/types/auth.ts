@@ -770,6 +770,10 @@ export type LineTowerSummary = {
   current_a: number | null;
   current_b: number | null;
   lightning_current_preparation: TowerProfileLightningCurrentSummary | null;
+  wave_speed_m_s: number | null;
+  tower_z_1: number | null;
+  tower_z_2: number | null;
+  tower_z_3: number | null;
   create_date: string;
   create_user: string | null;
   update_date: string;
@@ -812,6 +816,10 @@ export type TowerBasicDetail = {
   shield_wire_height_m: number | null;
   lightning_wire_left_mid_distance_m: number | null;
   lightning_wire_right_mid_distance_m: number | null;
+  wave_speed_m_s: number | null;
+  tower_z_1: number | null;
+  tower_z_2: number | null;
+  tower_z_3: number | null;
 };
 
 export type TowerDetailResponse = {

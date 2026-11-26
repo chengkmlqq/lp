@@ -51,6 +51,8 @@ SOURCE_VARS = {
     "c2_u", "c2_m", "c2_l", "c2_sp_u", "c2_sp_m", "c2_sp_l",
     "c3_u", "c3_m", "c3_l", "c3_sp_u", "c3_sp_m", "c3_sp_l",
     "c4_u", "c4_m", "c4_l", "c4_sp_u", "c4_sp_m", "c4_sp_l",
+    # ZV 改造四变量（逐塔注入，未注入为 None，由槽位 default 兜底）
+    "wave_speed_m_s", "tower_z_1", "tower_z_2", "tower_z_3",
 }
 
 
@@ -609,6 +611,11 @@ def build_context(
 
     wf = int(_f(prof.get("current_type")) or 1)
 
+    # ZV 改造四变量：逐塔注入值（未注入为 None，槽位 default 兜底 150/200/1350/2.5E8）
+    from app.services.atp_zv_params import extract_zv_params  # noqa: PLC0415
+
+    zv = extract_zv_params(prof)
+
     context: dict[str, Any] = {
         "ground_r": ground_r,
         "voltage_level": voltage,  # 维度匹配用（与 voltage 同值）
@@ -648,6 +655,11 @@ def build_context(
         context[f"{cid}_sp_u"] = _f(layer_sp.get("upper"))
         context[f"{cid}_sp_m"] = _f(layer_sp.get("middle"))
         context[f"{cid}_sp_l"] = _f(layer_sp.get("lower"))
+    # ZV 改造四变量（逐塔注入；未注入为 None）
+    context["wave_speed_m_s"] = zv["wave_speed_m_s"]
+    context["tower_z_1"] = zv["z_1"]
+    context["tower_z_2"] = zv["z_2"]
+    context["tower_z_3"] = zv["z_3"]
     # 回路数量（维度匹配用）：有相高数据的回路条数
     context["circuit_count"] = sum(
         1

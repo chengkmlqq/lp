@@ -691,7 +691,7 @@ def _numeric_param_name_map(wanted: dict[str, str]) -> dict[str, str]:
 # 用于判定「远端执行端跑的是哪一版代码」——ATP 由独立 wine worker 执行，
 # 只 git pull 不重启进程时新代码不会生效，而结果表面上完全正常（2026-11-05 踩过）。
 # 每次改动渲染/覆写逻辑时同步递增。
-ATP_RENDER_CODE_VERSION = "2026-11-06a-param-alias-I"
+ATP_RENDER_CODE_VERSION = "2026-11-26a-zv-injection"
 
 
 def _render_fingerprint(text: str) -> dict[str, Any]:
@@ -746,6 +746,24 @@ def _numeric_geometry_override_enabled() -> bool:
     """
     raw = os.environ.get("ATP_NUMERIC_GEOM_OVERRIDE", "1").strip().lower()
     return raw not in ("0", "false", "off", "no")
+
+
+def _zv_injection_snapshot(profile: dict[str, Any]) -> dict[str, Any]:
+    """ZV 四变量注入快照（随任务结果落 external_execution / execution_options，便于追溯）。"""
+    from .atp_zv_params import (  # noqa: PLC0415
+        ZV_SLOT_BY_KEY,
+        extract_zv_params,
+        resolve_zv_params,
+    )
+
+    extracted = extract_zv_params(profile)
+    effective = resolve_zv_params(profile)
+    return {
+        "injected": {key: value for key, value in extracted.items() if value is not None},
+        "effective": dict(effective),
+        "slots": {ZV_SLOT_BY_KEY[key]: effective[key] for key in effective},
+        "source": "injected" if any(value is not None for value in extracted.values()) else "default",
+    }
 
 
 def override_numeric_current_params(
@@ -812,6 +830,18 @@ def override_numeric_current_params(
         if computed.get(name):
             # 几何路径已给出值时以几何路径为准（两者公式一致，仅作兜底）
             wanted.setdefault(name, computed[name])
+
+    # ZV 改造四变量：只覆写**用户显式注入**的项（与几何覆写开关解耦）。
+    # 未注入时保留模型自带字面量（默认 150/200/1350/2.5E8 已烤在模型里，
+    # guxing 个别模型的 255000000. 也不会被默认 2.5E8 覆盖）。
+    from .atp_param_dsl import format_value as _format_value  # noqa: PLC0415
+    from .atp_zv_params import ZV_SLOT_BY_KEY, extract_zv_params  # noqa: PLC0415
+
+    injected = extract_zv_params(profile)
+    for key, slot in ZV_SLOT_BY_KEY.items():
+        value = injected.get(key)
+        if value is not None:
+            wanted[slot] = _format_value(value, 0 if key == "wave_speed_m_s" else 2)
 
     if not wanted:
         return template, []
@@ -1373,6 +1403,15 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         p["REHHEI____"] = "1."
         p["REHSLO____"] = "0."
         p["REHSUR____"] = "0."
+    # ZV 改造四变量（波速 / 三段塔材波阻抗）：逐塔注入，未注入回退默认值
+    # 150 / 200 / 1350 / 2.5E8（与配置路径槽位 default 逐字节一致）。
+    from .atp_zv_params import resolve_zv_slots as _resolve_zv_slots  # noqa: PLC0415
+
+    zv_slots = _resolve_zv_slots(profile)
+    p["ZRE01_"] = fmt(zv_slots["ZRE01_"], 2)
+    p["ZRE02_"] = fmt(zv_slots["ZRE02_"], 2)
+    p["ZRE03_"] = fmt(zv_slots["ZRE03_"], 2)
+    p["VRE___"] = fmt(zv_slots["VRE___"], 0)
     return p
 
 
@@ -1444,6 +1483,15 @@ def render_csharp_equality_template(
             base_tower=base_tower, profile=profile, execution_options=execution_options
         )
     )
+    if params_override is None:
+        # ZV 四变量只写**已注入**项：未注入时保留模型自带字面量/别名行，
+        # 保证非注入模型的 work.atp 与改造前逐字节一致（guxing 的 255000000. 等）。
+        from .atp_zv_params import ZV_SLOT_BY_KEY, injected_zv_keys  # noqa: PLC0415
+
+        injected_slots = {ZV_SLOT_BY_KEY[key] for key in injected_zv_keys(profile)}
+        for slot in ZV_SLOT_BY_KEY.values():
+            if slot not in injected_slots:
+                params.pop(slot, None)
     lines = template.splitlines(keepends=True)
     rendered: list[str] = []
     for line in lines:
@@ -2438,6 +2486,10 @@ def execute_external_waveform_tower_analysis(
     execution_info["render_override_count"] = len(_num_override_notes)
     execution_info["render_override_notes"] = _num_override_notes[:24]
     execution_info["render_fingerprint"] = _render_fingerprint(rendered_text)
+    # ZV 四变量注入快照（逐塔）：注入值 / 生效值 / 是否为默认回退，便于追溯。
+    _zv_snapshot = _zv_injection_snapshot(snapshot.profile_json or {})
+    execution_info["zv_injection"] = _zv_snapshot
+    execution_options["_zv_injection"] = _zv_snapshot
     merged_result["external_execution"] = execution_info
     return ExternalTowerExecutionResult(
         result_json=merged_result,

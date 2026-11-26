@@ -51,9 +51,23 @@ def invalidate() -> None:
 
 
 def _load_common(glob_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """合并 JSON 基线 globals 与 DB 行：DB 行为准，DB 缺失的槽位继承 JSON。
+
+    这样新增的基线槽位（如 ZV 改造的 ZRE01_/ZRE02_/ZRE03_/VRE___）在
+    config_db 模式下无需重跑 seed 脚本即可生效；DB 中显式停用的槽位仍保持
+    「不存在」语义（不会被 JSON 基线复活）。
+    """
     common = json.loads((MAPPINGS_DIR / "_common.json").read_text(encoding="utf-8"))
     if glob_rows:
-        common["globals"] = globals_from_rows(glob_rows)
+        enabled_rows = [row for row in glob_rows if row.get("enabled") is not False]
+        disabled_slots = {str(row.get("slot")) for row in glob_rows if row.get("enabled") is False}
+        merged = {
+            str(slot): spec
+            for slot, spec in (common.get("globals") or {}).items()
+            if str(slot) not in disabled_slots
+        }
+        merged.update(globals_from_rows(enabled_rows))
+        common["globals"] = merged
     return common
 
 
@@ -71,7 +85,7 @@ def _load_from_db() -> MappingRules | None:
             ]
             glob_rows = [
                 dict(row._mapping)
-                for row in db.execute(text("SELECT * FROM atp_param_global WHERE enabled")).fetchall()
+                for row in db.execute(text("SELECT * FROM atp_param_global")).fetchall()
             ]
             definitions = _load_definitions_safely(db)
         finally:

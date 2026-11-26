@@ -106,6 +106,15 @@ def serialize_line(
     )
 
 
+def _zv_values_from_tower_profile(profile: TowerProfile | None) -> dict[str, float | None]:
+    """TowerProfile → ZV 四变量（未注入为 None）。"""
+    from .atp_zv_params import extract_zv_params
+
+    if profile is None:
+        return {"wave_speed_m_s": None, "z_1": None, "z_2": None, "z_3": None}
+    return extract_zv_params({"extra_profile_json": profile.extra_profile_json or {}})
+
+
 def serialize_line_tower(item: LineTower) -> LineTowerSummary:
     profile = item.profile
     prep_data: dict[str, Any] = {}
@@ -114,6 +123,7 @@ def serialize_line_tower(item: LineTower) -> LineTowerSummary:
         raw_prep = extra.get("lightning_current_preparation")
         if isinstance(raw_prep, dict):
             prep_data = dict(raw_prep)
+    zv = _zv_values_from_tower_profile(profile)
     return LineTowerSummary(
         id=item.id,
         line_id=item.line_id,
@@ -151,6 +161,10 @@ def serialize_line_tower(item: LineTower) -> LineTowerSummary:
             is_synthetic=bool(prep_data.get("is_synthetic", False)),
             prepared_at=_optional_str(prep_data.get("prepared_at")),
         ) if prep_data else None,
+        wave_speed_m_s=zv["wave_speed_m_s"],
+        tower_z_1=zv["z_1"],
+        tower_z_2=zv["z_2"],
+        tower_z_3=zv["z_3"],
         create_date=item.create_date,
         create_user=item.create_user,
         update_date=item.update_date,
@@ -462,6 +476,7 @@ def get_tower_detail(db: Session, tower_id: str) -> TowerDetailResponse | None:
     lightning_wire = extra.get("lightning_wire") if isinstance(extra, dict) else None
     if not isinstance(lightning_wire, dict):
         lightning_wire = {}
+    zv = _zv_values_from_tower_profile(profile)
     return TowerDetailResponse(
         tower=TowerBasicDetail(
             id=tower.id,
@@ -494,6 +509,12 @@ def get_tower_detail(db: Session, tower_id: str) -> TowerDetailResponse | None:
             shield_wire_height_m=profile.shield_wire_height_m if profile else None,
             lightning_wire_left_mid_distance_m=_parse_float(lightning_wire.get("left_mid_distance_m")),
             lightning_wire_right_mid_distance_m=_parse_float(lightning_wire.get("right_mid_distance_m")),
+            **{
+                "wave_speed_m_s": zv["wave_speed_m_s"],
+                "tower_z_1": zv["z_1"],
+                "tower_z_2": zv["z_2"],
+                "tower_z_3": zv["z_3"],
+            },
         ),
         circuits=[_serialize_circuit(circuit) for circuit in tower.circuits],
         arrester=arrester,
@@ -560,6 +581,52 @@ def create_line_tower(
     return serialize_line_tower(saved)
 
 
+def _apply_zv_params_payload(
+    db: Session,
+    *,
+    tower: LineTower,
+    updates: dict[str, Any],
+    actor_user_id: str,
+) -> None:
+    """把 ZV 四变量写入 profile.extra_profile_json.zv_params（None/非正 → 清空该键）。"""
+    field_to_key = {
+        "wave_speed_m_s": "wave_speed_m_s",
+        "tower_z_1": "z_1",
+        "tower_z_2": "z_2",
+        "tower_z_3": "z_3",
+    }
+    now = utcnow()
+    profile = tower.profile
+    if profile is None:
+        profile = TowerProfile(
+            tower_id=tower.id,
+            create_date=now,
+            create_user=actor_user_id,
+            update_date=now,
+            update_user=actor_user_id,
+        )
+        db.add(profile)
+        tower.profile = profile
+    extra = dict(profile.extra_profile_json or {})
+    raw_zv = extra.get("zv_params")
+    zv = dict(raw_zv) if isinstance(raw_zv, dict) else {}
+    for field, zv_key in field_to_key.items():
+        if field not in updates:
+            continue
+        parsed = _parse_float(updates[field])
+        if parsed is None or parsed <= 0:
+            zv.pop(zv_key, None)
+        else:
+            zv[zv_key] = parsed
+    if zv:
+        extra["zv_params"] = zv
+    else:
+        extra.pop("zv_params", None)
+    profile.extra_profile_json = extra
+    profile.update_date = now
+    profile.update_user = actor_user_id
+
+
 def update_line_tower(
     db: Session,
     tower_id: str,
@@ -623,6 +690,16 @@ def update_line_tower(
         _apply_analysis_payload(tower, update_data["analysis"], actor_user_id=actor_user_id)
     if "raw_extra_json" in update_data and update_data["raw_extra_json"] is not None:
         tower.raw_extra_json = dict(update_data["raw_extra_json"])
+    if any(
+        key in update_data
+        for key in ("wave_speed_m_s", "tower_z_1", "tower_z_2", "tower_z_3")
+    ):
+        _apply_zv_params_payload(
+            db,
+            tower=tower,
+            updates=update_data,
+            actor_user_id=actor_user_id,
+        )
 
     tower.update_user = actor_user_id
     tower.update_date = utcnow()
@@ -931,7 +1008,28 @@ LINE_TOWER_CSV_HEADERS_63: tuple[str, ...] = (
     "雷击风险等级",
 )
 
-LINE_TOWER_CSV_HEADERS: tuple[str, ...] = (*LINE_TOWER_CSV_HEADERS_63, "原因分析", "措施推荐")
+# ZV 改造四变量（波速 / 三段塔材波阻抗）：逐塔注入列，追加在既有列之后
+# （前 63 列与 C# GanTaData.MyHead_ToString() 严格对齐，新增列不改变既有列序）。
+LINE_TOWER_ZV_CSV_HEADERS: tuple[str, ...] = (
+    "波速(m/s)",
+    "塔材波阻抗1(Ω)",
+    "塔材波阻抗2(Ω)",
+    "塔材波阻抗3(Ω)",
+)
+# CSV 列 → extra_profile_json.zv_params 键
+_ZV_CSV_FIELDS: tuple[tuple[str, str], ...] = (
+    ("波速(m/s)", "wave_speed_m_s"),
+    ("塔材波阻抗1(Ω)", "z_1"),
+    ("塔材波阻抗2(Ω)", "z_2"),
+    ("塔材波阻抗3(Ω)", "z_3"),
+)
+
+LINE_TOWER_CSV_HEADERS: tuple[str, ...] = (
+    *LINE_TOWER_CSV_HEADERS_63,
+    "原因分析",
+    "措施推荐",
+    *LINE_TOWER_ZV_CSV_HEADERS,
+)
 
 
 def _remap_english_csv_header(raw_header: list[str]) -> list[str]:
@@ -1143,6 +1241,11 @@ def export_line_towers_to_csv(db: Session, *, line: Line, lang: str = "zh") -> t
             _normalize_str(_pick_export_value(tower.risk_level, lightning_result.risk_level if lightning_result else None)) or "",
             _escape_multiline(_normalize_str(analysis.cause_analysis) or "") if analysis else "",
             _escape_multiline(_normalize_str(analysis.mitigation_recommendation) or "") if analysis else "",
+            # ZV 改造四变量（逐塔注入值；未注入留空，导入时为空不覆盖）
+            *[
+                _to_csv_number(_read_nested_value(extra_profile, "zv_params", zv_key))
+                for _header, zv_key in _ZV_CSV_FIELDS
+            ],
         ]
         if lang == "en":
             # 枚举值列:避雷器(13-15)、地形(54)、直线/耐张(56)、绕击/反击(57)、风险等级(62)
@@ -1460,6 +1563,18 @@ def _upsert_tower_profile_from_legacy_row(
         lightning_wire["height_m"] = _lw_height  # type: ignore[index]
     if lightning_wire:
         extra_profile_json["lightning_wire"] = lightning_wire
+    # ZV 改造四变量：CSV 新增列（追加在末尾）落到 extra_profile_json.zv_params。
+    # 空/非正数视为「未注入」→ 不写不删，避免旧版 65 列文件重导时清掉已有注入值。
+    zv_values: dict[str, float] = {}
+    for header, zv_key in _ZV_CSV_FIELDS:
+        parsed = _parse_float(row.get(header))
+        if parsed is not None and parsed > 0:
+            zv_values[zv_key] = parsed
+    if zv_values:
+        existing_zv = extra_profile_json.get("zv_params")
+        merged_zv = dict(existing_zv) if isinstance(existing_zv, dict) else {}
+        merged_zv.update(zv_values)
+        extra_profile_json["zv_params"] = merged_zv
     profile.extra_profile_json = extra_profile_json
     profile.update_date = now
     profile.update_user = actor_user_id
