@@ -40,6 +40,7 @@ from .v1.users import router as users_router
 from .v1.wind_data_prep import router as wind_data_prep_router
 from .v1.wind_farm_calc import router as wind_farm_calc_router
 from .v1.wind_lightning_density import router as wind_lightning_density_router
+from .v1.wind_model_mapping import router as wind_model_mapping_router
 from .v1.wind_turbine_calc import router as wind_turbine_calc_router
 from .v1.ws import router as ws_router
 
@@ -84,6 +85,7 @@ v1_router.include_router(uploads_router)
 v1_router.include_router(wind_data_prep_router)
 v1_router.include_router(wind_farm_calc_router)
 v1_router.include_router(wind_lightning_density_router)
+v1_router.include_router(wind_model_mapping_router)
 v1_router.include_router(wind_turbine_calc_router)
 v1_router.include_router(ws_router)
 
