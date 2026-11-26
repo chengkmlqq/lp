@@ -38,11 +38,29 @@ class WindLightningDensityPreviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class WindLightningDensityPrepBatchOption(BaseModel):
+    """新建密度批次时可选的已完成数据准备批次摘要。"""
+
+    id: str
+    name: str = ""
+    wind_farm_name: str | None = None
+    turbine_count: int = 0
+    grid_nx: int = 0
+    grid_ny: int = 0
+    create_date: datetime | None = None
+
+
+class WindLightningDensityPrepBatchOptions(BaseModel):
+    items: list[WindLightningDensityPrepBatchOption] = Field(default_factory=list)
+
+
 class WindLightningDensityBatchSummary(BaseModel):
     id: str
     batch_name: str = ""
     wind_farm_name: str | None = None
     notes: str | None = None
+    # 来源「风电场数据准备」批次；手工上传的历史批次为 None
+    prep_batch_id: str | None = None
 
     status: str = "pending"
     stage: str = "parsing"

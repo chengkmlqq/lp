@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from ..core.file_upload import validate_upload
 from ..models.base import utcnow
+from ..models.wind_data_prep import WindDataPrepBatch
 from ..models.wind_lightning_density import (
     WindLightningDensityBatch,
     WindLightningDensityCell,
@@ -43,6 +44,8 @@ from ..schemas.wind_lightning_density import (
     WindLightningDensityCellRow,
     WindLightningDensityCoreGrid,
     WindLightningDensityImportResponse,
+    WindLightningDensityPrepBatchOption,
+    WindLightningDensityPrepBatchOptions,
     WindLightningDensityPreviewResponse,
     WindLightningDensityTurbineListResponse,
     WindLightningDensityTurbineRow,
@@ -360,6 +363,124 @@ def _image_object_key(batch_id: str, variant: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 输入来源：上传文件 / 复用「风电场数据准备」批次
+# ---------------------------------------------------------------------------
+def _prep_files_ready(batch: WindDataPrepBatch) -> bool:
+    """数据准备批次是否已具备地闪密度所需的两份源文件（风机点位 + 雷电 CSV）。"""
+    return bool(batch.turbine_file_key) and bool(batch.lightning_file_key)
+
+
+def list_prep_batch_options(db: Session) -> WindLightningDensityPrepBatchOptions:
+    """新建时可选的准备批次：已完成、未删除、两份源文件齐全（与风电场计算同口径）。"""
+    rows = (
+        db.execute(
+            select(WindDataPrepBatch)
+            .where(
+                WindDataPrepBatch.is_deleted.is_(False),
+                WindDataPrepBatch.status == "completed",
+            )
+            .order_by(WindDataPrepBatch.create_date.desc())
+            .limit(200)
+        )
+        .scalars()
+        .all()
+    )
+    return WindLightningDensityPrepBatchOptions(
+        items=[
+            WindLightningDensityPrepBatchOption(
+                id=row.id,
+                name=row.name or "",
+                wind_farm_name=row.wind_farm_name,
+                turbine_count=row.turbine_count,
+                grid_nx=row.grid_nx,
+                grid_ny=row.grid_ny,
+                create_date=row.create_date,
+            )
+            for row in rows
+            if _prep_files_ready(row)
+        ]
+    )
+
+
+def _load_prep_batch_sources(
+    db: Session, prep_batch_id: str
+) -> tuple[bytes, str, bytes, str]:
+    """取回数据准备批次的风机/雷电源文件字节与原始文件名。"""
+    batch = db.execute(
+        select(WindDataPrepBatch).where(
+            WindDataPrepBatch.id == prep_batch_id,
+            WindDataPrepBatch.is_deleted.is_(False),
+        )
+    ).scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据准备批次不存在")
+    if batch.status != "completed" or not _prep_files_ready(batch):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="仅可选择已完成且风机/雷电文件齐全的数据准备批次",
+        )
+    try:
+        turbine_content = minio_storage.get_object(batch.turbine_file_key)
+        lightning_content = minio_storage.get_object(batch.lightning_file_key)
+    except minio_storage.MinioStorageError as exc:
+        raise algo.WindLightningDensityError(
+            f"读取数据准备批次源文件失败：{exc}"
+        ) from exc
+    if not turbine_content or not lightning_content:
+        raise algo.WindLightningDensityError("数据准备批次源文件为空，无法复用")
+    return (
+        turbine_content,
+        batch.turbine_file_name or "file_2.txt",
+        lightning_content,
+        batch.lightning_file_name or "lightning.csv",
+    )
+
+
+def _resolve_sources(
+    db: Session,
+    *,
+    turbine_file: UploadFile | None,
+    lightning_file: UploadFile | None,
+    prep_batch_id: str | None,
+) -> tuple[bytes, str, bytes, str, str | None]:
+    """二选一解析输入来源：引用数据准备批次 / 直接上传两份文件。
+
+    返回 ``(风机字节, 风机文件名, 雷电字节, 雷电文件名, prep_batch_id)``；
+    手工上传时 prep_batch_id 为 None（历史路径，保持向后兼容）。
+    """
+    prep_id = (prep_batch_id or "").strip()
+    if prep_id:
+        if turbine_file is not None or lightning_file is not None:
+            raise algo.WindLightningDensityError(
+                "引用数据准备批次时不能再上传风机/雷电文件，请二选一"
+            )
+        turbine_content, turbine_name, lightning_content, lightning_name = (
+            _load_prep_batch_sources(db, prep_id)
+        )
+        return turbine_content, turbine_name, lightning_content, lightning_name, prep_id
+    if turbine_file is None or lightning_file is None:
+        raise algo.WindLightningDensityError("请上传风机文件与雷电 CSV，或选择数据准备批次")
+    turbine_content, turbine_name = _read_upload(
+        turbine_file, purpose="text", allowed_exts={"txt", "csv", "xlsx", "xlsm"}
+    )
+    lightning_content, lightning_name = _read_upload(
+        lightning_file, purpose="text", allowed_exts={"csv", "txt"}
+    )
+    return turbine_content, turbine_name, lightning_content, lightning_name, None
+
+
+def _prep_batch_wind_farm_name(db: Session, prep_batch_id: str | None) -> str | None:
+    """引用批次且未显式填风电场名时，沿用数据准备批次的风电场名（用于批次名）。"""
+    if not prep_batch_id:
+        return None
+    return db.execute(
+        select(WindDataPrepBatch.wind_farm_name).where(
+            WindDataPrepBatch.id == prep_batch_id
+        )
+    ).scalar_one_or_none()
+
+
+# ---------------------------------------------------------------------------
 # 查询/序列化
 # ---------------------------------------------------------------------------
 def _get_batch_or_404(db: Session, batch_id: str) -> WindLightningDensityBatch:
@@ -380,6 +501,7 @@ def _summary(batch: WindLightningDensityBatch) -> WindLightningDensityBatchSumma
         batch_name=batch.batch_name or "",
         wind_farm_name=batch.wind_farm_name,
         notes=batch.notes,
+        prep_batch_id=batch.prep_batch_id,
         status=batch.status,
         stage=batch.stage,
         progress=batch.progress,
@@ -599,18 +721,20 @@ def list_turbines(
 # 新建 / 重算 / 删除
 # ---------------------------------------------------------------------------
 def preview_batch(
+    db: Session,
     *,
-    turbine_file: UploadFile,
-    lightning_file: UploadFile,
+    turbine_file: UploadFile | None = None,
+    lightning_file: UploadFile | None = None,
+    prep_batch_id: str | None = None,
     grid_step_deg: float,
     margin_deg: float,
     years_source: str,
 ) -> WindLightningDensityPreviewResponse:
-    turbine_content, turbine_name = _read_upload(
-        turbine_file, purpose="text", allowed_exts={"txt", "csv", "xlsx", "xlsm"}
-    )
-    lightning_content, lightning_name = _read_upload(
-        lightning_file, purpose="text", allowed_exts={"csv", "txt"}
+    turbine_content, turbine_name, lightning_content, lightning_name, _ = _resolve_sources(
+        db,
+        turbine_file=turbine_file,
+        lightning_file=lightning_file,
+        prep_batch_id=prep_batch_id,
     )
     analysis = analyze_inputs(
         turbine_content=turbine_content,
@@ -645,8 +769,9 @@ def preview_batch(
 def create_batch(
     db: Session,
     *,
-    turbine_file: UploadFile,
-    lightning_file: UploadFile,
+    turbine_file: UploadFile | None = None,
+    lightning_file: UploadFile | None = None,
+    prep_batch_id: str | None = None,
     batch_name: str | None,
     wind_farm_name: str | None,
     notes: str | None,
@@ -657,13 +782,20 @@ def create_batch(
 ) -> WindLightningDensityImportResponse:
     """校验通过后写入对象存储 + 建批次记录 + 派发 Celery 任务。
 
+    输入可来自上传的两份文件，或引用一个已完成的数据准备批次（二选一）。
     校验失败抛 400，不产生任何批次记录（不落半成品）。
     """
-    turbine_content, turbine_name = _read_upload(
-        turbine_file, purpose="text", allowed_exts={"txt", "csv", "xlsx", "xlsm"}
-    )
-    lightning_content, lightning_name = _read_upload(
-        lightning_file, purpose="text", allowed_exts={"csv", "txt"}
+    (
+        turbine_content,
+        turbine_name,
+        lightning_content,
+        lightning_name,
+        source_prep_batch_id,
+    ) = _resolve_sources(
+        db,
+        turbine_file=turbine_file,
+        lightning_file=lightning_file,
+        prep_batch_id=prep_batch_id,
     )
     analysis = analyze_inputs(
         turbine_content=turbine_content,
@@ -676,7 +808,13 @@ def create_batch(
     )
 
     # 批次名一律后端生成：前端传来的 batch_name 只作草稿提示，绝不信任。
-    final_wind_farm_name = (wind_farm_name or "").strip() or None
+    final_wind_farm_name = (wind_farm_name or "").strip()
+    if not final_wind_farm_name:
+        # 引用数据准备批次时沿用其风电场名，避免批次名退化成 file_2 之类的文件名
+        final_wind_farm_name = (
+            _prep_batch_wind_farm_name(db, source_prep_batch_id) or ""
+        ).strip()
+    final_wind_farm_name = final_wind_farm_name or None
     base_name = build_batch_name(
         wind_farm_name=final_wind_farm_name,
         turbine_filename=turbine_name,
@@ -701,6 +839,7 @@ def create_batch(
             batch_name=name,
             wind_farm_name=final_wind_farm_name,
             notes=(notes or "").strip() or None,
+            prep_batch_id=source_prep_batch_id,
             grid_step_deg=float(grid_step_deg),
             margin_deg=float(margin_deg),
             data_years=analysis.years,
@@ -751,6 +890,11 @@ def create_batch(
             f"grid_step_deg={grid_step_deg}",
             f"margin_deg={margin_deg}",
             f"years_source={analysis.years_source}",
+            *(
+                [f"prep_batch_id={source_prep_batch_id}"]
+                if source_prep_batch_id
+                else []
+            ),
         ),
     )
     db.commit()

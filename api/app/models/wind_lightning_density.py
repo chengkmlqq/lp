@@ -29,6 +29,7 @@ class WindLightningDensityBatch(Base):
         Index("idx_wld_batch_status", "status"),
         Index("idx_wld_batch_create_date", "create_date"),
         Index("idx_wld_batch_is_deleted", "is_deleted"),
+        Index("idx_wld_batch_prep_batch_id", "prep_batch_id"),
         # 批次名后端生成且全局唯一；并发撞名由 create_batch 捕获 IntegrityError 后重试。
         Index("uq_wld_batch_name", "batch_name", unique=True),
     )
@@ -37,6 +38,8 @@ class WindLightningDensityBatch(Base):
     batch_name: Mapped[str] = mapped_column(String(255), default="")
     wind_farm_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 来源「风电场数据准备」批次 id（复用其风机/雷电源文件）；历史手工上传批次为空。
+    prep_batch_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # ---- 参数（默认值与 density.py 一致）----
     grid_step_deg: Mapped[float] = mapped_column(Float, default=0.01)

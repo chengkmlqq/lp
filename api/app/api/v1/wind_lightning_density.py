@@ -20,6 +20,7 @@ from ...schemas.wind_lightning_density import (
     WindLightningDensityBatchListResponse,
     WindLightningDensityCellListResponse,
     WindLightningDensityImportResponse,
+    WindLightningDensityPrepBatchOptions,
     WindLightningDensityPreviewResponse,
     WindLightningDensityTurbineListResponse,
 )
@@ -59,18 +60,26 @@ def _attachment_headers(filename: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 @router.post("/preview", response_model=WindLightningDensityPreviewResponse)
 def preview_wind_lightning_density(
-    turbine_file: UploadFile = File(...),
-    lightning_file: UploadFile = File(...),
+    turbine_file: UploadFile | None = File(None),
+    lightning_file: UploadFile | None = File(None),
+    prep_batch_id: str | None = Form(None),
     grid_step_deg: float = Form(DEFAULT_GRID_STEP_DEG),
     margin_deg: float = Form(DEFAULT_MARGIN_DEG),
     years_source: str = Form("auto"),
     _: CurrentUser = Depends(require_permission(_MANAGE_PERMISSION)),
+    db: Session = Depends(get_db),
 ) -> WindLightningDensityPreviewResponse:
-    """提交前预览：解析两份文件，返回 bbox、预估网格数与可解析行数（不落库）。"""
+    """提交前预览：解析两份源文件，返回 bbox、预估网格数与可解析行数（不落库）。
+
+    源文件可上传（turbine_file + lightning_file），或引用已完成的数据准备批次
+    （prep_batch_id），二者互斥。
+    """
     try:
         return service.preview_batch(
+            db,
             turbine_file=turbine_file,
             lightning_file=lightning_file,
+            prep_batch_id=prep_batch_id,
             grid_step_deg=grid_step_deg,
             margin_deg=margin_deg,
             years_source=years_source,
@@ -81,8 +90,9 @@ def preview_wind_lightning_density(
 
 @router.post("", response_model=WindLightningDensityImportResponse)
 def create_wind_lightning_density_batch(
-    turbine_file: UploadFile = File(...),
-    lightning_file: UploadFile = File(...),
+    turbine_file: UploadFile | None = File(None),
+    lightning_file: UploadFile | None = File(None),
+    prep_batch_id: str | None = Form(None),
     batch_name: str = Form(""),
     wind_farm_name: str = Form(""),
     notes: str = Form(""),
@@ -92,12 +102,13 @@ def create_wind_lightning_density_batch(
     current_user: CurrentUser = Depends(require_permission(_MANAGE_PERMISSION)),
     db: Session = Depends(get_db),
 ) -> WindLightningDensityImportResponse:
-    """上传风机文件 + 雷电 CSV + 参数，创建批次并派发异步任务。"""
+    """上传风机文件 + 雷电 CSV，或复用数据准备批次，创建批次并派发异步任务。"""
     try:
         return service.create_batch(
             db,
             turbine_file=turbine_file,
             lightning_file=lightning_file,
+            prep_batch_id=prep_batch_id,
             batch_name=batch_name,
             wind_farm_name=wind_farm_name,
             notes=notes,
@@ -113,6 +124,18 @@ def create_wind_lightning_density_batch(
 # ---------------------------------------------------------------------------
 # 列表 / 详情
 # ---------------------------------------------------------------------------
+@router.get("/prep-batches", response_model=WindLightningDensityPrepBatchOptions)
+def list_wind_lightning_density_prep_batches(
+    _: CurrentUser = Depends(require_any_permission(*_READ_PERMISSIONS)),
+    db: Session = Depends(get_db),
+) -> WindLightningDensityPrepBatchOptions:
+    """新建时可选的「风电场数据准备」批次（已完成、未删除、两份源文件齐全）。
+
+    密度模块用户未必有 wind_data_prep 权限，故由本模块代理查询，不直接暴露数据准备接口。
+    """
+    return service.list_prep_batch_options(db)
+
+
 @router.get("", response_model=WindLightningDensityBatchListResponse)
 def list_wind_lightning_density_batches(
     keyword: str | None = Query(default=None),

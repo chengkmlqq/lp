@@ -748,3 +748,202 @@ def test_build_package_contains_csv_inputs_and_four_images() -> None:
         assert exc.value.status_code == 409
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# 9) LP-136：复用「风电场数据准备」批次的源文件
+# ---------------------------------------------------------------------------
+def _prep_batch(db, *, batch_id: str = "prep-1", **overrides):  # type: ignore[no-untyped-def]
+    from app.models.wind_data_prep import WindDataPrepBatch
+
+    fields = dict(
+        id=batch_id,
+        name="福建B1数据准备",
+        wind_farm_name="福建B1",
+        status="completed",
+        turbine_file_key=f"wind-data-prep/{batch_id}/turbines.txt",
+        lightning_file_key=f"wind-data-prep/{batch_id}/lightning.csv",
+        turbine_file_name="file_2.txt",
+        lightning_file_name="lightning.csv",
+        turbine_count=58,
+        grid_nx=98,
+        grid_ny=82,
+    )
+    fields.update(overrides)
+    batch = WindDataPrepBatch(**fields)
+    db.add(batch)
+    db.commit()
+    return batch
+
+
+def _prep_storage(monkeypatch, service) -> None:  # type: ignore[no-untyped-def]
+    def get_object(key: str) -> bytes:
+        if key.endswith("turbines.txt") or key.endswith(".txt"):
+            return TURBINE_FILE.read_bytes()
+        return FUJIAN_CSV.read_bytes()
+
+    monkeypatch.setattr(service.minio_storage, "get_object", get_object)
+
+
+def test_list_prep_batch_options_requires_completed_and_both_files() -> None:
+    from app.services import wind_lightning_density_service as service
+
+    db = _sqlite_db()
+    try:
+        _prep_batch(db, batch_id="ok")
+        _prep_batch(db, batch_id="running", status="processing")
+        _prep_batch(db, batch_id="no-lightning", lightning_file_key="")
+        _prep_batch(db, batch_id="deleted", is_deleted=True)
+
+        options = service.list_prep_batch_options(db)
+        assert [item.id for item in options.items] == ["ok"]
+        assert options.items[0].turbine_count == 58
+        assert options.items[0].grid_nx == 98
+        assert options.items[0].grid_ny == 82
+    finally:
+        db.close()
+
+
+def test_create_batch_from_prep_batch_matches_manual_upload(monkeypatch) -> None:
+    from unittest.mock import patch
+
+    from fastapi import UploadFile
+
+    from app.services import wind_lightning_density_service as service
+
+    db = _sqlite_db()
+    _prep_storage(monkeypatch, service)
+    try:
+        _prep_batch(db)
+        with (
+            patch.object(service.minio_storage, "put_object"),
+            patch.object(service, "_dispatch_batch_task", return_value=None),
+        ):
+            from_prep = service.create_batch(
+                db,
+                prep_batch_id="prep-1",
+                batch_name="",
+                wind_farm_name="",
+                notes="",
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+                actor_user_id="tester",
+            )
+            manual = service.create_batch(
+                db,
+                turbine_file=UploadFile(
+                    filename="file_2.txt", file=io.BytesIO(TURBINE_FILE.read_bytes())
+                ),
+                lightning_file=UploadFile(
+                    filename="lightning.csv", file=io.BytesIO(FUJIAN_CSV.read_bytes())
+                ),
+                batch_name="",
+                wind_farm_name="",
+                notes="",
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+                actor_user_id="tester",
+            )
+
+        prep_row = service._get_batch_or_404(db, from_prep.batch_id)
+        manual_row = service._get_batch_or_404(db, manual.batch_id)
+        assert prep_row.prep_batch_id == "prep-1"
+        assert manual_row.prep_batch_id is None
+        # 统计口径完全一致：风机数、有效雷电数、网格数、年限
+        assert prep_row.turbine_count == manual_row.turbine_count == 58
+        assert prep_row.valid_records == manual_row.valid_records
+        assert prep_row.total_records == manual_row.total_records
+        assert (prep_row.grid_x_count, prep_row.grid_y_count) == (
+            manual_row.grid_x_count,
+            manual_row.grid_y_count,
+        )
+        assert prep_row.data_years == manual_row.data_years == 6.0
+        # 批次名沿用数据准备批次的风电场名，而不是退化成 file_2
+        assert prep_row.batch_name.startswith("福建B1_Y6A_")
+        assert prep_row.wind_farm_name == "福建B1"
+        # 源文件复制到密度批次自己的键下，便于审计与重跑
+        assert prep_row.turbine_object_key.startswith(
+            f"wind-lightning-density/{prep_row.id}/"
+        )
+        assert service.get_batch_detail(db, prep_row.id).prep_batch_id == "prep-1"
+    finally:
+        db.close()
+
+
+def test_prep_batch_rejects_files_alongside() -> None:
+    from fastapi import UploadFile
+
+    from app.services import wind_lightning_density_service as service
+    from app.services.wind_lightning_density import WindLightningDensityError
+
+    db = _sqlite_db()
+    try:
+        with pytest.raises(WindLightningDensityError, match="二选一"):
+            service.preview_batch(
+                db,
+                turbine_file=UploadFile(filename="file_2.txt", file=io.BytesIO(b"x")),
+                lightning_file=None,
+                prep_batch_id="prep-1",
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+            )
+        with pytest.raises(WindLightningDensityError, match="数据准备批次"):
+            service.preview_batch(
+                db,
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+            )
+    finally:
+        db.close()
+
+
+def test_prep_batch_missing_or_incomplete_is_409() -> None:
+    from fastapi import HTTPException
+
+    from app.services import wind_lightning_density_service as service
+
+    db = _sqlite_db()
+    try:
+        _prep_batch(db, batch_id="incomplete", lightning_file_key="")
+        for prep_id, expected in (("nope", 404), ("incomplete", 409)):
+            with pytest.raises(HTTPException) as exc:
+                service.preview_batch(
+                    db,
+                    prep_batch_id=prep_id,
+                    grid_step_deg=0.01,
+                    margin_deg=0.01,
+                    years_source="auto",
+                )
+            assert exc.value.status_code == expected
+    finally:
+        db.close()
+
+
+def test_prep_batch_storage_failure_is_400(monkeypatch) -> None:
+    from app.services import wind_lightning_density_service as service
+    from app.services.wind_lightning_density import WindLightningDensityError
+
+    db = _sqlite_db()
+    try:
+        _prep_batch(db)
+        monkeypatch.setattr(
+            service.minio_storage,
+            "get_object",
+            lambda key: (_ for _ in ()).throw(
+                service.minio_storage.MinioStorageError("boom")
+            ),
+        )
+        with pytest.raises(WindLightningDensityError, match="读取数据准备批次源文件失败"):
+            service.preview_batch(
+                db,
+                prep_batch_id="prep-1",
+                grid_step_deg=0.01,
+                margin_deg=0.01,
+                years_source="auto",
+            )
+    finally:
+        db.close()
