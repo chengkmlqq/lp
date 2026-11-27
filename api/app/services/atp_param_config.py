@@ -53,9 +53,12 @@ def invalidate() -> None:
 def _load_common(glob_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """合并 JSON 基线 globals 与 DB 行：DB 行为准，DB 缺失的槽位继承 JSON。
 
-    这样新增的基线槽位（如 ZV 改造的 ZRE01_/ZRE02_/ZRE03_/VRE___）在
+    这样新增的基线槽位（如电流/波形类全局槽位）在
     config_db 模式下无需重跑 seed 脚本即可生效；DB 中显式停用的槽位仍保持
     「不存在」语义（不会被 JSON 基线复活）。
+
+    注意：ZV 改造四变量（ZRE01_/ZRE02_/ZRE03_/VRE___）已从 globals 迁到
+    参数模板规则（zv_tower_params.json → atp_param_template），不再走这里。
     """
     common = json.loads((MAPPINGS_DIR / "_common.json").read_text(encoding="utf-8"))
     if glob_rows:

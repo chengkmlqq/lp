@@ -91,7 +91,7 @@ type TemplateDetail = {
   specificity: number;
   defined_slots: number;
   defined_defaults?: number;
-  slots: Record<string, { expr?: string; value?: string; fmt?: number; enabled?: boolean; when?: string; else?: string; param?: string }>;
+  slots: Record<string, { expr?: string; value?: string; fmt?: number; enabled?: boolean; when?: string; else?: string; param?: string; default?: string | number }>;
   defaults?: Record<string, string | number>;
   updated_at: string | null;
   updated_by: string | null;
@@ -109,7 +109,7 @@ type MetaResponse = {
   variable_names?: string[];
 };
 
-type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: boolean; value?: string; when?: string; param?: string };
+type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: boolean; value?: string; when?: string; param?: string; defaultValue?: string };
 // 槽位引用的注册表参数（详情接口 slot_params 返回）
 type SlotParamRef = { code: string; name: string; source_type: string; via: string };
 type ParamSourceMap = Record<string, SlotParamRef>;
@@ -538,6 +538,9 @@ export default function AtpParamTemplatesPage() {
           value: spec.value ?? "",
           when: spec.when ?? "",
           param: spec.param ?? undefined,
+          // ZV 四变量等槽位靠 default 在「未注入」时兜底；保存时必须原样带回，
+          // 否则一次「打开→保存」就会把 150/200/1350/2.5E8 退化成 "1."。
+          defaultValue: spec.default !== undefined ? String(spec.default) : undefined,
         })),
       );
     }
@@ -559,6 +562,7 @@ export default function AtpParamTemplatesPage() {
         else if (row.value) spec.value = row.value;
         else spec.expr = row.expr;
         if (row.when) spec.when = row.when;
+        if (row.defaultValue !== undefined && row.defaultValue !== "") spec.default = row.defaultValue;
         slots[row.slot] = spec;
       });
       // 「测试默认参数集」UI 已下线：不再提交 defaults 键 ——
@@ -669,6 +673,12 @@ export default function AtpParamTemplatesPage() {
       },
     },
     { title: t("格式"), dataIndex: "fmt", width: 70, render: (v) => `${v} ${t("位")}` },
+    {
+      title: t("缺值兜底"),
+      dataIndex: "defaultValue",
+      width: 110,
+      render: (v: string | undefined) => (v ? <Text code>{v}</Text> : <Text type="secondary">—</Text>),
+    },
     { title: t("启用"), dataIndex: "enabled", width: 70, render: (v) => (v ? <Tag color="green">{t("启用")}</Tag> : <Tag>{t("关闭")}</Tag>) },
     {
       title: "",
@@ -1074,6 +1084,7 @@ export default function AtpParamTemplatesPage() {
                   value: spec.value ?? undefined,
                   when: spec.when ?? undefined,
                   param: spec.param ?? undefined,
+                  defaultValue: spec.default !== undefined ? String(spec.default) : undefined,
                 }))}
               />
               <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
@@ -1331,6 +1342,20 @@ export default function AtpParamTemplatesPage() {
                   max={10}
                   value={value}
                   onChange={(next) => setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, fmt: Number(next ?? 2) } : item)))}
+                />
+              ),
+            },
+            {
+              title: t("缺值兜底（可选）"),
+              dataIndex: "defaultValue",
+              width: 140,
+              render: (value: string | undefined, row: SlotRow) => (
+                <Input
+                  value={value ?? ""}
+                  placeholder={t("如：150.")}
+                  onChange={(event) =>
+                    setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, defaultValue: event.target.value } : item)))
+                  }
                 />
               ),
             },

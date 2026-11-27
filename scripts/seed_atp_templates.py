@@ -5,6 +5,11 @@ jiubei/maotou/shangzi/sihuita/zhiliu/vzhiliu/menxing), plus voltage-specific
 rules (maotou_750, maotou_1000) as finer-dimension rules, and _common.json
 globals as atp_param_global rows. Idempotent: skips existing rows by name+marker.
 
+`zv_tower_params.json` 是一条**无维度（通配所有塔型/电压）**的规则，承载 ZV 改造
+四变量槽位（ZRE01_/ZRE02_/ZRE03_/VRE___，含 default 兜底）；它和其他模板一样
+由本脚本 upsert 进 atp_param_template，从而让参数模板管理页可编辑、并让
+「槽位覆盖检测」按模板槽位正确计数（不再误报 missing）。
+
 Run inside the api container:
     sudo docker cp <repo>/scripts/seed_atp_templates.py lp-api-1:/tmp/
     sudo docker exec lp-api-1 sh -c 'cd /app && PYTHONPATH=/app python /tmp/seed_atp_templates.py'
