@@ -955,7 +955,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t("塔材波阻抗1(Ω)")} tooltip={t("默认 150")}>
+              <Form.Item label={t("主材波阻抗(Ω)")} tooltip={t("默认 150")}>
                 <Input
                   type="number"
                   placeholder="150"
@@ -968,7 +968,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t("塔材波阻抗2(Ω)")} tooltip={t("默认 200")}>
+              <Form.Item label={t("横材波阻抗(Ω)")} tooltip={t("默认 200")}>
                 <Input
                   type="number"
                   placeholder="200"
@@ -981,7 +981,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t("塔材波阻抗3(Ω)")} tooltip={t("默认 1350")}>
+              <Form.Item label={t("斜材波阻抗(Ω)")} tooltip={t("默认 1350")}>
                 <Input
                   type="number"
                   placeholder="1350"
@@ -1069,9 +1069,9 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                         <Descriptions.Item label={t("左避雷线中距(m)")}>{tower.lightning_wire_left_mid_distance_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("右避雷线中距(m)")}>{tower.lightning_wire_right_mid_distance_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("波速(m/s)")}>{tower.wave_speed_m_s != null ? tower.wave_speed_m_s : t("默认 250000000")}</Descriptions.Item>
-                        <Descriptions.Item label={t("塔材波阻抗1(Ω)")}>{tower.tower_z_1 != null ? tower.tower_z_1 : t("默认 150")}</Descriptions.Item>
-                        <Descriptions.Item label={t("塔材波阻抗2(Ω)")}>{tower.tower_z_2 != null ? tower.tower_z_2 : t("默认 200")}</Descriptions.Item>
-                        <Descriptions.Item label={t("塔材波阻抗3(Ω)")}>{tower.tower_z_3 != null ? tower.tower_z_3 : t("默认 1350")}</Descriptions.Item>
+                        <Descriptions.Item label={t("主材波阻抗(Ω)")}>{tower.tower_z_1 != null ? tower.tower_z_1 : t("默认 150")}</Descriptions.Item>
+                        <Descriptions.Item label={t("横材波阻抗(Ω)")}>{tower.tower_z_2 != null ? tower.tower_z_2 : t("默认 200")}</Descriptions.Item>
+                        <Descriptions.Item label={t("斜材波阻抗(Ω)")}>{tower.tower_z_3 != null ? tower.tower_z_3 : t("默认 1350")}</Descriptions.Item>
                       </Descriptions>
                     ),
                   },

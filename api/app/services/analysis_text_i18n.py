@@ -279,7 +279,7 @@ LINE_TOWER_CSV_HEADERS_EN: tuple[str, ...] = (
     "Cause analysis",
     "Mitigation recommendation",
     "Wave speed (m/s)",
-    "Tower material surge impedance 1 (ohm)",
-    "Tower material surge impedance 2 (ohm)",
-    "Tower material surge impedance 3 (ohm)",
+    "Main material surge impedance (ohm)",
+    "Cross material surge impedance (ohm)",
+    "Diagonal material surge impedance (ohm)",
 )

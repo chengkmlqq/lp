@@ -1008,21 +1008,34 @@ LINE_TOWER_CSV_HEADERS_63: tuple[str, ...] = (
     "雷击风险等级",
 )
 
-# ZV 改造四变量（波速 / 三段塔材波阻抗）：逐塔注入列，追加在既有列之后
+# ZV 改造四变量（波速 / 主材、横材、斜材波阻抗）：逐塔注入列，追加在既有列之后
 # （前 63 列与 C# GanTaData.MyHead_ToString() 严格对齐，新增列不改变既有列序）。
 LINE_TOWER_ZV_CSV_HEADERS: tuple[str, ...] = (
     "波速(m/s)",
-    "塔材波阻抗1(Ω)",
-    "塔材波阻抗2(Ω)",
-    "塔材波阻抗3(Ω)",
+    "主材波阻抗(Ω)",
+    "横材波阻抗(Ω)",
+    "斜材波阻抗(Ω)",
 )
 # CSV 列 → extra_profile_json.zv_params 键
 _ZV_CSV_FIELDS: tuple[tuple[str, str], ...] = (
     ("波速(m/s)", "wave_speed_m_s"),
-    ("塔材波阻抗1(Ω)", "z_1"),
-    ("塔材波阻抗2(Ω)", "z_2"),
-    ("塔材波阻抗3(Ω)", "z_3"),
+    ("主材波阻抗(Ω)", "z_1"),
+    ("横材波阻抗(Ω)", "z_2"),
+    ("斜材波阻抗(Ω)", "z_3"),
 )
+# LP-146：旧版表头（塔材波阻抗1/2/3）作为导入别名继续接受，避免存量 CSV 重导时静默丢值。
+# 导出统一使用新表头；这里只用于导入端按列名取值的兜底。
+_ZV_CSV_LEGACY_HEADERS: dict[str, str] = {
+    "主材波阻抗(Ω)": "塔材波阻抗1(Ω)",
+    "横材波阻抗(Ω)": "塔材波阻抗2(Ω)",
+    "斜材波阻抗(Ω)": "塔材波阻抗3(Ω)",
+}
+# LP-146：旧英文表头同样按别名映射，存量英文 CSV 导入不丢值。
+_LEGACY_EN_ZV_HEADER_ALIASES: dict[str, str] = {
+    "Tower material surge impedance 1 (ohm)": "主材波阻抗(Ω)",
+    "Tower material surge impedance 2 (ohm)": "横材波阻抗(Ω)",
+    "Tower material surge impedance 3 (ohm)": "斜材波阻抗(Ω)",
+}
 
 LINE_TOWER_CSV_HEADERS: tuple[str, ...] = (
     *LINE_TOWER_CSV_HEADERS_63,
@@ -1037,6 +1050,8 @@ def _remap_english_csv_header(raw_header: list[str]) -> list[str]:
 
     英文表头由 LINE_TOWER_CSV_HEADERS_EN 生成，与中文表头 LINE_TOWER_CSV_HEADERS
     严格按位置对齐；仅当逐列与英文表头一致时才替换为中文列名，避免误伤用户自定义列。
+    LP-146 起旧英文表头（Tower material surge impedance 1/2/3）也按别名映射到新中文列名，
+    保证存量英文 CSV 重导不丢值。
     """
     en_headers = list(LINE_TOWER_CSV_HEADERS_EN)
     cn_headers = list(LINE_TOWER_CSV_HEADERS)
@@ -1044,6 +1059,8 @@ def _remap_english_csv_header(raw_header: list[str]) -> list[str]:
     for idx, cell in enumerate(raw_header):
         if idx < len(en_headers) and idx < len(cn_headers) and cell == en_headers[idx]:
             remapped.append(cn_headers[idx])
+        elif cell in _LEGACY_EN_ZV_HEADER_ALIASES:
+            remapped.append(_LEGACY_EN_ZV_HEADER_ALIASES[cell])
         else:
             remapped.append(cell)
     return remapped
@@ -1567,7 +1584,11 @@ def _upsert_tower_profile_from_legacy_row(
     # 空/非正数视为「未注入」→ 不写不删，避免旧版 65 列文件重导时清掉已有注入值。
     zv_values: dict[str, float] = {}
     for header, zv_key in _ZV_CSV_FIELDS:
-        parsed = _parse_float(row.get(header))
+        raw_value = row.get(header)
+        if raw_value is None or not str(raw_value).strip():
+            # LP-146 向后兼容：存量 CSV 仍用旧表头「塔材波阻抗1/2/3(Ω)」
+            raw_value = row.get(_ZV_CSV_LEGACY_HEADERS.get(header, header))
+        parsed = _parse_float(raw_value)
         if parsed is not None and parsed > 0:
             zv_values[zv_key] = parsed
     if zv_values:

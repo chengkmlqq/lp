@@ -1403,7 +1403,7 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         p["REHHEI____"] = "1."
         p["REHSLO____"] = "0."
         p["REHSUR____"] = "0."
-    # ZV 改造四变量（波速 / 三段塔材波阻抗）：逐塔注入，未注入回退默认值
+    # ZV 改造四变量（波速 / 主材、横材、斜材波阻抗）：逐塔注入，未注入回退默认值
     # 150 / 200 / 1350 / 2.5E8（与配置路径槽位 default 逐字节一致）。
     from .atp_zv_params import resolve_zv_slots as _resolve_zv_slots  # noqa: PLC0415
 

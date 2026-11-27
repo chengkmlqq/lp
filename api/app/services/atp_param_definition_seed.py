@@ -87,19 +87,19 @@ _A_LINE_BINDINGS: list[dict[str, Any]] = [
         "来源：profile.extra_profile_json.zv_params.wave_speed_m_s（线路管理-波速，逐塔注入）。口径：正数直取；未注入回退 250000000. m/s（guxing 个别模型自带 255000000.）。→ VRE___",
     ),
     _def(
-        "tower_z_1", "塔材波阻抗1", "Ω", "line_binding",
+        "tower_z_1", "主材波阻抗", "Ω", "line_binding",
         _lb("profile", "extra_profile_json.zv_params.z_1"),
-        "来源：profile.extra_profile_json.zv_params.z_1（线路管理-塔材波阻抗1，逐塔注入）。口径：正数直取；未注入回退 150. Ω。→ ZRE01_",
+        "来源：profile.extra_profile_json.zv_params.z_1（线路管理-主材波阻抗，逐塔注入）。口径：正数直取；未注入回退 150. Ω。→ ZRE01_",
     ),
     _def(
-        "tower_z_2", "塔材波阻抗2", "Ω", "line_binding",
+        "tower_z_2", "横材波阻抗", "Ω", "line_binding",
         _lb("profile", "extra_profile_json.zv_params.z_2"),
-        "来源：profile.extra_profile_json.zv_params.z_2（线路管理-塔材波阻抗2，逐塔注入）。口径：正数直取；未注入回退 200. Ω。→ ZRE02_",
+        "来源：profile.extra_profile_json.zv_params.z_2（线路管理-横材波阻抗，逐塔注入）。口径：正数直取；未注入回退 200. Ω。→ ZRE02_",
     ),
     _def(
-        "tower_z_3", "塔材波阻抗3", "Ω", "line_binding",
+        "tower_z_3", "斜材波阻抗", "Ω", "line_binding",
         _lb("profile", "extra_profile_json.zv_params.z_3"),
-        "来源：profile.extra_profile_json.zv_params.z_3（线路管理-塔材波阻抗3，逐塔注入）。口径：正数直取；未注入回退 1350. Ω。→ ZRE03_",
+        "来源：profile.extra_profile_json.zv_params.z_3（线路管理-斜材波阻抗，逐塔注入）。口径：正数直取；未注入回退 1350. Ω。→ ZRE03_",
     ),
 ]
 

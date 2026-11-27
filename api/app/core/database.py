@@ -1457,6 +1457,39 @@ def rename_wind_lightning_density_menu(db) -> bool:  # noqa: ANN001
     return bool(result.rowcount)
 
 
+# LP-146：ZV 四参数中三段波阻抗的展示名对齐文档/需求方口径（code 与绑定不变）。
+_ZV_PARAM_NAME_RENAMES: dict[str, tuple[str, str]] = {
+    "tower_z_1": ("塔材波阻抗1", "主材波阻抗"),
+    "tower_z_2": ("塔材波阻抗2", "横材波阻抗"),
+    "tower_z_3": ("塔材波阻抗3", "斜材波阻抗"),
+}
+
+
+def rename_zv_impedance_param_definitions(db) -> bool:  # noqa: ANN001
+    """把存量 ZV 波阻抗参数定义改名为「主材/横材/斜材波阻抗」（LP-146）。
+
+    幂等：仅更新 code 命中且 name 仍为旧名的行；已被手工改名则不触碰。
+    与迁移 050_rename_zv_impedance_param_names.sql 等价，挂在启动链路保证
+    已部署环境升级后无需手工执行 SQL。只改展示名与描述，code/绑定/单位/默认值不动。
+    """
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from ..models.atp_param_definition import AtpParamDefinition  # noqa: PLC0415
+
+    changed = False
+    for code, (old_name, new_name) in _ZV_PARAM_NAME_RENAMES.items():
+        row = db.execute(
+            select(AtpParamDefinition).where(AtpParamDefinition.code == code)
+        ).scalar_one_or_none()
+        if row is None or row.name != old_name:
+            continue
+        row.name = new_name
+        if row.description and old_name in row.description:
+            row.description = row.description.replace(old_name, new_name)
+        changed = True
+    return changed
+
+
 def _auto_seed_baseline() -> None:
     """启动时自动播种基线数据（维度枚举 + 参数分类）并清理废弃参数。
 
@@ -1507,6 +1540,14 @@ def _auto_seed_baseline() -> None:
                 except Exception:  # noqa: BLE001
                     db.rollback()
                     logger.debug("wind lightning density menu rename skipped", exc_info=True)
+                # LP-146：存量 ZV 波阻抗参数定义改名（幂等），保证已部署库显示新名称。
+                try:
+                    if rename_zv_impedance_param_definitions(db):
+                        db.commit()
+                        logger.info("renamed ZV impedance param definitions to 主材/横材/斜材波阻抗 (LP-146)")
+                except Exception:  # noqa: BLE001
+                    db.rollback()
+                    logger.debug("ZV impedance param rename skipped", exc_info=True)
             finally:
                 if lock_acquired:
                     try:

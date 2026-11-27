@@ -266,7 +266,7 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
         assert row["措施推荐"] == ""
         header = next(csv.reader(io.StringIO(content.decode("utf-8"))))
         assert len(header) == 69
-        assert header[-4:] == ["波速(m/s)", "塔材波阻抗1(Ω)", "塔材波阻抗2(Ω)", "塔材波阻抗3(Ω)"]
+        assert header[-4:] == ["波速(m/s)", "主材波阻抗(Ω)", "横材波阻抗(Ω)", "斜材波阻抗(Ω)"]
         assert not any("JSON" in name for name in header)
     finally:
         session.close()
@@ -298,9 +298,9 @@ def test_export_line_towers_csv_round_trips_zv_params(monkeypatch) -> None:
         assert len(rows) == 1
         row = rows[0]
         assert row["波速(m/s)"] == "240000000"
-        assert row["塔材波阻抗1(Ω)"] == "151.5"
-        assert row["塔材波阻抗2(Ω)"] == "205"
-        assert row["塔材波阻抗3(Ω)"] == "1360"
+        assert row["主材波阻抗(Ω)"] == "151.5"
+        assert row["横材波阻抗(Ω)"] == "205"
+        assert row["斜材波阻抗(Ω)"] == "1360"
 
         # 清空后按导出内容重新导入，注入值原样带回
         profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
@@ -475,7 +475,7 @@ def test_import_legacy_row_writes_real_mid_distance_to_lightning_wire() -> None:
 
 
 def test_import_legacy_row_writes_zv_params_from_new_columns() -> None:
-    """LP-140：CSV 新增 4 列（波速/三段塔材波阻抗）落到 extra_profile_json.zv_params。"""
+    """LP-140：CSV 新增 4 列（波速/主材、横材、斜材波阻抗）落到 extra_profile_json.zv_params。"""
     session = _build_session()
     try:
         line = Line(code="PL-FIX-ZV", name="ZV 注入线路", voltage_kv=66, status="enabled")
@@ -491,9 +491,9 @@ def test_import_legacy_row_writes_zv_params_from_new_columns() -> None:
             tower=tower,
             row={
                 "波速(m/s)": "255000000",
-                "塔材波阻抗1(Ω)": "160.5",
-                "塔材波阻抗2(Ω)": "",
-                "塔材波阻抗3(Ω)": "1400",
+                "主材波阻抗(Ω)": "160.5",
+                "横材波阻抗(Ω)": "",
+                "斜材波阻抗(Ω)": "1400",
             },
             actor_user_id="tester",
         )
@@ -515,6 +515,59 @@ def test_import_legacy_row_writes_zv_params_from_new_columns() -> None:
         assert (profile.extra_profile_json or {}).get("zv_params") == zv
     finally:
         session.close()
+
+
+def test_import_accepts_legacy_zv_csv_headers() -> None:
+    """LP-146：存量 CSV 的旧表头「塔材波阻抗1/2/3(Ω)」重导仍能取到值。"""
+    session = _build_session()
+    try:
+        line = Line(code="PL-FIX-ZV-OLD", name="ZV 旧表头线路", voltage_kv=66, status="enabled")
+        session.add(line)
+        session.flush()
+        tower = LineTower(line_id=line.id, seq_no=1, tower_no="N001", tower_type="shangzi")
+        session.add(tower)
+        session.flush()
+        session.commit()
+
+        line_service._upsert_tower_profile_from_legacy_row(
+            session,
+            tower=tower,
+            row={
+                "波速(m/s)": "240000000",
+                "塔材波阻抗1(Ω)": "151.5",
+                "塔材波阻抗2(Ω)": "205",
+                "塔材波阻抗3(Ω)": "1360",
+            },
+            actor_user_id="tester",
+        )
+        session.commit()
+
+        profile = session.execute(select(TowerProfile).where(TowerProfile.tower_id == tower.id)).scalar_one()
+        assert (profile.extra_profile_json or {}).get("zv_params") == {
+            "wave_speed_m_s": 240000000.0,
+            "z_1": 151.5,
+            "z_2": 205.0,
+            "z_3": 1360.0,
+        }
+    finally:
+        session.close()
+
+
+def test_remap_english_csv_header_accepts_legacy_zv_names() -> None:
+    """LP-146：存量英文 CSV 的旧表头重导时映射到新中文列名。"""
+    header = list(line_service.LINE_TOWER_CSV_HEADERS_EN)
+    assert header[-3:] == [
+        "Main material surge impedance (ohm)",
+        "Cross material surge impedance (ohm)",
+        "Diagonal material surge impedance (ohm)",
+    ]
+    header[-3:] = [
+        "Tower material surge impedance 1 (ohm)",
+        "Tower material surge impedance 2 (ohm)",
+        "Tower material surge impedance 3 (ohm)",
+    ]
+    remapped = line_service._remap_english_csv_header(header)
+    assert remapped[-3:] == ["主材波阻抗(Ω)", "横材波阻抗(Ω)", "斜材波阻抗(Ω)"]
 
 
 def test_update_line_tower_sets_and_clears_zv_params() -> None:

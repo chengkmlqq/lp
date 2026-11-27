@@ -245,9 +245,9 @@ _BINDABLE_FIELDS: list[dict[str, Any]] = [
     {"value": "geometry_layers_json.lightning_wire.right_mid_distance_m", "label": "右避雷线中距（几何）", "source": "profile", "unit": "m", "note": "→ lw_r 回退"},
     # profile.extra_profile_json.zv_params（ZV 改造四变量，逐塔注入）
     {"value": "extra_profile_json.zv_params.wave_speed_m_s", "label": "波速", "source": "profile", "unit": "m/s", "note": "→ VRE___（默认 2.5E8）"},
-    {"value": "extra_profile_json.zv_params.z_1", "label": "塔材波阻抗1", "source": "profile", "unit": "Ω", "note": "→ ZRE01_（默认 150）"},
-    {"value": "extra_profile_json.zv_params.z_2", "label": "塔材波阻抗2", "source": "profile", "unit": "Ω", "note": "→ ZRE02_（默认 200）"},
-    {"value": "extra_profile_json.zv_params.z_3", "label": "塔材波阻抗3", "source": "profile", "unit": "Ω", "note": "→ ZRE03_（默认 1350）"},
+    {"value": "extra_profile_json.zv_params.z_1", "label": "主材波阻抗", "source": "profile", "unit": "Ω", "note": "→ ZRE01_（默认 150）"},
+    {"value": "extra_profile_json.zv_params.z_2", "label": "横材波阻抗", "source": "profile", "unit": "Ω", "note": "→ ZRE02_（默认 200）"},
+    {"value": "extra_profile_json.zv_params.z_3", "label": "斜材波阻抗", "source": "profile", "unit": "Ω", "note": "→ ZRE03_（默认 1350）"},
     # options（execution_options，任务级）
     {"value": "binary_search_current_ka", "label": "二分迭代电流", "source": "options", "unit": "kA", "note": "→ current_ka（优先）"},
     {"value": "head_time_min_us", "label": "波头时间（任务）", "source": "options", "unit": "μs", "note": "→ head_ms 回退"},
