@@ -13,9 +13,15 @@ globals as atp_param_global rows. Idempotent: skips existing rows by name+marker
 Run inside the api container:
     sudo docker cp <repo>/scripts/seed_atp_templates.py lp-api-1:/tmp/
     sudo docker exec lp-api-1 sh -c 'cd /app && PYTHONPATH=/app python /tmp/seed_atp_templates.py'
+
+增量补一条新规则（不改动既有模板，避免覆盖页面上的人工编辑）：
+    python /tmp/seed_atp_templates.py --only zv_tower_params
+⚠️ ``--only`` 只适合「库里已有完整的塔型基础模板、只补新规则」的场景；
+   空库请跑全量，否则 config_db 会只看到被 --only 播种的那一条规则。
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import uuid
@@ -34,13 +40,24 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="按 atp_param_mappings JSON 播种参数模板/全局槽位")
+    parser.add_argument(
+        "--only",
+        default="",
+        help="只处理指定 marker（模板）或 slot（全局），逗号分隔；用于增量补规则、不改动既有模板",
+    )
+    args = parser.parse_args(argv)
+    only = {item.strip() for item in (args.only or "").split(",") if item.strip()}
+
     db = SessionLocal()
     try:
         # ---- globals from _common.json ----
         common = json.loads((MAPPINGS / "_common.json").read_text(encoding="utf-8"))
         created_g = updated_g = skipped_g = 0
         for slot, spec in (common.get("globals") or {}).items():
+            if only and slot not in only:
+                continue
             row = db.scalar(select(AtpParamGlobal).where(AtpParamGlobal.slot == slot))
             payload = {
                 "expr": spec.get("expr"),
@@ -71,6 +88,8 @@ def main() -> int:
                 continue
             cfg = json.loads(path.read_text(encoding="utf-8"))
             marker = str(cfg.get("marker") or cfg.get("tower_type") or path.stem)
+            if only and marker not in only:
+                continue
             tower_type = cfg.get("tower_type")
             voltage = cfg.get("voltage_level")
             slots = cfg.get("slots") or {}
