@@ -89,6 +89,33 @@ const FALLBACK_FIELD_EN: Record<string, string> = {
 
 const RE_REGULATORY_GRADE = /规程法雷击风险等级为\s*(\S+?)\s*级/;
 const RE_COMPLETE_INPUTS = /补齐以下输入可提升结果可信度:\s*(.+)/;
+const RE_WAVE_SCAN = /按(.+?)波形、(.+?)口径扫描\s*([\d.]+)\/([\d.]+)\s*μs/;
+
+const WAVEFORM_EN: Record<string, string> = {
+  Heidler: "Heidler",
+  双斜角: "double slope",
+  双指数: "double exponential",
+};
+const METHOD_EN: Record<string, string> = {
+  规程法: "guideline method",
+  相交法: "intersection method",
+  先导发展法: "leader development method",
+};
+const RISK_EN: Record<string, string> = { 高: "high", 中: "medium", 低: "low" };
+const CALC_EN: Record<string, string> = { 同跳: "same-strike", 普通: "normal" };
+const TRIP_RATE_EN: Record<string, string> = {
+  反击跳闸率: "Back-flashover trip rate",
+  绕击跳闸率: "Shielding trip rate",
+};
+const SUMMARY_STATIC_EN: Record<string, string> = {
+  含历史结果回退: "includes historical-result fallback",
+  当前杆塔: "current tower",
+  多相: "multi-phase",
+};
+
+function waveScanText(m: RegExpExecArray): string {
+  return `Scanned per ${WAVEFORM_EN[m[1]] ?? m[1]} waveform, ${METHOD_EN[m[2]] ?? m[2]} criterion: ${m[3]}/${m[4]} μs`;
+}
 
 function translateDynamic(segment: string): string | null {
   const grade = RE_REGULATORY_GRADE.exec(segment);
@@ -104,15 +131,38 @@ function translateDynamic(segment: string): string | null {
       .map((field) => FALLBACK_FIELD_EN[field] ?? field);
     return `Complete the following inputs to improve result confidence: ${fields.join(", ")}`;
   }
-  return null;
+  const wave = RE_WAVE_SCAN.exec(segment);
+  if (wave) {
+    return waveScanText(wave);
+  }
+  return SUMMARY_STATIC_EN[segment] ?? null;
 }
 
-/** 按“；”拆分分析文本逐段翻译；zh 原样返回；未命中片段保留原文。 */
+/** 摘要文本（「，」拼接）里的动态短语：整段替换后再拆段。 */
+function translateSummaryPatterns(text: string): string {
+  let out = text.replace(RE_WAVE_SCAN, (_all, wave, method, a, b) =>
+    `Scanned per ${WAVEFORM_EN[wave] ?? wave} waveform, ${METHOD_EN[method] ?? method} criterion: ${a}/${b} μs`
+  );
+  out = out.replace(/最不利点\s*([\d.]+)\/([\d.]+)\s*μs/g, (_all, a, b) => `Worst point ${a}/${b} μs`);
+  out = out.replace(/规程法等级\s*(\d+)/g, (_all, n) => `Regulation grade ${n}`);
+  out = out.replace(/(反击跳闸率|绕击跳闸率)\s*([\d.]+)/g, (_all, label, value) => `${TRIP_RATE_EN[label] ?? label} ${value}`);
+  out = out.replace(/(.+?)评估为(.+?)风险/g, (_all, tower, risk) => `${tower} assessed as ${RISK_EN[risk] ?? risk} risk`);
+  out = out.replace(/(高|中|低)风险/g, (_all, risk) => `${RISK_EN[risk] ?? risk} risk`);
+  out = out.replace(/(.+?)(同跳|普通)计算/g, (_all, tower, calc) => `${tower} ${CALC_EN[calc] ?? calc} calculation`);
+  out = out.replace(/(.+?)\s+(\S+)\s+跳闸率\s+([\d.]+)/g, (_all, label, phase, value) => `${label} ${phase} trip rate ${value}`);
+  for (const [zh, en] of Object.entries(SUMMARY_STATIC_EN)) {
+    out = out.split(zh).join(en);
+  }
+  return out;
+}
+
+/** 按“；”拆分分析文本逐段翻译；zh 原样返回；英文界面用半角分号拼接。 */
 export function translateAnalysisText(text: string | null | undefined, lang: AppLang): string {
   if (!text || lang !== "en") {
     return text ?? "";
   }
-  const parts = text
+  const translated = translateSummaryPatterns(text);
+  const parts = translated
     .split(/[；;]/)
     .map((part) => part.trim())
     .filter(Boolean);
@@ -127,7 +177,8 @@ export function translateAnalysisText(text: string | null | undefined, lang: App
       }
       return ANALYSIS_TEXT_EN[part] ?? EN_DICT[part] ?? part;
     })
-    .join("；");
+    .join("; ")
+    .replace(/，/g, ", ");
 }
 
 /** 枚举值（直线/耐张、绕击/反击、是/否、风险等级、地形）按语言翻译；未识别原样。 */

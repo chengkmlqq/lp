@@ -3,11 +3,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api.router import api_router
 from .core.config import get_settings
 from .core.database import SessionLocal, init_db
-from .core.exception_handlers import global_exception_handler
+from .core.exception_handlers import global_exception_handler, localized_http_exception_handler
 from .services.backend_lang import BackendLangMiddleware
 from .services.ws_event_bridge import ws_event_forwarder
 settings = get_settings()
@@ -57,5 +58,7 @@ def health() -> dict[str, str]:
     }
 
 app.add_exception_handler(Exception, global_exception_handler)
+# HTTPException detail 按请求语言翻译（LP-148）；zh 逐字不变。
+app.add_exception_handler(StarletteHTTPException, localized_http_exception_handler)
 
 app.include_router(api_router)

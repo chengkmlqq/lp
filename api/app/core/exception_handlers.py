@@ -1,8 +1,29 @@
 import traceback
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import get_settings
+
+
+async def localized_http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """HTTPException detail 按当前请求语言返回（LP-148）。
+
+    ``zh`` 逐字保持中文；``en`` 走 backend_text_i18n 的提示词典/正则翻译。
+    非字符串 detail（如 FastAPI 422 校验数组）原样返回。
+    """
+    detail = exc.detail
+    if isinstance(detail, str):
+        from ..services.backend_text_i18n import localize_backend_text
+
+        detail = localize_backend_text(detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail},
+        headers=getattr(exc, "headers", None),
+    )
 
 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:

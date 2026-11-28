@@ -59,6 +59,7 @@ from ..schemas.lightning import (
     LightningDensityBackfillTaskSummary,
     LightningDensityBackfillHistoryResponse,
 )
+from .backend_text_i18n import localize_backend_text
 from .audit_service import compose_audit_detail, write_audit_log
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -1121,7 +1122,7 @@ def _parse_current_series(text: str) -> ParsedSeries:
         current_value = _parse_last_number(tokens)
         if current_value is None:
             if len(warnings) < 20:
-                warnings.append(f"第 {line_no} 行未识别为数值，已跳过")
+                warnings.append(localize_backend_text(f"第 {line_no} 行未识别为数值，已跳过"))
             continue
         rows.append((None, current_value))
 
@@ -1133,7 +1134,7 @@ def _parse_current_series(text: str) -> ParsedSeries:
     if explicit_time_rows == len(rows):
         time_axis = [float(item[0]) for item in rows if item[0] is not None]
     elif explicit_time_rows > 0:
-        warnings.append("检测到部分行存在时间列但并不完整，已统一按采样间隔重建时间轴")
+        warnings.append(localize_backend_text("检测到部分行存在时间列但并不完整，已统一按采样间隔重建时间轴"))
 
     return ParsedSeries(currents_ka=currents, time_us=time_axis, warnings=warnings)
 
@@ -1177,14 +1178,14 @@ def _build_time_axis(
             inferred_frequency = 1_000_000.0 / inferred_interval if inferred_interval > 0 else None
             return normalized, inferred_interval, inferred_frequency, warnings
 
-        warnings.append("时间列非严格递增，已改用固定采样间隔重建时间轴")
+        warnings.append(localize_backend_text("时间列非严格递增，已改用固定采样间隔重建时间轴"))
 
     interval = sample_interval_us if sample_interval_us is not None else 1.0
     if interval <= 0:
-        warnings.append("采样间隔必须大于 0，已回退到 1.0us")
+        warnings.append(localize_backend_text("采样间隔必须大于 0，已回退到 1.0us"))
         interval = 1.0
     if sample_interval_us is None:
-        warnings.append("未提供采样间隔，默认按 1.0us 计算")
+        warnings.append(localize_backend_text("未提供采样间隔，默认按 1.0us 计算"))
 
     axis = [float(idx) * interval for idx in range(sample_count)]
     fs = 1_000_000.0 / interval if interval > 0 else None
@@ -1456,7 +1457,7 @@ def _fit_line_current_parameters(values: list[float]) -> tuple[float, float, flo
 
     if lower_index is None or upper_index is None or lower_index == upper_index:
         current_a = _median(cleaned)
-        warnings.append("样本分布不足以插值求解 a，已回退到中位数")
+        warnings.append(localize_backend_text("样本分布不足以插值求解 a，已回退到中位数"))
     else:
         upper_probability = probabilities[upper_index]
         lower_probability = probabilities[lower_index]
@@ -1465,14 +1466,14 @@ def _fit_line_current_parameters(values: list[float]) -> tuple[float, float, flo
         denominator = lower_probability - upper_probability
         if abs(denominator) < 1e-9:
             current_a = _median(cleaned)
-            warnings.append("样本概率分布异常，已回退到中位数")
+            warnings.append(localize_backend_text("样本概率分布异常，已回退到中位数"))
         else:
             current_a = (0.5 - upper_probability) * (lower_threshold - upper_threshold) / denominator + upper_threshold
 
     exponent_values: list[float] = []
     if current_a <= 0:
         current_a = _median(cleaned)
-        warnings.append("样本拟合得到的 a 非法，已回退到中位数")
+        warnings.append(localize_backend_text("样本拟合得到的 a 非法，已回退到中位数"))
     for threshold, probability in zip(thresholds[:-1], probabilities[:-1], strict=False):
         if probability <= 0 or probability >= 1:
             continue
@@ -1490,7 +1491,7 @@ def _fit_line_current_parameters(values: list[float]) -> tuple[float, float, flo
         current_b = sum(exponent_values) / len(exponent_values)
     else:
         current_b = 2.6
-        warnings.append("样本分布不足以稳定拟合 b，已使用默认 b=2.6")
+        warnings.append(localize_backend_text("样本分布不足以稳定拟合 b，已使用默认 b=2.6"))
 
     return round(current_a, 3), round(current_b, 3), round(peak_max, 3), round(peak_min, 3), warnings
 
@@ -2592,7 +2593,7 @@ def _execute_line_lightning_density_backfill(
             updated_tower_count += 1
 
     if missing_geo_count > 0:
-        warnings.append(f"{missing_geo_count} 座杆塔缺少经纬度，未能回填地闪密度")
+        warnings.append(localize_backend_text(f"{missing_geo_count} 座杆塔缺少经纬度，未能回填地闪密度"))
 
     line.update_date = now
     line.update_user = actor_user_id

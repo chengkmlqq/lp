@@ -41,6 +41,7 @@ from ..schemas.elevation import (
     ElevationPreviewPoint,
     ElevationTerrainLayerResponse,
 )
+from .backend_text_i18n import localize_backend_text
 from .file_service import _build_driver_or_400, _require_mount, list_enabled_mounts
 from .line_preparation_service import record_line_preparation_source
 from .push_service import publish_topic
@@ -1113,16 +1114,16 @@ def _download_raster_to(driver: Any, virtual_path: str, dest: Path) -> None:
 def _append_non_wgs84_bounds_warning(*, rasterio: Any, src: Any) -> str | None:
     src_crs = src.crs
     if src_crs is None:
-        return "栅格缺少 CRS 定义，默认按 WGS84 经度/纬度采样"
+        return localize_backend_text("栅格缺少 CRS 定义，默认按 WGS84 经度/纬度采样")
     try:
         src_crs_obj = rasterio.crs.CRS.from_user_input(src_crs)
     except Exception:
-        return "栅格 CRS 无法识别，默认按 WGS84 经度/纬度采样，建议先校验源数据"
+        return localize_backend_text("栅格 CRS 无法识别，默认按 WGS84 经度/纬度采样，建议先校验源数据")
     if src_crs_obj.to_string() in {"EPSG:4326", "OGC:CRS84"}:
         return None
     if bool(getattr(src_crs_obj, "is_geographic", False)):
         return None
-    return (
+    return localize_backend_text(
         f"栅格 CRS 为 {src_crs_obj.to_string()}，数据集边界框基于该投影坐标，"
         "预览渲染会自动转换到 WGS84 经度/纬度"
     )
@@ -1374,7 +1375,7 @@ def _build_raster_preview(
 
         diagnostics.valid_preview_count = len(sampled_cells)
         if not sampled_cells:
-            warnings.append("未提取到有效地形网格（可能为 nodata 或投影定义不匹配）")
+            warnings.append(localize_backend_text("未提取到有效地形网格（可能为 nodata 或投影定义不匹配）"))
 
         return ElevationFileRecordPreviewResponse(
             record=serialize_file_record(record),

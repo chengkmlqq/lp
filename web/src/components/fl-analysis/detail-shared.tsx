@@ -452,7 +452,7 @@ export function ConclusionText({
   return (
     <div>
       <Typography.Title level={5}>{t("综合结论")}</Typography.Title>
-      <div className="fl-detail-conclusion">{summaryText || "-"}</div>
+      <div className="fl-detail-conclusion">{translateAnalysisText(summaryText ?? "", lang) || "-"}</div>
       <Typography.Title level={5} style={{ marginTop: 16 }}>{t("原因分析")}</Typography.Title>
       <div className="fl-detail-conclusion">{translateAnalysisText(causeAnalysis ?? "-", lang)}</div>
     </div>

@@ -40,6 +40,7 @@ from ..schemas.line import (
     TowerProfileLightningCurrentSummary,
 )
 from .analysis_text_i18n import LINE_TOWER_CSV_HEADERS_EN, translate_analysis_text, translate_csv_cell
+from .backend_text_i18n import localize_backend_text
 from .fl_test_case_tower import MANAGED_LINE_PREFIX
 from .line_preparation_service import (
     load_line_preparation_counts,
@@ -798,7 +799,7 @@ def import_line_towers_from_csv(
     stats = CsvImportStats()
     if positional_parsing:
         stats.warnings = stats.warnings or []
-        stats.warnings.append("未找到「序号/塔号」表头，已按固定列序（1-63 列）解析")
+        stats.warnings.append(localize_backend_text("未找到「序号/塔号」表头，已按固定列序（1-63 列）解析"))
     existing_towers = db.execute(select(LineTower).where(LineTower.line_id == line.id)).scalars().all()
     tower_by_seq = {item.seq_no: item for item in existing_towers}
     tower_by_no = {item.tower_no: item for item in existing_towers}
@@ -819,7 +820,7 @@ def import_line_towers_from_csv(
         if seq_no is None or not tower_no:
             stats.skipped_count += 1
             if stats.warnings is not None:
-                stats.warnings.append(f"第 {row_index} 行缺少有效的序号/塔号，已跳过")
+                stats.warnings.append(localize_backend_text(f"第 {row_index} 行缺少有效的序号/塔号，已跳过"))
             continue
 
         tower_from_seq = tower_by_seq.get(seq_no)
@@ -827,7 +828,7 @@ def import_line_towers_from_csv(
         if tower_from_seq and tower_from_no and tower_from_seq.id != tower_from_no.id:
             stats.skipped_count += 1
             if stats.warnings is not None:
-                stats.warnings.append(f"第 {row_index} 行序号/塔号映射冲突，已跳过")
+                stats.warnings.append(localize_backend_text(f"第 {row_index} 行序号/塔号映射冲突，已跳过"))
             continue
 
         tower = tower_from_seq or tower_from_no
@@ -1366,7 +1367,7 @@ def _apply_line_metadata_from_csv(
 
     csv_line_code = _normalize_str(row.get("线路编号"))
     if csv_line_code and csv_line_code != line.code:
-        warnings.append(f"CSV 线路编号 {csv_line_code} 与当前线路编码 {line.code} 不一致，已保留当前线路编码")
+        warnings.append(localize_backend_text(f"CSV 线路编号 {csv_line_code} 与当前线路编码 {line.code} 不一致，已保留当前线路编码"))
 
     csv_line_name = _normalize_str(row.get("线路名称"))
     if csv_line_name:

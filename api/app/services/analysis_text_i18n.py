@@ -150,42 +150,96 @@ ENUM_VALUE_EN: dict[str, str] = {
 
 _RE_REGULATORY_GRADE = re.compile(r"规程法雷击风险等级为\s*(\S+?)\s*级")
 _RE_COMPLETE_INPUTS = re.compile(r"补齐以下输入可提升结果可信度:\s*(.+)")
+_RE_WAVE_SCAN = re.compile(r"按(.+?)波形、(.+?)口径扫描\s*([\d.]+)/([\d.]+)\s*μs")
 _JOIN_SPLIT = re.compile(r"[；;]")
+
+# 摘要文本（以「，」拼接）中的动态片段
+_WAVEFORM_EN = {"Heidler": "Heidler", "双斜角": "double slope", "双指数": "double exponential"}
+_METHOD_EN = {
+    "规程法": "guideline method",
+    "相交法": "intersection method",
+    "先导发展法": "leader development method",
+}
+_RISK_EN = {"高": "high", "中": "medium", "低": "low"}
+_CALC_EN = {"同跳": "same-strike", "普通": "normal"}
+_TRIP_RATE_EN = {"反击跳闸率": "Back-flashover trip rate", "绕击跳闸率": "Shielding trip rate"}
+_SUMMARY_STATIC_EN = {
+    "含历史结果回退": "includes historical-result fallback",
+    "当前杆塔": "current tower",
+    "多相": "multi-phase",
+}
 
 
 def _translate_dynamic(segment: str) -> str | None:
     """对含参数的中文片段做正则翻译；无法识别返回 None。"""
-    m = _RE_REGULATORY_GRADE.match(segment.strip())
+    stripped = segment.strip()
+    m = _RE_REGULATORY_GRADE.match(stripped)
     if m:
         return f"Regulation-based lightning risk grade: {m.group(1)}"
-    m = _RE_COMPLETE_INPUTS.match(segment.strip())
+    m = _RE_COMPLETE_INPUTS.match(stripped)
     if m:
         fields = re.split(r"[、,，]", m.group(1))
         translated = [FALLBACK_FIELD_EN.get(f.strip(), f.strip()) for f in fields if f.strip()]
         return "Complete the following inputs to improve result confidence: " + ", ".join(translated)
-    return None
+    m = _RE_WAVE_SCAN.match(stripped)
+    if m:
+        wave = _WAVEFORM_EN.get(m.group(1), m.group(1))
+        method = _METHOD_EN.get(m.group(2), m.group(2))
+        return f"Scanned per {wave} waveform, {method} criterion: {m.group(3)}/{m.group(4)} μs"
+    return _SUMMARY_STATIC_EN.get(stripped)
+
+
+def _translate_summary_patterns(text: str) -> str:
+    """摘要文本里夹在「，」之间的动态短语：先整段替换，再按「，」转半角。"""
+    def _wave(m: re.Match[str]) -> str:
+        wave = _WAVEFORM_EN.get(m.group(1), m.group(1))
+        method = _METHOD_EN.get(m.group(2), m.group(2))
+        return f"Scanned per {wave} waveform, {method} criterion: {m.group(3)}/{m.group(4)} μs"
+
+    def _eval(m: re.Match[str]) -> str:
+        return f"{m.group(1)} assessed as {_RISK_EN.get(m.group(2), m.group(2))} risk"
+
+    def _calc(m: re.Match[str]) -> str:
+        return f"{m.group(1)} {_CALC_EN.get(m.group(2), m.group(2))} calculation"
+
+    def _dominant(m: re.Match[str]) -> str:
+        return f"{m.group(1)} {m.group(2)} trip rate {m.group(3)}"
+
+    text = _RE_WAVE_SCAN.sub(_wave, text)
+    text = re.sub(r"最不利点\s*([\d.]+)/([\d.]+)\s*μs",
+                  lambda m: f"Worst point {m.group(1)}/{m.group(2)} μs", text)
+    text = re.sub(r"规程法等级\s*(\d+)",
+                  lambda m: f"Regulation grade {m.group(1)}", text)
+    text = re.sub(r"(反击跳闸率|绕击跳闸率)\s*([\d.]+)",
+                  lambda m: f"{_TRIP_RATE_EN[m.group(1)]} {m.group(2)}", text)
+    text = re.sub(r"(.+?)评估为(.+?)风险", _eval, text)
+    text = re.sub(r"(高|中|低)风险", lambda m: f"{_RISK_EN[m.group(1)]} risk", text)
+    text = re.sub(r"(.+?)(同跳|普通)计算", _calc, text)
+    text = re.sub(r"(.+?)\s+(\S+)\s+跳闸率\s+([\d.]+)", _dominant, text)
+    for zh, en in _SUMMARY_STATIC_EN.items():
+        text = text.replace(zh, en)
+    return text
 
 
 def translate_analysis_text(text: str | None, lang: str) -> str:
-    """按 '；' 拆分分析文本逐段翻译；zh 原样返回。未命中片段原样保留。"""
+    """英文界面下逐段翻译；'；' 拼接的原因/措施用 '; '，'，，' 拼接的摘要用 ', '。"""
     if not text:
         return text or ""
     if lang != "en":
         return text
-    parts = [p for p in _JOIN_SPLIT.split(text) if p.strip()]
+    translated = _translate_summary_patterns(text)
+    parts = [p for p in _JOIN_SPLIT.split(translated) if p.strip()]
     if not parts:
         return text
     out: list[str] = []
     for part in parts:
         stripped = part.strip()
-        if not stripped:
-            continue
         dynamic = _translate_dynamic(stripped)
         if dynamic is not None:
             out.append(dynamic)
         else:
             out.append(ANALYSIS_TEXT_EN.get(stripped, stripped))
-    return "；".join(out)
+    return "; ".join(out).replace("，", ", ")
 
 
 def translate_enum_value(value: str | None, lang: str) -> str:
