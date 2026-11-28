@@ -249,7 +249,7 @@ class TestAnalysisTextI18n:
               "Back-flashover trip rate significantly exceeds shielding trip rate")
         assert translate_analysis_text(
             "按Heidler波形、相交法口径扫描 2.60/50.00 μs", "en"
-        ) == "Scanned per Heidler waveform, intersection method criterion: 2.60/50.00 μs"
+        ) == "Scan per Heidler waveform and intersection method criterion: 2.60/50.00 μs"
         assert "；" not in translate_analysis_text(
             "规程法雷击风险等级为 3 级；档距偏大", "en"
         )
@@ -274,3 +274,35 @@ class TestAnalysisTextI18n:
 
         text = "塔1普通计算，最不利点 2.60/50.00 μs，高风险"
         assert translate_analysis_text(text, "zh") == text
+
+    def test_lp149_mixed_fragments_fully_translated(self):
+        """LP-149：3 条真实夹生文本在英文模式无中文残字，中文模式逐字不变。"""
+        from app.services.analysis_text_i18n import translate_analysis_text
+
+        cases = {
+            "导线左右位置信息缺失, 当前Scanned per 对称坐标近似":
+                "Conductor left/right position info missing; approximated with symmetric coordinates",
+            "按Heidler waveform, intersection method criterion: 2.60/50.00 μs":
+                "Scan per Heidler waveform and intersection method criterion: 2.60/50.00 μs",
+            "建议结合波头/波尾最不利点继续复核绝缘配合与接地参数":
+                "It is recommended to further recheck insulation coordination and grounding "
+                "parameters based on the worst head/tail time point",
+        }
+        for zh, en in cases.items():
+            result = translate_analysis_text(zh, "en")
+            assert result == en, (zh, result)
+            assert not _HAS_ZH.search(result), (zh, result)
+            assert translate_analysis_text(zh, "zh") == zh
+
+    def test_lp149_comma_variants_and_multi_segment(self):
+        """全/半角逗号均命中，且多段文本仍以半角 '; ' 拼接。"""
+        from app.services.analysis_text_i18n import translate_analysis_text
+
+        for comma in ("，", ","):
+            text = f"导线左右位置信息缺失{comma}当前按对称坐标近似；档距偏大"
+            result = translate_analysis_text(text, "en")
+            assert result == (
+                "Conductor left/right position info missing; approximated with symmetric "
+                "coordinates; Span is relatively large"
+            ), result
+            assert not _HAS_ZH.search(result)

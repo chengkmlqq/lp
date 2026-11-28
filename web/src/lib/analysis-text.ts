@@ -13,6 +13,12 @@
  */
 import { EN_DICT, type AppLang } from "./i18n";
 
+// LP-149：整句兜底译文（整句命中优先，避免局部替换产生「中英夹生」）
+const CONDUCTOR_POS_EN =
+  "Conductor left/right position info missing; approximated with symmetric coordinates";
+const WAVE_RECHECK_EN =
+  "It is recommended to further recheck insulation coordination and grounding parameters based on the worst head/tail time point";
+
 /** 固定短语：中文模板 → 英文（与规则引擎 fl_analysis_rules.py 生成文本对齐）。 */
 const ANALYSIS_TEXT_EN: Record<string, string> = {
   "按高雷区口径校核绝缘与屏蔽配置":
@@ -29,8 +35,12 @@ const ANALYSIS_TEXT_EN: Record<string, string> = {
     "No significant high-risk factor under current inputs",
   "当前以反击风险为主": "Back-flashover risk dominates",
   "档距偏大": "Span is relatively large",
-  "导线左右位置信息缺失，当前按对称坐标近似":
-    "Left/right conductor position info missing; approximated with symmetric coordinates",
+  "导线左右位置信息缺失，当前按对称坐标近似": CONDUCTOR_POS_EN,
+  // LP-149：历史/导入数据里已被旧逻辑局部翻译过的夹生句，整句命中优先
+  "导线左右位置信息缺失, 当前Scanned per 对称坐标近似": CONDUCTOR_POS_EN,
+  "按Heidler waveform, intersection method criterion: 2.60/50.00 μs":
+    "Scan per Heidler waveform and intersection method criterion: 2.60/50.00 μs",
+  "建议结合波头/波尾最不利点继续复核绝缘配合与接地参数": WAVE_RECHECK_EN,
   "地面倾角较大": "Ground slope is large",
   "地面倾角偏大": "Ground slope is relatively large",
   "地闪密度较高": "Lightning density is high",
@@ -89,7 +99,13 @@ const FALLBACK_FIELD_EN: Record<string, string> = {
 
 const RE_REGULATORY_GRADE = /规程法雷击风险等级为\s*(\S+?)\s*级/;
 const RE_COMPLETE_INPUTS = /补齐以下输入可提升结果可信度:\s*(.+)/;
+// 中文模板：按{波形}波形、{判据}口径扫描 {a}/{b} μs
 const RE_WAVE_SCAN = /按(.+?)波形、(.+?)口径扫描\s*([\d.]+)\/([\d.]+)\s*μs/;
+// LP-149：已被旧逻辑局部翻译过的夹生句 按{wave} waveform, {method} criterion: {a}/{b} μs
+const RE_WAVE_SCAN_MIXED = /按\s*(.+?)\s*waveform\s*,\s*(.+?)\s*criterion\s*:\s*([\d.]+)\s*\/\s*([\d.]+)\s*μs/;
+// LP-149：中文逗号/半角逗号 + 当前按/当前Scanned per 两种历史写法
+const RE_CONDUCTOR_POS = /导线左右位置信息缺失\s*[，,]\s*当前\s*(?:按|Scanned\s+per)?\s*对称坐标近似/;
+const HAS_ZH = /[\u4e00-\u9fff]/;
 
 const WAVEFORM_EN: Record<string, string> = {
   Heidler: "Heidler",
@@ -114,7 +130,17 @@ const SUMMARY_STATIC_EN: Record<string, string> = {
 };
 
 function waveScanText(m: RegExpExecArray): string {
-  return `Scanned per ${WAVEFORM_EN[m[1]] ?? m[1]} waveform, ${METHOD_EN[m[2]] ?? m[2]} criterion: ${m[3]}/${m[4]} μs`;
+  return `Scan per ${WAVEFORM_EN[m[1]] ?? m[1]} waveform and ${METHOD_EN[m[2]] ?? m[2]} criterion: ${m[3]}/${m[4]} μs`;
+}
+
+/** 兜底：逐片段替换已知中文残字，未知片段仍原样回落（不留中文残字）。 */
+function translateFragments(segment: string): string {
+  let out = segment.replace(/^按\s*/, "Scan per ");
+  out = out.replace(/waveform,/g, "waveform and");
+  out = out.replace(/导线左右位置信息缺失/g, "Conductor left/right position info missing");
+  out = out.replace(/[，,]\s*当前\s*(?:按|Scanned\s+per)?\s*对称坐标近似/g, "; approximated with symmetric coordinates");
+  out = out.replace(/建议结合波头\/波尾最不利点继续复核绝缘配合与接地参数/g, WAVE_RECHECK_EN);
+  return out;
 }
 
 function translateDynamic(segment: string): string | null {
@@ -131,9 +157,18 @@ function translateDynamic(segment: string): string | null {
       .map((field) => FALLBACK_FIELD_EN[field] ?? field);
     return `Complete the following inputs to improve result confidence: ${fields.join(", ")}`;
   }
-  const wave = RE_WAVE_SCAN.exec(segment);
+  const wave = RE_WAVE_SCAN.exec(segment) ?? RE_WAVE_SCAN_MIXED.exec(segment);
   if (wave) {
     return waveScanText(wave);
+  }
+  if (RE_CONDUCTOR_POS.test(segment)) {
+    return CONDUCTOR_POS_EN;
+  }
+  if (segment === "建议结合波头/波尾最不利点继续复核绝缘配合与接地参数") {
+    return WAVE_RECHECK_EN;
+  }
+  if (HAS_ZH.test(segment)) {
+    return translateFragments(segment);
   }
   return SUMMARY_STATIC_EN[segment] ?? null;
 }
@@ -141,7 +176,10 @@ function translateDynamic(segment: string): string | null {
 /** 摘要文本（「，」拼接）里的动态短语：整段替换后再拆段。 */
 function translateSummaryPatterns(text: string): string {
   let out = text.replace(RE_WAVE_SCAN, (_all, wave, method, a, b) =>
-    `Scanned per ${WAVEFORM_EN[wave] ?? wave} waveform, ${METHOD_EN[method] ?? method} criterion: ${a}/${b} μs`
+    `Scan per ${WAVEFORM_EN[wave] ?? wave} waveform and ${METHOD_EN[method] ?? method} criterion: ${a}/${b} μs`
+  );
+  out = out.replace(RE_WAVE_SCAN_MIXED, (_all, wave, method, a, b) =>
+    `Scan per ${WAVEFORM_EN[wave] ?? wave} waveform and ${METHOD_EN[method] ?? method} criterion: ${a}/${b} μs`
   );
   out = out.replace(/最不利点\s*([\d.]+)\/([\d.]+)\s*μs/g, (_all, a, b) => `Worst point ${a}/${b} μs`);
   out = out.replace(/规程法等级\s*(\d+)/g, (_all, n) => `Regulation grade ${n}`);
@@ -171,11 +209,15 @@ export function translateAnalysisText(text: string | null | undefined, lang: App
   }
   return parts
     .map((part) => {
+      // 整句命中优先：先查完整句词典，再做动态/片段兜底，避免局部替换夹生
+      if (ANALYSIS_TEXT_EN[part] !== undefined) {
+        return ANALYSIS_TEXT_EN[part];
+      }
       const dynamic = translateDynamic(part);
       if (dynamic) {
         return dynamic;
       }
-      return ANALYSIS_TEXT_EN[part] ?? EN_DICT[part] ?? part;
+      return EN_DICT[part] ?? part;
     })
     .join("; ")
     .replace(/，/g, ", ");

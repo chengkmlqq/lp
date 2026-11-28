@@ -19,6 +19,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# LP-149：整句兜底译文（整句命中优先，避免局部替换产生「中英夹生」）
+_CONDUCTOR_POS_EN = (
+    "Conductor left/right position info missing; approximated with symmetric coordinates"
+)
+_WAVE_RECHECK_EN = (
+    "It is recommended to further recheck insulation coordination and grounding "
+    "parameters based on the worst head/tail time point"
+)
+
 # ───────────────────────── 固定短语（原因分析 / 措施推荐） ─────────────────────────
 
 ANALYSIS_TEXT_EN: dict[str, str] = {
@@ -36,8 +45,12 @@ ANALYSIS_TEXT_EN: dict[str, str] = {
         "No significant high-risk factor under current inputs",
     "当前以反击风险为主": "Back-flashover risk dominates",
     "档距偏大": "Span is relatively large",
-    "导线左右位置信息缺失，当前按对称坐标近似":
-        "Left/right conductor position info missing; approximated with symmetric coordinates",
+    "导线左右位置信息缺失，当前按对称坐标近似": _CONDUCTOR_POS_EN,
+    # LP-149：历史/导入数据里已被旧逻辑局部翻译过的夹生句，整句命中优先
+    "导线左右位置信息缺失, 当前Scanned per 对称坐标近似": _CONDUCTOR_POS_EN,
+    "按Heidler waveform, intersection method criterion: 2.60/50.00 μs":
+        "Scan per Heidler waveform and intersection method criterion: 2.60/50.00 μs",
+    "建议结合波头/波尾最不利点继续复核绝缘配合与接地参数": _WAVE_RECHECK_EN,
     "地面倾角较大": "Ground slope is large",
     "地面倾角偏大": "Ground slope is relatively large",
     "地闪密度较高": "Lightning density is high",
@@ -150,7 +163,16 @@ ENUM_VALUE_EN: dict[str, str] = {
 
 _RE_REGULATORY_GRADE = re.compile(r"规程法雷击风险等级为\s*(\S+?)\s*级")
 _RE_COMPLETE_INPUTS = re.compile(r"补齐以下输入可提升结果可信度:\s*(.+)")
+# 中文模板：按{波形}波形、{判据}口径扫描 {a}/{b} μs
 _RE_WAVE_SCAN = re.compile(r"按(.+?)波形、(.+?)口径扫描\s*([\d.]+)/([\d.]+)\s*μs")
+# LP-149：已被旧逻辑局部翻译过的夹生句 按{wave} waveform, {method} criterion: {a}/{b} μs
+_RE_WAVE_SCAN_MIXED = re.compile(
+    r"按\s*(.+?)\s*waveform\s*,\s*(.+?)\s*criterion\s*:\s*([\d.]+)\s*/\s*([\d.]+)\s*μs"
+)
+# LP-149：中文逗号/半角逗号 + 当前按/当前Scanned per 两种历史写法
+_RE_CONDUCTOR_POS = re.compile(
+    r"导线左右位置信息缺失\s*[，,]\s*当前\s*(?:按|Scanned\s+per)?\s*对称坐标近似"
+)
 _JOIN_SPLIT = re.compile(r"[；;]")
 
 # 摘要文本（以「，」拼接）中的动态片段
@@ -170,6 +192,28 @@ _SUMMARY_STATIC_EN = {
 }
 
 
+def _wave_scan_en(wave: str, method: str, a: str, b: str) -> str:
+    """波形扫描句统一译文；method 已是英文术语时原样复用。"""
+    return (
+        f"Scan per {_WAVEFORM_EN.get(wave, wave)} waveform and "
+        f"{_METHOD_EN.get(method, method)} criterion: {a}/{b} μs"
+    )
+
+
+def _translate_fragments(segment: str) -> str:
+    """兜底：逐片段替换已知中文残字，未知片段仍原样回落（不留中文残字）。"""
+    out = re.sub(r"^按\s*", "Scan per ", segment)
+    out = out.replace("waveform,", "waveform and")
+    out = out.replace("导线左右位置信息缺失", "Conductor left/right position info missing")
+    out = re.sub(
+        r"[，,]\s*当前\s*(?:按|Scanned\s+per)?\s*对称坐标近似",
+        "; approximated with symmetric coordinates",
+        out,
+    )
+    out = out.replace("建议结合波头/波尾最不利点继续复核绝缘配合与接地参数", _WAVE_RECHECK_EN)
+    return out
+
+
 def _translate_dynamic(segment: str) -> str | None:
     """对含参数的中文片段做正则翻译；无法识别返回 None。"""
     stripped = segment.strip()
@@ -181,20 +225,23 @@ def _translate_dynamic(segment: str) -> str | None:
         fields = re.split(r"[、,，]", m.group(1))
         translated = [FALLBACK_FIELD_EN.get(f.strip(), f.strip()) for f in fields if f.strip()]
         return "Complete the following inputs to improve result confidence: " + ", ".join(translated)
-    m = _RE_WAVE_SCAN.match(stripped)
-    if m:
-        wave = _WAVEFORM_EN.get(m.group(1), m.group(1))
-        method = _METHOD_EN.get(m.group(2), m.group(2))
-        return f"Scanned per {wave} waveform, {method} criterion: {m.group(3)}/{m.group(4)} μs"
+    for pattern in (_RE_WAVE_SCAN, _RE_WAVE_SCAN_MIXED):
+        m = pattern.match(stripped)
+        if m:
+            return _wave_scan_en(m.group(1), m.group(2), m.group(3), m.group(4))
+    if _RE_CONDUCTOR_POS.match(stripped):
+        return _CONDUCTOR_POS_EN
+    if stripped == "建议结合波头/波尾最不利点继续复核绝缘配合与接地参数":
+        return _WAVE_RECHECK_EN
+    if re.search(r"[\u4e00-\u9fff]", stripped):
+        return _translate_fragments(stripped)
     return _SUMMARY_STATIC_EN.get(stripped)
 
 
 def _translate_summary_patterns(text: str) -> str:
     """摘要文本里夹在「，」之间的动态短语：先整段替换，再按「，」转半角。"""
     def _wave(m: re.Match[str]) -> str:
-        wave = _WAVEFORM_EN.get(m.group(1), m.group(1))
-        method = _METHOD_EN.get(m.group(2), m.group(2))
-        return f"Scanned per {wave} waveform, {method} criterion: {m.group(3)}/{m.group(4)} μs"
+        return _wave_scan_en(m.group(1), m.group(2), m.group(3), m.group(4))
 
     def _eval(m: re.Match[str]) -> str:
         return f"{m.group(1)} assessed as {_RISK_EN.get(m.group(2), m.group(2))} risk"
@@ -206,6 +253,9 @@ def _translate_summary_patterns(text: str) -> str:
         return f"{m.group(1)} {m.group(2)} trip rate {m.group(3)}"
 
     text = _RE_WAVE_SCAN.sub(_wave, text)
+    text = _RE_WAVE_SCAN_MIXED.sub(
+        lambda m: _wave_scan_en(m.group(1), m.group(2), m.group(3), m.group(4)), text
+    )
     text = re.sub(r"最不利点\s*([\d.]+)/([\d.]+)\s*μs",
                   lambda m: f"Worst point {m.group(1)}/{m.group(2)} μs", text)
     text = re.sub(r"规程法等级\s*(\d+)",
@@ -234,11 +284,13 @@ def translate_analysis_text(text: str | None, lang: str) -> str:
     out: list[str] = []
     for part in parts:
         stripped = part.strip()
+        # 整句命中优先：先查完整句词典，再做动态/片段兜底，避免局部替换夹生
+        exact = ANALYSIS_TEXT_EN.get(stripped)
+        if exact is not None:
+            out.append(exact)
+            continue
         dynamic = _translate_dynamic(stripped)
-        if dynamic is not None:
-            out.append(dynamic)
-        else:
-            out.append(ANALYSIS_TEXT_EN.get(stripped, stripped))
+        out.append(dynamic if dynamic is not None else ANALYSIS_TEXT_EN.get(stripped, stripped))
     return "; ".join(out).replace("，", ", ")
 
 
