@@ -47,7 +47,7 @@ import type {
   FlTestRunSummary,
   FlTestSetSummary,
 } from "@/types/fl-test-set";
-import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
+import { formatDateTime } from "@/lib/datetime";
 import { FlTestRunStatusTag } from "@/components/fl-test-sets/fl-test-set-tab";
 import { FlTestRunDrawer } from "@/components/fl-test-sets/fl-test-run-drawer";
 

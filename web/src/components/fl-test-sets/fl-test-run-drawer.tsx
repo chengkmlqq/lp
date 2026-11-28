@@ -30,7 +30,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { FlTestRunCaseSummary, FlTestRunSummary } from "@/types/fl-test-set";
-import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
+import { formatDateTime } from "@/lib/datetime";
 import { FlTestJobStatusTag, FlTestRunStatusTag, FlTestVerdictTag } from "@/components/fl-test-sets/fl-test-set-tab";
 
 interface TowerResultRow {

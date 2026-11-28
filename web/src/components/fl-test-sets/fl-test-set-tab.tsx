@@ -38,7 +38,7 @@ import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { FlTestSetCategory, FlTestSetListResponse, FlTestSetSummary } from "@/types/fl-test-set";
-import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
+import { formatDateTime } from "@/lib/datetime";
 import { FlTestSetDetailDrawer } from "@/components/fl-test-sets/fl-test-set-detail-drawer";
 
 const TABLE_MIN_SCROLL_Y = 300;

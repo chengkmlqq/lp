@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
@@ -15,11 +14,6 @@ from ...schemas.atp_asset import (
     AtpAssetFileContentResponse,
     AtpAssetFileListResponse,
     AtpAssetListResponse,
-    AtpAssetRunDetail,
-    AtpAssetRunListResponse,
-    AtpAssetRunRequest,
-    AtpAssetTestRunRequest,
-    AtpAssetTestStatusRequest,
     AtpAssetTreeChild,
     AtpAssetTreeChildrenResponse,
     AtpAssetUpdateRequest,
@@ -28,9 +22,6 @@ from ...schemas.atp_asset import (
     AtpAssetVersionListResponse,
     AtpModelListResponse,
     AtpTagOptionsResponse,
-    AtpBatchTestRunListResponse,
-    AtpBatchTestRunRequest,
-    AtpBatchTestRunSummary,
     AtpEngineStatusResponse,
 )
 from ...services.atp_asset_service import (
@@ -44,7 +35,6 @@ from ...services.atp_asset_service import (
     get_asset_slots_view,
     check_asset_slot_coverage,
     get_engine_status,
-    get_run_detail,
     get_slot_options,
     list_asset_files,
     list_asset_versions,
@@ -53,8 +43,6 @@ from ...services.atp_asset_service import (
     list_asset_tree_children,
     list_models,
     list_tag_options,
-    list_runs,
-    mark_asset_test_status,
     publish_asset,
     read_asset_file_content,
     unpublish_asset,
@@ -63,17 +51,6 @@ from ...services.atp_asset_service import (
     serialize_asset,
     upload_asset_files,
     update_asset,
-)
-from ...services.atp_asset_test_service import (
-    build_batch_report_zip,
-    create_test_run,
-    create_batch_test_runs,
-    get_batch_test_runs,
-    list_batch_test_runs,
-    parse_test_run_waveform,
-    read_artifact_zip,
-    read_compare_json,
-    read_test_run_file_content,
 )
 
 router = APIRouter(prefix="/atp", tags=["atp-assets"], dependencies=[Depends(require_enabled_menu_route)])
@@ -529,24 +506,6 @@ def unpublish_atp_asset_endpoint(
     return AtpAssetDetail(**updated.model_dump())
 
 
-@router.post("/assets/{asset_id}/test-status", response_model=AtpAssetDetail)
-def mark_atp_asset_test_status_endpoint(
-    asset_id: str,
-    payload: AtpAssetTestStatusRequest,
-    current_user: CurrentUser = Depends(require_permission("atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetDetail:
-    """写入测试结论（2026-11-07）：passed 通过 / failed 未通过 / suspect 可疑 / null 清除。"""
-    updated = mark_asset_test_status(
-        db,
-        asset_id=asset_id,
-        test_status=payload.test_status,
-        message=payload.message,
-        actor_user_id=current_user.user.id,
-    )
-    return AtpAssetDetail(**updated.model_dump())
-
-
 @router.delete("/assets/{asset_id}")
 def delete_atp_asset_endpoint(
     asset_id: str,
@@ -557,150 +516,3 @@ def delete_atp_asset_endpoint(
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     return {"success": True}
-
-
-
-
-
-@router.get("/runs/{run_id}", response_model=AtpAssetRunDetail)
-def get_atp_run_detail(
-    run_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetRunDetail:
-    return get_run_detail(db, run_id=run_id)
-
-
-# ─────────────────────── 单模型测试（分段 + 对拍产物） ───────────────────────
-# 设计见 services/atp_asset_test_service.py 模块注释：
-# materialize（物化+引擎文件）→ geometry（DAT→LIB）→ simulate（单次 ATP），
-# 判据看产物（哈希/数值/LIS 报错）而非退出码，产出 compare.json 供与 C# 端 diff。
-
-
-@router.post("/assets/{asset_id}/test-runs", response_model=AtpAssetRunDetail)
-def create_atp_asset_test_run_endpoint(
-    asset_id: str,
-    payload: AtpAssetTestRunRequest,
-    current_user: CurrentUser = Depends(require_any_permission("atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetRunDetail:
-    """发起一次 ATP 模型单模型测试（异步，返回 run 记录供轮询）。"""
-    return create_test_run(
-        db,
-        asset_id=asset_id,
-        payload=payload,
-        actor_user_id=current_user.user.id,
-    )
-
-
-@router.get("/assets/{asset_id}/test-runs", response_model=AtpAssetRunListResponse)
-def list_atp_asset_test_runs_endpoint(
-    asset_id: str,
-    limit: int = Query(default=20, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetRunListResponse:
-    """该资产的运行记录（测试运行与生产运行共用 atp_asset_run 表，按时间倒序）。"""
-    return list_runs(db, asset_id=asset_id, limit=limit, offset=offset)
-
-
-@router.get("/batch-test-runs", response_model=AtpBatchTestRunListResponse)
-def list_atp_batch_test_runs_endpoint(
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    keyword: str | None = Query(default=None, description="批次号/发起人模糊搜索"),
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpBatchTestRunListResponse:
-    """批量测试历史记录列表(按 batch_id 聚合,每批一条)。"""
-    data = list_batch_test_runs(db, limit=limit, offset=offset, keyword=keyword)
-    return AtpBatchTestRunListResponse(**data)
-
-
-@router.post("/batch-test-runs", response_model=AtpBatchTestRunSummary)
-def create_atp_batch_test_runs_endpoint(
-    payload: AtpBatchTestRunRequest,
-    current_user: CurrentUser = Depends(require_any_permission("atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpBatchTestRunSummary:
-    """批量测试：对多个资产发起测试，返回 batch_id 供轮询汇总。"""
-    data = create_batch_test_runs(
-        db,
-        asset_ids=payload.asset_ids,
-        payload=payload,
-        actor_user_id=current_user.user.id,
-    )
-    return AtpBatchTestRunSummary(**data)
-
-
-@router.get("/batch-test-runs/{batch_id}", response_model=AtpBatchTestRunSummary)
-def get_atp_batch_test_runs_endpoint(
-    batch_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpBatchTestRunSummary:
-    """批量测试进度与总体报告。"""
-    data = get_batch_test_runs(db, batch_id=batch_id)
-    return AtpBatchTestRunSummary(**data)
-
-
-@router.get("/batch-test-runs/{batch_id}/report")
-def download_atp_batch_test_report(
-    batch_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-):
-    """下载批量测试报告包(report.xlsx + detail.csv + report.json 的 zip)。"""
-    import io
-
-    from fastapi.responses import StreamingResponse
-
-    data, filename = build_batch_report_zip(db, batch_id=batch_id)
-    return StreamingResponse(
-        io.BytesIO(data),
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.get("/test-runs/{run_id}/compare")
-def get_atp_asset_test_compare(
-    run_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """取对拍产物 compare.json（schema ``lp.atp.compare/1``，与 C# harness 同格式）。"""
-    return read_compare_json(db, run_id=run_id)
-
-
-@router.get("/test-runs/{run_id}/artifacts")
-def download_atp_asset_test_artifacts(
-    run_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> FileResponse:
-    """下载测试产物包（改写后的 dat/pch/lib/lis/pl4 + manifest + compare.json）。"""
-    path, filename = read_artifact_zip(db, run_id=run_id)
-    return FileResponse(path, filename=filename, media_type="application/zip")
-
-
-@router.get("/test-runs/{run_id}/files/content")
-def read_atp_asset_test_file_content_endpoint(
-    run_id: str,
-    path: str = Query(..., description="产物相对路径，如 long.lib / work.lis"),
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """读取测试运行产物文本内容（lib/dat/lis/pch/log 详情查看）。"""
-    return read_test_run_file_content(db, run_id=run_id, path=path)
-
-
-@router.get("/test-runs/{run_id}/waveform")
-def get_atp_asset_test_waveform(
-    run_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """解析 work.pl4 返回波形数据（通道名/时间序列/各通道采样），前端画波形图。"""
-    return parse_test_run_waveform(db, run_id=run_id)

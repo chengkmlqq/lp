@@ -50,7 +50,7 @@ import type {
   AtpTestSetRunSummary,
   AtpTestSetSummary,
 } from "@/types/auth";
-import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
+import { formatDateTime } from "@/lib/datetime";
 import { AtpTestSetRunDrawer } from "@/components/atp-models/atp-test-set-run-drawer";
 
 const JOB_KIND_OPTIONS = [

@@ -25,7 +25,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpTestSetRunSummary } from "@/types/auth";
-import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
+import { formatDateTime } from "@/lib/datetime";
 
 const STATUS_TAG: Record<string, { color: string; text: string }> = {
   pending: { color: "default", text: "待执行" },

@@ -37,7 +37,7 @@ import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpTestSetListResponse, AtpTestSetSummary } from "@/types/auth";
-import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
+import { formatDateTime } from "@/lib/datetime";
 import { AtpTestSetDetailDrawer } from "@/components/atp-models/atp-test-set-detail-drawer";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 

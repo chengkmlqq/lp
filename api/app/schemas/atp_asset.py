@@ -174,13 +174,6 @@ class AtpAssetCreateRequest(BaseModel):
     tags: list[str] | None = Field(default=None, max_length=MAX_TAGS)
 
 
-class AtpAssetTestStatusRequest(BaseModel):
-    """测试结论写入（2026-11-07）：三档标记，None 表示清除标记回到未测试。"""
-
-    test_status: AtpAssetTestStatus | None = None
-    message: str | None = Field(default=None, max_length=512)
-
-
 class AtpAssetPublishRequest(BaseModel):
     """发布请求（2026-11-10）：发布时可填写版本描述与标签（均选填）。"""
 
